@@ -5,6 +5,10 @@ languageCode = "en-us"
 enableRobotsTXT = true
 canonifyURLs = true
 
+[params]
+  description = "A web-based control plane for your development environment. Manage terminals, services, logs, and git worktrees from one keyboard-driven interface."
+  image = "/images/social-preview.png"
+
 [markup]
   [markup.goldmark.renderer]
     unsafe = true
