@@ -1,0 +1,15 @@
+# Redocly configuration for Trellis API
+# Trellis is a local development tool, so some rules don't apply
+
+extends:
+  - recommended
+
+rules:
+  # Disable server URL check - Trellis runs on localhost
+  no-server-example.com: off
+
+  # WebSocket endpoints return 101, not 2xx
+  operation-2xx-response: off
+
+  # Not all endpoints need 4xx responses for a local dev tool
+  operation-4xx-response: warn

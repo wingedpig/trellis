@@ -1,0 +1,150 @@
+{{ define "main" }}
+<div class="hero">
+  <div class="container">
+    <img src="/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
+    <p class="lead">A web-based control plane for your development environment</p>
+    <p class="text-muted">Rapidly switch between worktrees, terminals, locally running services, and local or remote logs using tmux, SSH, and keyboard-driven pickers—instead of a collection of disconnected tools.</p>
+    <div class="mt-4">
+      <a href="/docs/" class="btn btn-primary btn-lg me-2">
+        <i class="fa-solid fa-book"></i> Documentation
+      </a>
+      <a href="https://github.com/wingedpig/trellis" class="btn btn-outline-secondary btn-lg me-2" target="_blank">
+        <i class="fa-brands fa-github"></i> GitHub
+      </a>
+      <a href="https://groups.io/g/trellis" class="btn btn-outline-secondary btn-lg" target="_blank">
+        <i class="fa-solid fa-envelope"></i> Email Group
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="py-5" style="background-color: var(--trellis-card-bg);">
+  <div class="container">
+    <h2 class="text-center mb-5">What Trellis Does</h2>
+    <div class="row">
+      <div class="col-lg-4 mb-4">
+        <h4><i class="fa-solid fa-laptop-code text-accent me-2"></i>On Your Machine</h4>
+        <ul class="text-muted">
+          <li><strong>Worktrees as environments</strong> — Each git worktree gets its own terminals, processes, and logs</li>
+          <li><strong>Terminal &amp; tmux management</strong> — Trellis creates and manages tmux sessions for you</li>
+          <li><strong>Service supervision</strong> — Run your app's components locally with automatic restart on rebuild</li>
+          <li><strong>Local log access</strong> — Tail and search logs from the Trellis UI</li>
+        </ul>
+      </div>
+      <div class="col-lg-4 mb-4">
+        <h4><i class="fa-solid fa-cloud text-accent me-2"></i>Remote Systems</h4>
+        <ul class="text-muted">
+          <li><strong>Remote terminals</strong> — SSH into staging or production from the same interface</li>
+          <li><strong>Tailing remote logs</strong> — Stream logs from remote hosts in real time</li>
+          <li><strong>Grepping remote logs</strong> — Search through remote logs, including rotated and compressed files</li>
+          <li><strong>Distributed tracing</strong> — Search for an ID across multiple machines at once</li>
+        </ul>
+      </div>
+      <div class="col-lg-4 mb-4">
+        <h4><i class="fa-solid fa-keyboard text-accent me-2"></i>Navigation &amp; Speed</h4>
+        <ul class="text-muted">
+          <li><strong>Web UI, keyboard-first</strong> — Runs on localhost but designed for keyboard operation</li>
+          <li><strong>Pickers for everything</strong> — Jump between worktrees, terminals, processes, logs, and workflows</li>
+          <li><strong>Keyboard shortcuts</strong> — Common actions bound to shortcuts so you rarely touch the mouse</li>
+        </ul>
+      </div>
+    </div>
+    <p class="text-center mt-3"><a href="/docs/overview/" class="btn btn-outline-primary">Learn more about how Trellis works</a></p>
+  </div>
+</div>
+
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <h2 class="text-center mb-5">Why Trellis Exists</h2>
+
+      <p>I built Trellis because the tools I was using to develop <a href="https://groups.io">Groups.io</a> were annoying me.</p>
+
+      <p>Groups.io isn't a weekend project. It's been running for over a decade, has millions of users, and a lot of moving parts. I write the code, run the dev environment, deploy to production, and get woken up when something breaks. The neat "dev vs ops" distinction doesn't really apply—it's just me switching hats all day.</p>
+
+      <p>For years, I glued things together with shell scripts, tmux sessions, and manual steps. It worked, but it was fragile. I'd switch branches, start the services I needed, dig through logs, SSH into production, then jump back to local code. The context lived in my head, and if I lost track, I paid for it.</p>
+
+      <p>I wanted a single workflow—from "I'm writing this code" to "what just broke in production." So I built Trellis.</p>
+
+      <p>Trellis isn't a provisioning system and it doesn't replace your cloud or orchestrator. It becomes your dev environment. It runs your services, restarts them when binaries change, scopes terminals and logs to what you're working on, and keeps everything in sync with the active branch. Switch worktrees, switch your world—without leaving behind a mess of sessions and state.</p>
+
+      <p>I built Trellis for myself. After a while, I realized other people were solving the same problems. So here it is.</p>
+
+      <p class="text-end text-muted">— <a href="https://wingedpig.com">Mark Fletcher</a></p>
+    </div>
+  </div>
+</div>
+
+<div class="py-5" style="background-color: var(--trellis-card-bg);">
+  <div class="container">
+    <h2 class="text-center mb-5">Who Trellis Is For</h2>
+    <div class="row">
+      <div class="col-lg-6">
+        <h4 class="text-accent mb-4">Trellis is for:</h4>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-check text-accent me-2"></i>Developers who also operate their systems</h6>
+          <p class="text-muted ms-4">If you write code and are responsible for keeping it running, Trellis gives you one place to develop, debug, and inspect live systems without switching tools or losing context.</p>
+        </div>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-check text-accent me-2"></i>Founder-operators and small teams</h6>
+          <p class="text-muted ms-4">Trellis fits teams where deep system knowledge matters more than heavy process, and where the same people build, deploy, and debug production.</p>
+        </div>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-check text-accent me-2"></i>Infra-heavy codebases</h6>
+          <p class="text-muted ms-4">Services that run continuously, depend on each other, and fail in interesting ways benefit most from Trellis's service lifecycle management and log-driven introspection.</p>
+        </div>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-check text-accent me-2"></i>Parallel development workflows</h6>
+          <p class="text-muted ms-4">If you use git worktrees or juggle multiple branches at once, Trellis treats each as a first-class environment with isolated services, logs, and workflows.</p>
+        </div>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-check text-accent me-2"></i>AI-assisted development</h6>
+          <p class="text-muted ms-4">When services crash, Trellis captures full context—logs, stack traces, and trace IDs—so AI assistants can diagnose issues and suggest fixes without guesswork.</p>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <h4 class="mb-4" style="color: var(--trellis-text-muted);">Trellis is not for:</h4>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-xmark me-2" style="color: var(--trellis-text-muted);"></i>Teams looking for a hosted dev platform</h6>
+          <p class="text-muted ms-4">Trellis does not provision environments, manage cloud resources, or replace Codespaces-style workflows.</p>
+        </div>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-xmark me-2" style="color: var(--trellis-text-muted);"></i>Production automation or SRE platforms</h6>
+          <p class="text-muted ms-4">Trellis does not deploy, scale, or mutate production systems automatically.</p>
+        </div>
+
+        <div class="mb-4">
+          <h6><i class="fa-solid fa-xmark me-2" style="color: var(--trellis-text-muted);"></i>Highly abstracted "no-ops" workflows</h6>
+          <p class="text-muted ms-4">If you don't want to see logs, processes, or terminals, Trellis will feel too hands-on.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <h2 class="mb-4 text-center">Real examples</h2>
+        <div class="list-group">
+          <a href="/blog/five-minutes-from-error-to-fix/" class="list-group-item list-group-item-action">
+            <h5 class="mb-1">1. Five Minutes From Error to Fix</h5>
+            <p class="mb-0 text-muted">A small production error, a disposable worktree, and a fix — without leaving the keyboard.</p>
+          </a>
+          <a href="/blog/tracing-a-deadlock/" class="list-group-item list-group-item-action">
+            <h5 class="mb-1">2. Tracing a Deadlock</h5>
+            <p class="mb-0 text-muted">A real production concurrency bug, analyzed across two traces and fixed by enforcing lock ordering.</p>
+          </a>
+        </div>
+      </div>
+    </div>
+</div>
+{{ end }}

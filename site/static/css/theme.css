@@ -1,0 +1,478 @@
+/* theme.css - Include AFTER standard bootstrap.css */
+/* Supports both light and dark modes via [data-theme] attribute */
+
+/* ============================================
+   LIGHT MODE (Default)
+   ============================================ */
+:root,
+[data-theme="light"] {
+    /* Brand Colors */
+    --bs-primary: #56AB2F;
+    --bs-primary-rgb: 86, 171, 47;
+    --bs-secondary: #007F8B;
+    --bs-secondary-rgb: 0, 127, 139;
+
+    /* Light Mode Base */
+    --bs-body-color: #222831;
+    --bs-body-bg: #f8f9fa;
+    --bs-dark: #222831;
+    --bs-dark-rgb: 34, 40, 49;
+
+    /* Component colors */
+    --trellis-card-bg: #ffffff;
+    --trellis-card-border: rgba(0,0,0,0.09);
+    --trellis-card-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    --trellis-card-header-bg: #f8f9fa;
+    --trellis-input-bg: #ffffff;
+    --trellis-input-border: #ced4da;
+    --trellis-dropdown-bg: #ffffff;
+    --trellis-dropdown-border: #dee2e6;
+    --trellis-dropdown-hover: #f8f9fa;
+    --trellis-table-bg: #ffffff;
+    --trellis-table-border: #dee2e6;
+    --trellis-table-hover: #f5f5f5;
+    --trellis-table-header-bg: #f8f9fa;
+    --trellis-pre-bg: #f1f3f4;
+    --trellis-pre-border: #dee2e6;
+    --trellis-code-color: #56AB2F;
+    --trellis-code-bg: rgba(86, 171, 47, 0.1);
+    --trellis-text-muted: #6c757d;
+    --trellis-link-color: #56AB2F;
+    --trellis-link-hover: #4a9628;
+    --trellis-modal-bg: #ffffff;
+    --trellis-list-group-bg: #ffffff;
+    --trellis-list-group-hover: #f8f9fa;
+    --trellis-navbar-bg: #2c3e50;
+    --trellis-navbar-text: #ffffff;
+    --trellis-navbar-text-muted: rgba(255, 255, 255, 0.75);
+    --trellis-navbar-border: #1a252f;
+    --trellis-scrollbar-track: #f1f1f1;
+
+    /* Terminal colors for light mode */
+    --trellis-terminal-bg: #ffffff;
+    --trellis-terminal-fg: #222831;
+    --trellis-terminal-cursor: #56AB2F;
+    --trellis-terminal-selection: rgba(86, 171, 47, 0.3);
+    --trellis-scrollbar-thumb: #c1c1c1;
+    --trellis-scrollbar-hover: #a8a8a8;
+}
+
+/* ============================================
+   DARK MODE
+   ============================================ */
+[data-theme="dark"] {
+    /* Brand Colors (same) */
+    --bs-primary: #56AB2F;
+    --bs-primary-rgb: 86, 171, 47;
+    --bs-secondary: #007F8B;
+    --bs-secondary-rgb: 0, 127, 139;
+
+    /* Dark Mode Base */
+    --bs-body-color: #E4E7EB;
+    --bs-body-bg: #222831;
+    --bs-dark: #222831;
+    --bs-dark-rgb: 34, 40, 49;
+
+    /* Fix Bootstrap secondary text color for dark mode */
+    --bs-secondary-color: #9ca3af;
+    --bs-secondary-color-rgb: 156, 163, 175;
+    --bs-tertiary-color: #6b7280;
+    --bs-tertiary-color-rgb: 107, 114, 128;
+
+    /* Component colors */
+    --trellis-card-bg: #2d343f;
+    --trellis-card-border: #3b4452;
+    --trellis-card-shadow: none;
+    --trellis-card-header-bg: #323a46;
+    --trellis-input-bg: #2d343f;
+    --trellis-input-border: #3b4452;
+    --trellis-dropdown-bg: #323a46;
+    --trellis-dropdown-border: #3b4452;
+    --trellis-dropdown-hover: #3b4452;
+    --trellis-table-bg: #2d343f;
+    --trellis-table-border: #3b4452;
+    --trellis-table-hover: #3b4452;
+    --trellis-table-header-bg: #323a46;
+    --trellis-pre-bg: #1a1e24;
+    --trellis-pre-border: #3b4452;
+    --trellis-code-color: #56AB2F;
+    --trellis-code-bg: rgba(86, 171, 47, 0.15);
+    --trellis-text-muted: #9ca3af;
+    --trellis-link-color: #56AB2F;
+    --trellis-link-hover: #6bc83a;
+    --trellis-modal-bg: #2d343f;
+    --trellis-list-group-bg: #2d343f;
+    --trellis-list-group-hover: #323a46;
+    --trellis-navbar-bg: #1a1e24;
+    --trellis-navbar-text: #ffffff;
+    --trellis-navbar-text-muted: rgba(255, 255, 255, 0.75);
+    --trellis-navbar-border: #3b4452;
+    --trellis-scrollbar-track: #222831;
+
+    /* Terminal colors for dark mode */
+    --trellis-terminal-bg: #000000;
+    --trellis-terminal-fg: #d4d4d4;
+    --trellis-terminal-cursor: #56AB2F;
+    --trellis-terminal-selection: rgba(86, 171, 47, 0.3);
+    --trellis-scrollbar-thumb: #3b4452;
+    --trellis-scrollbar-hover: #4a5568;
+}
+
+/* ============================================
+   COMMON STYLES (use CSS variables)
+   ============================================ */
+
+/* Body */
+body {
+    background-color: var(--bs-body-bg) !important;
+    color: var(--bs-body-color) !important;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--bs-body-color);
+}
+
+/* Text utilities */
+.text-muted {
+    color: var(--trellis-text-muted) !important;
+}
+p, strong, small, label {
+    color: var(--bs-body-color);
+}
+
+/* Links */
+a {
+    color: var(--trellis-link-color);
+}
+a:hover {
+    color: var(--trellis-link-hover);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff !important;
+}
+.btn-primary:hover, .btn-primary:focus {
+    background-color: #4a9628;
+    border-color: #4a9628;
+}
+.btn-secondary {
+    background-color: var(--bs-secondary);
+    border-color: var(--bs-secondary);
+    color: #fff !important;
+}
+.btn-outline-secondary {
+    color: var(--trellis-text-muted);
+    border-color: var(--trellis-input-border);
+}
+.btn-outline-secondary:hover {
+    background-color: var(--trellis-dropdown-hover);
+    border-color: var(--trellis-input-border);
+    color: var(--bs-body-color);
+}
+.btn-outline-primary {
+    color: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+.btn-outline-primary:hover {
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+
+/* Cards */
+.card {
+    background-color: var(--trellis-card-bg);
+    border-color: var(--trellis-card-border);
+    box-shadow: var(--trellis-card-shadow);
+    color: var(--bs-body-color);
+}
+.card-header, .card-footer {
+    background-color: var(--trellis-card-header-bg);
+    border-color: var(--trellis-card-border);
+    color: var(--bs-body-color);
+}
+.card-body, .card-title, .card-text {
+    color: var(--bs-body-color);
+}
+
+/* Forms */
+.form-control, .form-select {
+    background-color: var(--trellis-input-bg);
+    border-color: var(--trellis-input-border);
+    color: var(--bs-body-color);
+}
+.form-control:focus, .form-select:focus {
+    background-color: var(--trellis-input-bg);
+    border-color: var(--bs-primary);
+    color: var(--bs-body-color);
+    box-shadow: 0 0 0 0.25rem rgba(86, 171, 47, 0.25);
+}
+.form-control::placeholder {
+    color: var(--trellis-text-muted);
+}
+.input-group-text {
+    background-color: var(--trellis-card-header-bg);
+    border-color: var(--trellis-input-border);
+    color: var(--bs-body-color);
+}
+
+/* Dropdowns */
+.dropdown-menu {
+    background-color: var(--trellis-dropdown-bg);
+    border-color: var(--trellis-dropdown-border);
+}
+.dropdown-item {
+    color: var(--bs-body-color);
+}
+.dropdown-item:hover, .dropdown-item:focus {
+    background-color: var(--trellis-dropdown-hover);
+    color: var(--bs-body-color);
+}
+
+/* Tables */
+.table {
+    color: var(--bs-body-color);
+    --bs-table-bg: var(--trellis-table-bg);
+    --bs-table-color: var(--bs-body-color);
+    --bs-table-border-color: var(--trellis-table-border);
+    --bs-table-hover-bg: var(--trellis-table-hover);
+    --bs-table-hover-color: var(--bs-body-color);
+}
+.table > thead {
+    background-color: var(--trellis-table-header-bg);
+}
+.table > :not(caption) > * > * {
+    background-color: transparent;
+    color: var(--bs-body-color);
+}
+.table-hover > tbody > tr:hover > * {
+    background-color: var(--trellis-table-hover);
+    color: var(--bs-body-color);
+}
+.table-dark {
+    --bs-table-bg: var(--trellis-table-bg);
+    --bs-table-color: var(--bs-body-color);
+    --bs-table-border-color: var(--trellis-table-border);
+}
+
+/* Navbar - themed */
+.navbar {
+    background-color: var(--trellis-navbar-bg) !important;
+    border-bottom: 1px solid var(--trellis-navbar-border);
+}
+.navbar .navbar-brand {
+    color: var(--trellis-navbar-text);
+    font-weight: bold;
+}
+.navbar .navbar-nav .nav-link {
+    color: var(--trellis-navbar-text-muted);
+}
+.navbar .navbar-nav .nav-link:hover {
+    color: var(--trellis-navbar-text);
+}
+.navbar .navbar-nav .nav-link.active {
+    color: var(--bs-primary);
+}
+.navbar .navbar-text {
+    color: var(--trellis-navbar-text-muted);
+}
+.navbar .navbar-toggler {
+    border-color: var(--trellis-navbar-text-muted);
+}
+.navbar .navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 0.75)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+/* List groups */
+.list-group-item {
+    background-color: var(--trellis-list-group-bg);
+    border-color: var(--trellis-card-border);
+    color: var(--bs-body-color);
+}
+.list-group-item-action:hover,
+.list-group-item-action:focus {
+    background-color: var(--trellis-list-group-hover);
+    color: var(--bs-body-color);
+}
+
+/* Code and pre blocks */
+pre {
+    background-color: var(--trellis-pre-bg);
+    border: 1px solid var(--trellis-pre-border);
+    border-radius: 4px;
+    padding: 1rem;
+}
+code {
+    color: var(--trellis-code-color);
+}
+pre code {
+    color: var(--bs-body-color);
+}
+.card code {
+    color: var(--trellis-code-color);
+    background-color: var(--trellis-code-bg);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+}
+
+/* Keyboard shortcuts */
+kbd {
+    background-color: var(--trellis-card-header-bg);
+    border: 1px solid var(--trellis-input-border);
+    color: var(--bs-body-color);
+}
+
+/* Modals */
+.modal-content {
+    background-color: var(--trellis-modal-bg);
+    border-color: var(--trellis-card-border);
+    color: var(--bs-body-color);
+}
+.modal-header, .modal-footer {
+    border-color: var(--trellis-card-border);
+}
+[data-theme="dark"] .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Badges */
+.badge {
+    font-weight: 500;
+}
+.badge.bg-success, .badge.bg-primary {
+    background-color: var(--bs-primary) !important;
+}
+.badge.bg-info {
+    background-color: var(--bs-secondary) !important;
+    color: #fff !important;
+}
+
+/* Service status badges */
+.badge-running {
+    background-color: #56AB2F;
+    color: #fff;
+}
+.badge-stopped {
+    background-color: #6c757d;
+    color: #fff;
+}
+.badge-crashed {
+    background-color: #dc3545;
+    color: #fff;
+}
+.badge-starting {
+    background-color: #ffc107;
+    color: #000;
+}
+
+/* Alerts */
+.alert-info {
+    background-color: rgba(0, 127, 139, 0.15);
+    border-color: var(--bs-secondary);
+    color: var(--bs-body-color);
+}
+.alert-success {
+    background-color: rgba(86, 171, 47, 0.15);
+    border-color: var(--bs-primary);
+    color: var(--bs-body-color);
+}
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.15);
+    border-color: #dc3545;
+    color: var(--bs-body-color);
+}
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.15);
+    border-color: #ffc107;
+    color: var(--bs-body-color);
+}
+
+/* Pagination */
+.page-link {
+    background-color: var(--trellis-card-bg);
+    border-color: var(--trellis-card-border);
+    color: var(--bs-body-color);
+}
+.page-link:hover {
+    background-color: var(--trellis-dropdown-hover);
+    border-color: var(--trellis-card-border);
+    color: var(--bs-body-color);
+}
+.page-item.active .page-link {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+
+/* Nav tabs and pills */
+.nav-tabs {
+    border-color: var(--trellis-card-border);
+}
+.nav-tabs .nav-link {
+    color: var(--trellis-text-muted);
+}
+.nav-tabs .nav-link:hover {
+    border-color: var(--trellis-card-border);
+    color: var(--bs-body-color);
+}
+.nav-tabs .nav-link.active {
+    background-color: var(--trellis-card-bg);
+    border-color: var(--trellis-card-border);
+    color: var(--bs-primary);
+}
+.nav-pills .nav-link {
+    color: var(--trellis-text-muted);
+}
+.nav-pills .nav-link:hover {
+    color: var(--bs-body-color);
+}
+.nav-pills .nav-link.active {
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+
+/* Accent utilities */
+.text-accent {
+    color: var(--bs-primary) !important;
+}
+.border-accent {
+    border-color: var(--bs-primary) !important;
+}
+
+/* Override white/light backgrounds */
+.bg-white, .bg-light {
+    background-color: var(--trellis-card-bg) !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--trellis-scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--trellis-scrollbar-thumb);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--trellis-scrollbar-hover);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    background: transparent;
+    border: 1px solid var(--trellis-navbar-text-muted);
+    color: var(--trellis-navbar-text-muted);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.theme-toggle:hover {
+    background: var(--trellis-dropdown-hover);
+    color: var(--trellis-navbar-text);
+}

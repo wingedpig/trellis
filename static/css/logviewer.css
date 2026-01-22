@@ -1,0 +1,214 @@
+/* logviewer.css - Shared styles for log/trace/crash entry viewers */
+/* Copyright 2026 Groups.io, Inc. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Wrapper and container */
+.trace-wrapper {
+    position: relative;
+}
+
+.trace-log {
+    font-family: 'JetBrains Mono', Monaco, monospace;
+    font-size: 12px;
+    background: var(--trellis-pre-bg);
+    border-radius: 4px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+/* Entry row layout (flexbox) */
+.trace-entry,
+.trace-row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    padding: 2px 10px;
+    cursor: pointer;
+}
+
+.trace-entry:nth-child(odd),
+.trace-row:nth-child(odd) {
+    background: var(--trellis-pre-bg);
+}
+
+.trace-entry:nth-child(even),
+.trace-row:nth-child(even) {
+    background: var(--trellis-logviewer-even, var(--trellis-table-hover));
+}
+
+[data-theme="dark"] .trace-entry:nth-child(even),
+[data-theme="dark"] .trace-row:nth-child(even) {
+    background: #252a32;
+}
+
+.trace-entry:hover,
+.trace-row:hover {
+    background: var(--trellis-dropdown-hover);
+}
+
+.trace-entry.selected,
+.trace-row.selected {
+    background: rgba(86, 171, 47, 0.2);
+}
+
+.trace-entry.context-line,
+.trace-row.context-line {
+    opacity: 0.6;
+}
+
+/* Column styles */
+.trace-entry > span,
+.trace-row > span,
+.column {
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trace-entry .column-timestamp,
+.trace-row .trace-time,
+.column-timestamp {
+    color: var(--trellis-text-muted);
+}
+
+.trace-entry .column-source,
+.trace-row .trace-source,
+.column-source {
+    color: var(--trellis-text-accent);
+}
+
+.trace-entry .column-level,
+.trace-row .trace-level,
+.column-level {
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+/* Level colors */
+.column-level.level-trace,
+.trace-level.level-trace { color: var(--trellis-text-muted); }
+
+.column-level.level-debug,
+.trace-level.level-debug { color: var(--trellis-text-muted); }
+
+.column-level.level-info,
+.trace-level.level-info { color: #3b82f6; }
+
+.column-level.level-warn,
+.trace-level.level-warn { color: #f59e0b; }
+
+.column-level.level-error,
+.trace-level.level-error { color: #ef4444; }
+
+.column-level.level-fatal,
+.trace-level.level-fatal {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.15);
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+.trace-entry .column-message,
+.trace-row .trace-message,
+.column-message {
+    white-space: pre;
+}
+
+/* Expanded details panel */
+.trace-expanded {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 400px;
+    background: var(--trellis-card-bg);
+    border-left: 1px solid var(--trellis-input-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+.trace-expanded-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--trellis-input-border);
+    font-weight: bold;
+}
+
+.trace-expanded-header button {
+    background: transparent;
+    border: none;
+    color: var(--trellis-text-muted);
+    cursor: pointer;
+}
+
+.trace-expanded-header button:hover {
+    color: var(--bs-body-color);
+}
+
+.trace-expanded-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    font-family: 'JetBrains Mono', Monaco, monospace;
+    font-size: 12px;
+}
+
+.trace-expanded-content .field {
+    margin-bottom: 8px;
+}
+
+.trace-expanded-content .field-name {
+    color: var(--trellis-text-muted);
+    margin-right: 8px;
+}
+
+.trace-expanded-content .field-value {
+    color: var(--bs-body-color);
+}
+
+.trace-expanded-content .raw-log {
+    margin-top: 15px;
+    padding: 10px;
+    background: var(--trellis-pre-bg);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Filter bar */
+.trace-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: var(--trellis-card-bg);
+    border-bottom: 1px solid var(--trellis-input-border);
+}
+
+.trace-filter-bar input {
+    flex: 1;
+    background: var(--trellis-input-bg);
+    border: 1px solid var(--trellis-input-border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: var(--bs-body-color);
+}
+
+.trace-filter-bar input:focus {
+    outline: none;
+    border-color: var(--trellis-text-accent);
+}
+
+/* Crash-specific: error/stack display */
+.crash-stack {
+    font-family: 'JetBrains Mono', Monaco, monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}

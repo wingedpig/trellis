@@ -1,0 +1,154 @@
+// Copyright © 2026 Groups.io, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+{% import "github.com/wingedpig/trellis/internal/crashes" %}
+{% import "time" %}
+
+{% code
+type CrashesPage struct {
+    BasePage
+    Crashes []crashes.CrashSummary
+}
+%}
+
+{% func (p *CrashesPage) Render() %}
+{%= p.Header() %}
+
+<h2 class="mb-4"><i class="fa-solid fa-skull-crossbones"></i> Crash Reports</h2>
+
+<!-- Crash Reports -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fa-solid fa-file-lines"></i> Crash Reports</span>
+        <div>
+            {% if len(p.Crashes) > 0 %}
+            <button class="btn btn-sm btn-outline-danger me-2" onclick="clearAllCrashes()">
+                <i class="fa-solid fa-trash"></i> Clear All
+            </button>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-secondary" onclick="refreshReports()">
+                <i class="fa-solid fa-refresh"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if len(p.Crashes) == 0 %}
+        <div class="p-3 text-muted">
+            <i class="fa-solid fa-check-circle text-success"></i> No crash reports. All services running smoothly.
+        </div>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Service</th>
+                        <th>Trace ID</th>
+                        <th>Exit Code</th>
+                        <th>Error</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="reportsTable">
+                    {% for _, c := range p.Crashes %}
+                    <tr data-id="{%s c.ID %}">
+                        <td>
+                            <a href="/crashes/{%s c.ID %}">{%s c.ID %}</a>
+                        </td>
+                        <td><span class="badge bg-danger">{%s c.Service %}</span></td>
+                        <td>
+                            {% if c.TraceID != "" %}
+                            <code class="small">{%s c.TraceID %}</code>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{%d c.ExitCode %}</code></td>
+                        <td>
+                            <span class="text-truncate d-inline-block" style="max-width: 250px;" title="{%s c.Error %}">
+                                {%s c.Error %}
+                            </span>
+                        </td>
+                        <td class="small text-muted created-time" data-time="{%s c.Timestamp.Format(time.RFC3339) %}">
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteCrash('{%s JSAttr(c.ID) %}')">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function deleteCrash(id) {
+    if (!confirm('Delete crash report "' + id + '"?')) {
+        return;
+    }
+
+    fetch('/api/v1/crashes/' + encodeURIComponent(id), { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                alert('Error: ' + data.error.message);
+            } else {
+                location.reload();
+            }
+        })
+        .catch(function(err) {
+            alert('Error: ' + err);
+        });
+}
+
+function clearAllCrashes() {
+    if (!confirm('Delete all crash reports? This cannot be undone.')) {
+        return;
+    }
+
+    fetch('/api/v1/crashes', { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                alert('Error: ' + data.error.message);
+            } else {
+                location.reload();
+            }
+        })
+        .catch(function(err) {
+            alert('Error: ' + err);
+        });
+}
+
+function refreshReports() {
+    location.reload();
+}
+
+function formatDateTime(d) {
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatFullDateTime(isoString) {
+    var d = new Date(isoString);
+    return d.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// Initialize time displays
+(function() {
+    document.querySelectorAll('.created-time').forEach(function(el) {
+        var time = el.dataset.time;
+        if (time) {
+            el.textContent = formatDateTime(new Date(time));
+            el.title = formatFullDateTime(time);
+        }
+    });
+})();
+</script>
+
+{%= p.Footer() %}
+{% endfunc %}

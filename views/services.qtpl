@@ -1,0 +1,131 @@
+// Copyright © 2026 Groups.io, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+{% import "github.com/wingedpig/trellis/internal/service" %}
+
+{% code
+type ServiceDetailPage struct {
+    BasePage
+    ServiceName string
+    Status      service.ServiceStatus
+    Logs        []string
+}
+%}
+
+{% func (p *ServiceDetailPage) Render() %}
+{%= p.Header() %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fa-solid fa-cube"></i> {%s p.ServiceName %}</h2>
+    <div>
+        {% code state := p.Status.State.String() %}
+        {% if state == "running" %}
+        <button class="btn btn-outline-secondary" onclick="serviceAction('stop')">
+            <i class="fa-solid fa-stop"></i> Stop
+        </button>
+        <button class="btn btn-outline-secondary" onclick="serviceAction('restart')">
+            <i class="fa-solid fa-rotate"></i> Restart
+        </button>
+        {% else %}
+        <button class="btn btn-primary" onclick="serviceAction('start')">
+            <i class="fa-solid fa-play"></i> Start
+        </button>
+        {% endif %}
+        <a href="/" class="btn btn-outline-secondary">
+            <i class="fa-solid fa-arrow-left"></i> Back
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">Status</div>
+            <div class="card-body">
+                <p><strong>State:</strong> <span class="badge badge-{%s state %}">{%s state %}</span></p>
+                {% if p.Status.PID > 0 %}
+                <p><strong>PID:</strong> {%d p.Status.PID %}</p>
+                {% endif %}
+                {% if p.Status.ExitCode != 0 %}
+                <p><strong>Exit Code:</strong> {%d p.Status.ExitCode %}</p>
+                {% endif %}
+                <p><strong>Restarts:</strong> {%d p.Status.RestartCount %}</p>
+                {% if p.Status.Error != "" %}
+                <p class="text-danger"><strong>Error:</strong> {%s p.Status.Error %}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between">
+                <span><i class="fa-solid fa-file-lines"></i> Logs</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                    <i class="fa-solid fa-trash"></i> Clear
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <pre class="m-0" style="max-height: 500px; overflow-y: auto;"><code>{% for _, line := range p.Logs %}{%s line %}
+{% endfor %}</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Modal -->
+<div class="modal fade" id="alertModalDetail" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="alertModalDetailTitle">Error</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="alertModalDetailMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="alertModalDetailOk">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showAlert(message, title) {
+    document.getElementById('alertModalDetailTitle').textContent = title || 'Error';
+    document.getElementById('alertModalDetailMessage').textContent = message;
+    var modal = new bootstrap.Modal(document.getElementById('alertModalDetail'));
+    modal.show();
+    document.getElementById('alertModalDetail').addEventListener('shown.bs.modal', function() {
+        document.getElementById('alertModalDetailOk').focus();
+    }, { once: true });
+}
+
+function serviceAction(action) {
+    fetch('/api/v1/services/{%s p.ServiceName %}/' + action, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function() { location.reload(); })
+        .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+}
+
+function clearLogs() {
+    fetch('/api/v1/services/{%s p.ServiceName %}/logs', { method: 'DELETE' })
+        .then(function() { location.reload(); })
+        .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+}
+
+// Auto-refresh logs
+setInterval(function() {
+    fetch('/api/v1/services/{%s p.ServiceName %}/logs')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.data && data.data.logs) {
+                document.querySelector('pre code').textContent = data.data.logs.join('\n');
+            }
+        });
+}, 2000);
+</script>
+
+{%= p.Footer() %}
+{% endfunc %}

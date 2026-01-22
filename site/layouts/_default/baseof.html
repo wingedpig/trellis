@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ if .IsHome }}{{ .Title }}{{ else }}{{ .Title }} - {{ .Site.Title }}{{ end }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link href="/css/theme.css" rel="stylesheet">
+    <style>
+      /* Invert hero logo in light mode (white text on transparent needs to become dark) */
+      [data-theme="light"] .hero-logo {
+        filter: invert(1) hue-rotate(180deg);
+      }
+      .hero {
+        padding: 4rem 0;
+        text-align: center;
+      }
+      .hero h1 {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+      }
+      .hero .lead {
+        font-size: 1.25rem;
+        color: var(--trellis-text-muted);
+      }
+      .feature-icon {
+        font-size: 2rem;
+        color: var(--bs-primary);
+        margin-bottom: 1rem;
+      }
+      .docs-sidebar {
+        position: sticky;
+        top: 80px;
+        height: calc(100vh - 100px);
+        overflow-y: auto;
+      }
+      .docs-sidebar .nav-link {
+        color: var(--trellis-text-muted);
+        padding: 0.25rem 0;
+      }
+      .docs-sidebar .nav-link:hover,
+      .docs-sidebar .nav-link.active {
+        color: var(--bs-primary);
+      }
+      .docs-content {
+        max-width: 800px;
+      }
+      .docs-content h1 {
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--trellis-card-border);
+      }
+      .docs-content h2 {
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+      }
+      .docs-content h3 {
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+      }
+      footer {
+        margin-top: 4rem;
+        padding: 2rem 0;
+        border-top: 1px solid var(--trellis-card-border);
+        color: var(--trellis-text-muted);
+      }
+      blockquote {
+        border-left: 4px solid var(--bs-primary);
+        padding-left: 1rem;
+        margin: 1.5rem 0;
+        color: var(--trellis-text-muted);
+        font-style: italic;
+      }
+    </style>
+    {{ block "head" . }}{{ end }}
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg sticky-top">
+      <div class="container">
+        <a class="navbar-brand d-flex align-items-center" href="/">
+          <img src="/images/logo.png" alt="Trellis" height="50">
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item">
+              <a class="nav-link{{ if eq .Section "docs" }} active{{ end }}" href="/docs/">Docs</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/api/">API</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link{{ if eq .Section "blog" }} active{{ end }}" href="/blog/">Blog</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="https://github.com/wingedpig/trellis" target="_blank">
+                <i class="fa-brands fa-github"></i> GitHub
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="https://groups.io/g/trellis" target="_blank">
+                <i class="fa-solid fa-envelope"></i> Email Group
+              </a>
+            </li>
+          </ul>
+          <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+            <i class="fa-solid fa-moon" id="theme-icon"></i>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+      {{ block "main" . }}{{ end }}
+    </main>
+
+    <footer>
+      <div class="container text-center">
+        <p class="mb-2 small">Open source, Apache 2.0 &middot; Single static binary &middot; No cloud dependency</p>
+        <p class="mb-0">&copy; 2026 Groups.io, Inc.</p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      // Theme handling
+      function getTheme() {
+        return localStorage.getItem('theme') || 'dark';
+      }
+      function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        updateThemeIcon(theme);
+      }
+      function toggleTheme() {
+        const current = getTheme();
+        setTheme(current === 'dark' ? 'light' : 'dark');
+      }
+      function updateThemeIcon(theme) {
+        const icon = document.getElementById('theme-icon');
+        if (icon) {
+          icon.className = theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
+      }
+      // Initialize theme
+      setTheme(getTheme());
+    </script>
+    {{ block "scripts" . }}{{ end }}
+  </body>
+</html>

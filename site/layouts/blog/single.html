@@ -1,0 +1,23 @@
+{{ define "main" }}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <article>
+        <header class="mb-4">
+          <h1>{{ .Title }}</h1>
+          {{ with .Params.subtitle }}
+          <p class="lead text-muted">{{ . }}</p>
+          {{ end }}
+          <p class="text-muted small">{{ .Date.Format "January 2, 2006" }}</p>
+        </header>
+        <div class="blog-content">
+          {{ .Content }}
+        </div>
+        <footer class="mt-5 pt-4 border-top">
+          <a href="/blog/" class="text-muted">&larr; Back to Blog</a>
+        </footer>
+      </article>
+    </div>
+  </div>
+</div>
+{{ end }}

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}} - Trellis</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link href="/css/theme.css" rel="stylesheet">
+    <style>
+      /* Navbar styling (copied from site) */
+      .navbar {
+        background-color: var(--trellis-navbar-bg) !important;
+        border-bottom: 1px solid var(--trellis-navbar-border);
+      }
+      .navbar .navbar-brand {
+        color: var(--trellis-navbar-text);
+        font-weight: bold;
+      }
+      .navbar .navbar-nav .nav-link {
+        color: var(--trellis-navbar-text-muted);
+      }
+      .navbar .navbar-nav .nav-link:hover {
+        color: var(--trellis-navbar-text);
+      }
+      .navbar .navbar-nav .nav-link.active {
+        color: var(--bs-primary);
+      }
+      .theme-toggle {
+        background: transparent;
+        border: 1px solid var(--trellis-navbar-text-muted);
+        color: var(--trellis-navbar-text-muted);
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+      }
+      .theme-toggle:hover {
+        background: var(--trellis-dropdown-hover);
+        color: var(--trellis-navbar-text);
+      }
+      footer {
+        padding: 2rem 0;
+        border-top: 1px solid var(--trellis-card-border);
+        color: var(--trellis-text-muted);
+        background-color: var(--bs-body-bg);
+      }
+      /* Redoc container adjustments */
+      .redoc-container {
+        min-height: calc(100vh - 180px);
+      }
+    </style>
+    {{{redocHead}}}
+    <style>
+      /* Dark mode overrides - base theme is light mode */
+      [data-theme="dark"] .menu-content {
+        background-color: #2d343f;
+      }
+      [data-theme="dark"] .menu-content label {
+        background-color: #2d343f;
+        color: #eeeeee;
+      }
+      [data-theme="dark"] .menu-content span {
+        color: #eeeeee;
+      }
+      [data-theme="dark"] .api-content h1,
+      [data-theme="dark"] .api-content h2,
+      [data-theme="dark"] .api-content h3,
+      [data-theme="dark"] .api-content h4,
+      [data-theme="dark"] .api-content h5 {
+        color: #ffffff;
+      }
+      [data-theme="dark"] .api-content p,
+      [data-theme="dark"] .api-content li,
+      [data-theme="dark"] .api-content td,
+      [data-theme="dark"] .api-content th,
+      [data-theme="dark"] .api-content span {
+        color: #eeeeee;
+      }
+      [data-theme="dark"] .api-content table tr {
+        background-color: #222831;
+      }
+      [data-theme="dark"] .api-content table tr:nth-child(2n) {
+        background-color: #2d343f;
+      }
+      [data-theme="dark"] .scrollbar-container {
+        background-color: #2d343f;
+      }
+      [data-theme="dark"] input[type="text"] {
+        background-color: #222831;
+        color: #eeeeee;
+        border-color: #444;
+      }
+      [data-theme="dark"] .search-icon path {
+        fill: #eeeeee;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg sticky-top">
+      <div class="container">
+        <a class="navbar-brand d-flex align-items-center" href="/">
+          <img src="/images/logo.png" alt="Trellis" height="50">
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item">
+              <a class="nav-link" href="/docs/">Docs</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link active" href="/api/">API</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/blog/">Blog</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="https://github.com/wingedpig/trellis" target="_blank">
+                <i class="fa-brands fa-github"></i> GitHub
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="https://groups.io/g/trellis" target="_blank">
+                <i class="fa-solid fa-envelope"></i> Email Group
+              </a>
+            </li>
+          </ul>
+          <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+            <i class="fa-solid fa-moon" id="theme-icon"></i>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="redoc-container">
+      {{{redocHTML}}}
+    </div>
+
+    <footer>
+      <div class="container text-center">
+        <p class="mb-2 small">Open source, Apache 2.0 &middot; Single static binary &middot; No cloud dependency</p>
+        <p class="mb-0">&copy; 2026 Groups.io, Inc.</p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      // Theme handling
+      function getTheme() {
+        return localStorage.getItem('theme') || 'dark';
+      }
+      function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        updateThemeIcon(theme);
+      }
+      function toggleTheme() {
+        const current = getTheme();
+        setTheme(current === 'dark' ? 'light' : 'dark');
+      }
+      function updateThemeIcon(theme) {
+        const icon = document.getElementById('theme-icon');
+        if (icon) {
+          icon.className = theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+        }
+      }
+      // Initialize theme
+      setTheme(getTheme());
+    </script>
+  </body>
+</html>

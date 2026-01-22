@@ -1,0 +1,156 @@
+// Copyright © 2026 Groups.io, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+{% import "github.com/wingedpig/trellis/internal/service" %}
+{% import "github.com/wingedpig/trellis/internal/worktree" %}
+
+{% code
+type DashboardPage struct {
+    BasePage
+    Services  []service.ServiceInfo
+    Worktrees []worktree.WorktreeInfo
+}
+%}
+
+{% func (p *DashboardPage) Render() %}
+{%= p.Header() %}
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fa-solid fa-server"></i> Services</span>
+                <div>
+                    <button class="btn btn-sm btn-primary" onclick="startAll()" title="Start all services">
+                        <i class="fa-solid fa-play"></i> Start All
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="stopAll()" title="Stop all services">
+                        <i class="fa-solid fa-stop"></i> Stop All
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if len(p.Services) > 0 %}
+                <table class="table table-dark table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for _, svc := range p.Services %}
+                        <tr>
+                            <td>
+                                <a href="/services/{%s svc.Name %}" class="text-decoration-none text-accent">{%s svc.Name %}</a>
+                            </td>
+                            <td>
+                                {% code state := svc.Status.State.String() %}
+                                <span class="badge badge-{%s state %}">{%s state %}</span>
+                            </td>
+                            <td>
+                                {% if svc.Status.State.String() == "running" %}
+                                <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('{%s JSAttr(svc.Name) %}', 'stop')" title="Stop service">
+                                    <i class="fa-solid fa-stop"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('{%s JSAttr(svc.Name) %}', 'restart')" title="Restart service">
+                                    <i class="fa-solid fa-rotate"></i>
+                                </button>
+                                {% else %}
+                                <button class="btn btn-sm btn-primary" onclick="serviceAction('{%s JSAttr(svc.Name) %}', 'start')" title="Start service">
+                                    <i class="fa-solid fa-play"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="p-3 text-muted">No services configured</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        {% if p.Worktree != nil %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fa-solid fa-code-branch"></i> Active Worktree
+            </div>
+            <div class="card-body">
+                <p class="mb-1"><strong>Name:</strong> {%s p.Worktree.Name() %}</p>
+                <p class="mb-1"><strong>Branch:</strong> {%s p.Worktree.Branch %}</p>
+                <p class="mb-0"><strong>Path:</strong> <code>{%s p.Worktree.Path %}</code></p>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fa-solid fa-link"></i> Quick Links
+            </div>
+            <div class="list-group list-group-flush">
+                <a href="/api/v1/services" class="list-group-item list-group-item-action">Services API</a>
+                <a href="/api/v1/worktrees" class="list-group-item list-group-item-action">Worktrees API</a>
+                <a href="/api/v1/workflows" class="list-group-item list-group-item-action">Workflows API</a>
+                <a href="/api/v1/events" class="list-group-item list-group-item-action">Events API</a>
+                <a href="/api/v1/ai/context.md" class="list-group-item list-group-item-action">AI Context</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Modal -->
+<div class="modal fade" id="alertModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="alertModalTitle">Error</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="alertModalMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="alertModalOk">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showAlert(message, title) {
+    document.getElementById('alertModalTitle').textContent = title || 'Error';
+    document.getElementById('alertModalMessage').textContent = message;
+    var modal = new bootstrap.Modal(document.getElementById('alertModal'));
+    modal.show();
+    document.getElementById('alertModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('alertModalOk').focus();
+    }, { once: true });
+}
+
+function serviceAction(name, action) {
+    fetch('/api/v1/services/' + name + '/' + action, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function() { location.reload(); })
+        .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+}
+
+function startAll() {
+    fetch('/api/v1/workflows/_start_all/run', { method: 'POST' })
+        .then(function() { location.reload(); })
+        .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+}
+
+function stopAll() {
+    fetch('/api/v1/workflows/_stop_all/run', { method: 'POST' })
+        .then(function() { location.reload(); })
+        .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+}
+</script>
+
+{%= p.Footer() %}
+{% endfunc %}

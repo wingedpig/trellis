@@ -1,0 +1,7 @@
+
+site/public/
+site/resources/
+public
+
+# generated API docs
+site/static/api/index.html

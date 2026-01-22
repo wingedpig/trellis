@@ -1,0 +1,19 @@
+baseURL = "https://trellis.dev/"
+title = "Trellis"
+languageCode = "en-us"
+
+enableRobotsTXT = true
+canonifyURLs = true
+
+[markup]
+  [markup.goldmark.renderer]
+    unsafe = true
+
+[module]
+  [[module.mounts]]
+    source = "content"
+    target = "content"
+  [[module.mounts]]
+    source = "../docs"
+    target = "content/docs"
+

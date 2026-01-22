@@ -1,0 +1,1838 @@
+openapi: 3.0.3
+info:
+  title: Trellis API
+  description: |
+    Trellis is a development environment control plane that unifies local development,
+    parallel branches, remote terminals, and live production logs.
+
+    ## Versioning
+
+    The API uses URL path versioning (`/api/v1/...`) for major versions. Within a major
+    version, Stripe-style date-based versioning is supported via the `Trellis-Version`
+    HTTP header (e.g., `Trellis-Version: 2026-01-17`).
+
+    By default, the latest behavior is used. Pin to a specific date version for stability
+    when breaking changes are introduced within a major version. The version date represents
+    when a particular API behavior was current.
+
+    ## Go Client Library
+
+    An official Go client library is available at `github.com/wingedpig/trellis/pkg/client`.
+    It provides typed access to all endpoints and supports API versioning. See the
+    [documentation](/docs/reference/client/) for usage examples.
+  version: 1.0.0
+  contact:
+    name: Trellis
+    url: https://trellis.dev
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+# Trellis is a local development tool with no authentication
+security: []
+
+tags:
+  - name: Services
+    description: Service lifecycle management
+  - name: Worktrees
+    description: Git worktree management
+  - name: Workflows
+    description: Workflow execution
+  - name: Events
+    description: Event history and real-time subscriptions
+  - name: Logs
+    description: Log viewer management
+  - name: Trace
+    description: Distributed tracing
+  - name: Crashes
+    description: Crash report management
+  - name: Terminal
+    description: Terminal session management
+  - name: Navigation
+    description: UI navigation options
+  - name: Notify
+    description: Notification events
+  - name: VSCode
+    description: VS Code integration
+
+paths:
+  # ==================== SERVICES ====================
+  /services:
+    get:
+      tags: [Services]
+      summary: List all services
+      operationId: listServices
+      parameters:
+        - $ref: '#/components/parameters/TrellisVersion'
+      responses:
+        '200':
+          description: List of services
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceInfo'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /services/{name}:
+    get:
+      tags: [Services]
+      summary: Get service details
+      operationId: getService
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+      responses:
+        '200':
+          description: Service details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceInfo'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /services/{name}/start:
+    post:
+      tags: [Services]
+      summary: Start a service
+      operationId: startService
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+      responses:
+        '200':
+          description: Service started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceInfo'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /services/{name}/stop:
+    post:
+      tags: [Services]
+      summary: Stop a service
+      operationId: stopService
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+      responses:
+        '200':
+          description: Service stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceInfo'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /services/{name}/restart:
+    post:
+      tags: [Services]
+      summary: Restart a service
+      operationId: restartService
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+      responses:
+        '200':
+          description: Service restarted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ServiceInfo'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /services/{name}/logs:
+    get:
+      tags: [Services]
+      summary: Get service logs
+      operationId: getServiceLogs
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+        - name: lines
+          in: query
+          description: Number of log lines to return
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Service logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      service:
+                        type: string
+                      entries:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+                      lines:
+                        type: array
+                        items:
+                          type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Services]
+      summary: Clear service logs
+      operationId: clearServiceLogs
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+      responses:
+        '200':
+          description: Logs cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      service:
+                        type: string
+                      cleared:
+                        type: boolean
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /services/{name}/logs/stream:
+    get:
+      tags: [Services]
+      summary: Stream service logs (SSE)
+      operationId: streamServiceLogs
+      parameters:
+        - $ref: '#/components/parameters/ServiceName'
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== WORKTREES ====================
+  /worktrees:
+    get:
+      tags: [Worktrees]
+      summary: List all worktrees
+      operationId: listWorktrees
+      parameters:
+        - $ref: '#/components/parameters/TrellisVersion'
+      responses:
+        '200':
+          description: List of worktrees
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      worktrees:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Worktree'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+    post:
+      tags: [Worktrees]
+      summary: Create a new worktree
+      operationId: createWorktree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch_name]
+              properties:
+                branch_name:
+                  type: string
+                  description: Branch name to create worktree from
+                switch_to:
+                  type: boolean
+                  default: false
+                  description: Whether to activate the new worktree
+      responses:
+        '201':
+          description: Worktree created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      worktree:
+                        $ref: '#/components/schemas/Worktree'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /worktrees/info:
+    get:
+      tags: [Worktrees]
+      summary: Get worktrees info with project metadata
+      operationId: getWorktreesInfo
+      responses:
+        '200':
+          description: Worktrees info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      worktrees:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Worktree'
+                      project_name:
+                        type: string
+                      binaries_dir:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /worktrees/{name}:
+    get:
+      tags: [Worktrees]
+      summary: Get worktree details
+      operationId: getWorktree
+      parameters:
+        - $ref: '#/components/parameters/WorktreeName'
+      responses:
+        '200':
+          description: Worktree details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Worktree'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Worktrees]
+      summary: Remove a worktree
+      operationId: removeWorktree
+      parameters:
+        - $ref: '#/components/parameters/WorktreeName'
+        - name: delete_branch
+          in: query
+          description: Whether to delete the associated branch
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Worktree removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      removed:
+                        type: string
+                      branch_deleted:
+                        type: boolean
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /worktrees/{name}/activate:
+    post:
+      tags: [Worktrees]
+      summary: Activate a worktree
+      operationId: activateWorktree
+      parameters:
+        - $ref: '#/components/parameters/WorktreeName'
+      responses:
+        '200':
+          description: Worktree activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      worktree:
+                        $ref: '#/components/schemas/Worktree'
+                      hook_results:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HookResult'
+                      duration:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ==================== WORKFLOWS ====================
+  /workflows:
+    get:
+      tags: [Workflows]
+      summary: List all workflows
+      operationId: listWorkflows
+      parameters:
+        - $ref: '#/components/parameters/TrellisVersion'
+      responses:
+        '200':
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /workflows/{id}:
+    get:
+      tags: [Workflows]
+      summary: Get workflow details
+      operationId: getWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Workflow details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Workflow'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{id}/run:
+    post:
+      tags: [Workflows]
+      summary: Run a workflow
+      operationId: runWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+        - name: worktree
+          in: query
+          description: Worktree to run workflow in
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workflow execution result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowStatus'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /workflows/{id}/status:
+    get:
+      tags: [Workflows]
+      summary: Get workflow status
+      operationId: getWorkflowStatus
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Workflow status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WorkflowStatus'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{runId}/stream:
+    get:
+      tags: [Workflows]
+      summary: Stream workflow output (WebSocket)
+      operationId: streamWorkflowOutput
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: Workflow run ID
+          schema:
+            type: string
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== EVENTS ====================
+  /events:
+    get:
+      tags: [Events]
+      summary: Get event history
+      operationId: getEvents
+      parameters:
+        - name: type
+          in: query
+          description: Event types to filter (supports wildcards)
+          schema:
+            type: array
+            items:
+              type: string
+        - name: worktree
+          in: query
+          description: Filter by worktree name
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum events to return
+          schema:
+            type: integer
+        - name: since
+          in: query
+          description: Events after this time
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Events before this time
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Event history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /events/ws:
+    get:
+      tags: [Events]
+      summary: Subscribe to events (WebSocket)
+      operationId: subscribeEvents
+      parameters:
+        - name: pattern
+          in: query
+          description: Event pattern to subscribe to
+          schema:
+            type: string
+            default: '*'
+      responses:
+        '101':
+          description: WebSocket upgrade
+
+  # ==================== NOTIFY ====================
+  /notify:
+    post:
+      tags: [Notify]
+      summary: Emit a notification event
+      operationId: emitNotification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  description: Notification message
+                type:
+                  type: string
+                  enum: [done, blocked, error]
+                  default: done
+                  description: Notification type
+      responses:
+        '200':
+          description: Notification emitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      type:
+                        type: string
+                      timestamp:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ==================== LOG VIEWERS ====================
+  /logs:
+    get:
+      tags: [Logs]
+      summary: List log viewers
+      operationId: listLogViewers
+      responses:
+        '200':
+          description: List of log viewers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogViewerStatus'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /logs/{name}:
+    get:
+      tags: [Logs]
+      summary: Get log viewer status
+      operationId: getLogViewer
+      parameters:
+        - $ref: '#/components/parameters/LogViewerName'
+      responses:
+        '200':
+          description: Log viewer status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LogViewerStatus'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /logs/{name}/entries:
+    get:
+      tags: [Logs]
+      summary: Get log entries
+      operationId: getLogEntries
+      parameters:
+        - $ref: '#/components/parameters/LogViewerName'
+        - name: filter
+          in: query
+          description: Filter expression
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum entries to return
+          schema:
+            type: integer
+            default: 1000
+        - name: before
+          in: query
+          description: Only entries before this time
+          schema:
+            type: string
+            format: date-time
+        - name: after
+          in: query
+          description: Only entries after this time
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      entries:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+                      count:
+                        type: integer
+                      sequence:
+                        type: integer
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /logs/{name}/history:
+    get:
+      tags: [Logs]
+      summary: Get historical log entries
+      operationId: getLogHistory
+      parameters:
+        - $ref: '#/components/parameters/LogViewerName'
+        - name: start
+          in: query
+          required: true
+          description: Start of time range
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: true
+          description: End of time range
+          schema:
+            type: string
+            format: date-time
+        - name: filter
+          in: query
+          description: Filter expression
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum entries
+          schema:
+            type: integer
+            default: 10000
+        - name: grep
+          in: query
+          description: Grep pattern for matching
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: Context lines before match
+          schema:
+            type: integer
+        - name: after
+          in: query
+          description: Context lines after match
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Historical log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      entries:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+                      count:
+                        type: integer
+                      start:
+                        type: string
+                        format: date-time
+                      end:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /logs/{name}/files:
+    get:
+      tags: [Logs]
+      summary: List rotated log files
+      operationId: listLogFiles
+      parameters:
+        - $ref: '#/components/parameters/LogViewerName'
+      responses:
+        '200':
+          description: List of log files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                        modified:
+                          type: string
+                          format: date-time
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /logs/{name}/stream:
+    get:
+      tags: [Logs]
+      summary: Stream log entries (WebSocket)
+      operationId: streamLogEntries
+      parameters:
+        - $ref: '#/components/parameters/LogViewerName'
+        - name: filter
+          in: query
+          description: Initial filter expression
+          schema:
+            type: string
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /logs/{name}/stream/sse:
+    get:
+      tags: [Logs]
+      summary: Stream log entries (SSE)
+      operationId: streamLogEntriesSSE
+      parameters:
+        - $ref: '#/components/parameters/LogViewerName'
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== TRACE ====================
+  /trace:
+    post:
+      tags: [Trace]
+      summary: Execute a distributed trace search
+      operationId: executeTrace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, group, start]
+              properties:
+                id:
+                  type: string
+                  description: Trace ID to search for
+                group:
+                  type: string
+                  description: Trace group name
+                start:
+                  type: string
+                  format: date-time
+                  description: Start of time range
+                end:
+                  type: string
+                  format: date-time
+                  description: End of time range (default now)
+                name:
+                  type: string
+                  description: Report name (auto-generated if empty)
+                expand_by_id:
+                  type: boolean
+                  default: true
+                  description: Whether to expand by ID
+      responses:
+        '200':
+          description: Trace execution result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      status:
+                        type: string
+                        enum: [completed, failed]
+                      total_entries:
+                        type: integer
+                      sources:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      duration_ms:
+                        type: integer
+                      error:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /trace/groups:
+    get:
+      tags: [Trace]
+      summary: List trace groups
+      operationId: listTraceGroups
+      responses:
+        '200':
+          description: List of trace groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      groups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            log_viewers:
+                              type: array
+                              items:
+                                type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /trace/reports:
+    get:
+      tags: [Trace]
+      summary: List trace reports
+      operationId: listTraceReports
+      responses:
+        '200':
+          description: List of trace reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      reports:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TraceReportSummary'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /trace/reports/{name}:
+    get:
+      tags: [Trace]
+      summary: Get trace report
+      operationId: getTraceReport
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Report name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Trace report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TraceReport'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Trace]
+      summary: Delete trace report
+      operationId: deleteTraceReport
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Report name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Report deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== CRASHES ====================
+  /crashes:
+    get:
+      tags: [Crashes]
+      summary: List all crashes
+      operationId: listCrashes
+      responses:
+        '200':
+          description: List of crashes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CrashSummary'
+    delete:
+      tags: [Crashes]
+      summary: Clear all crashes
+      operationId: clearCrashes
+      responses:
+        '200':
+          description: All crashes cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+
+  /crashes/newest:
+    get:
+      tags: [Crashes]
+      summary: Get most recent crash
+      operationId: getNewestCrash
+      responses:
+        '200':
+          description: Most recent crash
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Crash'
+
+  /crashes/{id}:
+    get:
+      tags: [Crashes]
+      summary: Get crash by ID
+      operationId: getCrash
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Crash ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Crash details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Crash'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Crashes]
+      summary: Delete crash
+      operationId: deleteCrash
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Crash ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Crash deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== TERMINAL ====================
+  /terminal/sessions:
+    get:
+      tags: [Terminal]
+      summary: List terminal sessions
+      operationId: listTerminalSessions
+      responses:
+        '200':
+          description: List of terminal sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TerminalSession'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /terminal/ws:
+    get:
+      tags: [Terminal]
+      summary: Terminal WebSocket connection
+      operationId: terminalWebSocket
+      parameters:
+        - name: session
+          in: query
+          required: true
+          description: Session name
+          schema:
+            type: string
+        - name: window
+          in: query
+          required: true
+          description: Window name
+          schema:
+            type: string
+        - name: remote
+          in: query
+          description: Whether this is a remote connection
+          schema:
+            type: integer
+            enum: [0, 1]
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ==================== NAVIGATION ====================
+  /nav/options:
+    get:
+      tags: [Navigation]
+      summary: Get navigation options
+      operationId: getNavOptions
+      responses:
+        '200':
+          description: Navigation options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NavOptions'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  # ==================== VSCODE ====================
+  /vscode/open:
+    post:
+      tags: [VSCode]
+      summary: Open file in VS Code
+      operationId: openInVSCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+              properties:
+                path:
+                  type: string
+                  description: File path to open
+                line:
+                  type: integer
+                  description: Line number
+                column:
+                  type: integer
+                  description: Column number
+      responses:
+        '200':
+          description: File opened
+
+components:
+  parameters:
+    TrellisVersion:
+      name: Trellis-Version
+      in: header
+      required: false
+      description: |
+        API version date (e.g., 2026-01-17). This header can be sent with any API request.
+        When omitted, the latest API behavior is used. Pin to a specific date for stability
+        across API updates. The Go client library sets this automatically via WithVersion().
+      schema:
+        type: string
+        pattern: '^\d{4}-\d{2}-\d{2}$'
+        example: '2026-01-17'
+
+    ServiceName:
+      name: name
+      in: path
+      required: true
+      description: Service name
+      schema:
+        type: string
+
+    WorktreeName:
+      name: name
+      in: path
+      required: true
+      description: Worktree name
+      schema:
+        type: string
+
+    WorkflowId:
+      name: id
+      in: path
+      required: true
+      description: Workflow ID
+      schema:
+        type: string
+
+    LogViewerName:
+      name: name
+      in: path
+      required: true
+      description: Log viewer name
+      schema:
+        type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ResponseMeta:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ServiceInfo:
+      type: object
+      properties:
+        Name:
+          type: string
+        Status:
+          $ref: '#/components/schemas/ServiceStatus'
+        Enabled:
+          type: boolean
+        ParserType:
+          type: string
+        Layout:
+          type: array
+          items:
+            type: object
+        TimestampField:
+          type: string
+        LevelField:
+          type: string
+        MessageField:
+          type: string
+
+    ServiceStatus:
+      type: object
+      properties:
+        State:
+          type: string
+          enum: [stopped, starting, running, stopping, crashed]
+        PID:
+          type: integer
+        ExitCode:
+          type: integer
+        StartedAt:
+          type: string
+          format: date-time
+        StoppedAt:
+          type: string
+          format: date-time
+        RestartCount:
+          type: integer
+        Error:
+          type: string
+
+    Worktree:
+      type: object
+      properties:
+        Path:
+          type: string
+        Branch:
+          type: string
+        Commit:
+          type: string
+        Detached:
+          type: boolean
+        IsBare:
+          type: boolean
+        Dirty:
+          type: boolean
+        Ahead:
+          type: integer
+        Behind:
+          type: integer
+        Active:
+          type: boolean
+
+    HookResult:
+      type: object
+      properties:
+        name:
+          type: string
+        success:
+          type: boolean
+        output:
+          type: string
+        error:
+          type: string
+        duration:
+          type: string
+
+    Workflow:
+      type: object
+      properties:
+        ID:
+          type: string
+        Name:
+          type: string
+        Command:
+          type: array
+          items:
+            type: string
+        Commands:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        Timeout:
+          type: integer
+        OutputParser:
+          type: string
+        Confirm:
+          type: boolean
+        ConfirmMessage:
+          type: string
+        RequiresStopped:
+          type: array
+          items:
+            type: string
+        RestartServices:
+          type: boolean
+
+    WorkflowStatus:
+      type: object
+      properties:
+        ID:
+          type: string
+        Name:
+          type: string
+        State:
+          type: string
+          enum: [pending, running, success, failed, canceled]
+        StartedAt:
+          type: string
+          format: date-time
+        FinishedAt:
+          type: string
+          format: date-time
+        Duration:
+          type: integer
+        Success:
+          type: boolean
+        ExitCode:
+          type: integer
+        Output:
+          type: string
+        OutputHTML:
+          type: string
+        ParsedLines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedLine'
+        Error:
+          type: string
+
+    ParsedLine:
+      type: object
+      properties:
+        Type:
+          type: string
+          enum: [error, warning, test_pass, test_fail, test_skip]
+        File:
+          type: string
+        Line:
+          type: integer
+        Column:
+          type: integer
+        Message:
+          type: string
+        Package:
+          type: string
+        TestName:
+          type: string
+        RawOutput:
+          type: string
+        StackTrace:
+          type: array
+          items:
+            type: string
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        worktree:
+          type: string
+        payload:
+          type: object
+
+    LogViewerStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        connected:
+          type: boolean
+        entries:
+          type: integer
+        sequence:
+          type: integer
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [trace, debug, info, warn, error, fatal]
+        message:
+          type: string
+        fields:
+          type: object
+        raw:
+          type: string
+        source:
+          type: string
+        offset:
+          type: integer
+        sequence:
+          type: integer
+
+    TraceReportSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        trace_id:
+          type: string
+        group:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        entry_count:
+          type: integer
+        time_start:
+          type: string
+          format: date-time
+        time_end:
+          type: string
+          format: date-time
+
+    TraceReport:
+      type: object
+      properties:
+        version:
+          type: string
+        name:
+          type: string
+        trace_id:
+          type: string
+        group:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        time_range:
+          type: object
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+        summary:
+          type: object
+          properties:
+            total_entries:
+              type: integer
+            by_source:
+              type: object
+              additionalProperties:
+                type: integer
+            by_level:
+              type: object
+              additionalProperties:
+                type: integer
+            duration_ms:
+              type: integer
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceEntry'
+        error:
+          type: string
+
+    TraceEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        level:
+          type: string
+        message:
+          type: string
+        fields:
+          type: object
+        raw:
+          type: string
+        is_context:
+          type: boolean
+
+    CrashSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        service:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        trace_id:
+          type: string
+        exit_code:
+          type: integer
+        error:
+          type: string
+
+    Crash:
+      type: object
+      properties:
+        version:
+          type: string
+        id:
+          type: string
+        service:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        trace_id:
+          type: string
+        exit_code:
+          type: integer
+        error:
+          type: string
+        worktree:
+          type: object
+          properties:
+            name:
+              type: string
+            branch:
+              type: string
+            path:
+              type: string
+        summary:
+          type: object
+          properties:
+            total_entries:
+              type: integer
+            by_source:
+              type: object
+              additionalProperties:
+                type: integer
+            by_level:
+              type: object
+              additionalProperties:
+                type: integer
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrashEntry'
+        trigger:
+          type: string
+
+    CrashEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        level:
+          type: string
+        message:
+          type: string
+        fields:
+          type: object
+        raw:
+          type: string
+
+    TerminalSession:
+      type: object
+      properties:
+        name:
+          type: string
+        worktree:
+          type: string
+        windows:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              name:
+                type: string
+              active:
+                type: boolean
+        isRemote:
+          type: boolean
+
+    NavOptions:
+      type: object
+      properties:
+        terminals:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              display:
+                type: string
+              isRemote:
+                type: boolean
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              url:
+                type: string
+        logViewers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+        shortcuts:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              window:
+                type: string
+        notifications:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            events:
+              type: array
+              items:
+                type: string
+            failures_only:
+              type: boolean
+            sound:
+              type: boolean

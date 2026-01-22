@@ -1,0 +1,21 @@
+{{ define "main" }}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <h1 class="mb-4">{{ .Title }}</h1>
+      {{ .Content }}
+      <div class="mt-4">
+        {{ range .Pages.ByDate.Reverse }}
+        <article class="mb-4 pb-4 border-bottom">
+          <h2><a href="{{ .RelPermalink }}" class="text-decoration-none">{{ .Title }}</a></h2>
+          {{ with .Params.subtitle }}
+          <p class="text-muted">{{ . }}</p>
+          {{ end }}
+          <p class="small text-muted">{{ .Date.Format "January 2, 2006" }}</p>
+        </article>
+        {{ end }}
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}

@@ -1,0 +1,93 @@
+// Copyright © 2026 Groups.io, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+{% import "github.com/wingedpig/trellis/internal/events" %}
+
+{% code
+type EventsPage struct {
+    BasePage
+    Events []events.Event
+}
+%}
+
+{% func (p *EventsPage) Render() %}
+{%= p.Header() %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fa-solid fa-clock-rotate-left"></i> Events</h2>
+    <div>
+        <button class="btn btn-outline-secondary" onclick="location.reload()">
+            <i class="fa-solid fa-rotate"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="fa-solid fa-stream"></i> Recent Events
+        <span class="badge bg-secondary ms-2">{%d len(p.Events) %}</span>
+    </div>
+    <div class="card-body p-0">
+        {% if len(p.Events) > 0 %}
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">Time</th>
+                        <th style="width: 200px;">Type</th>
+                        <th>Worktree</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="events-table">
+                    {% for _, evt := range p.Events %}
+                    <tr>
+                        <td>
+                            <small class="text-muted">{%s evt.Timestamp.Format("2006-01-02 15:04:05") %}</small>
+                        </td>
+                        <td>
+                            {% code
+                                badgeClass := "bg-secondary"
+                                if evt.Type == "service.crashed" {
+                                    badgeClass = "bg-danger"
+                                } else if evt.Type == "service.started" || evt.Type == "service.restarted" {
+                                    badgeClass = "bg-success"
+                                } else if evt.Type == "workflow.finished" {
+                                    badgeClass = "bg-info"
+                                } else if evt.Type == "worktree.activated" {
+                                    badgeClass = "bg-primary"
+                                }
+                            %}
+                            <span class="badge {%s badgeClass %}">{%s evt.Type %}</span>
+                        </td>
+                        <td>{%s evt.Worktree %}</td>
+                        <td>
+                            {% if evt.Payload != nil %}
+                                {% for key, val := range evt.Payload %}
+                                    <small class="me-2"><strong>{%s key %}:</strong> {%v val %}</small>
+                                {% endfor %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+            <i class="fa-solid fa-inbox fa-3x mb-3"></i>
+            <p>No events recorded yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Scroll to bottom to show most recent events
+(function() {
+    window.scrollTo(0, document.body.scrollHeight);
+})();
+</script>
+
+{%= p.Footer() %}
+{% endfunc %}
