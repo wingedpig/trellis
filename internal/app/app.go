@@ -409,6 +409,20 @@ func (app *App) Initialize(ctx context.Context) error {
 		return nil
 	})
 
+	// Subscribe to worktree creation events to create terminal sessions
+	app.eventBus.Subscribe("worktree.created", func(ctx context.Context, event events.Event) error {
+		worktreeName, _ := event.Payload["name"].(string)
+		worktreePath, _ := event.Payload["path"].(string)
+		if worktreeName == "" || worktreePath == "" {
+			return nil
+		}
+		log.Printf("Worktree created, ensuring terminal session: name=%s path=%s", worktreeName, worktreePath)
+		if err := app.terminalManager.EnsureSession(ctx, worktreeName, worktreePath, windows); err != nil {
+			log.Printf("Warning: failed to create terminal session for new worktree %s: %v", worktreeName, err)
+		}
+		return nil
+	})
+
 	// Subscribe to worktree activation events to restart services with new config
 	app.eventBus.Subscribe("worktree.activated", func(ctx context.Context, event events.Event) error {
 		worktreeName := ""
