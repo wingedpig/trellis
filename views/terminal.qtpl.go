@@ -1468,71 +1468,72 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/reconnecting-websocket@4.4.0/dist/reconnecting-websocket-iife.min.js"></script>
+<script src="/static/js/logviewer.js"></script>
 <script>
     const initialSession = '`)
-//line views/terminal.qtpl:1043
+//line views/terminal.qtpl:1044
 	qw422016.E().S(JSAttr(p.Session))
-//line views/terminal.qtpl:1043
+//line views/terminal.qtpl:1044
 	qw422016.N().S(`';
     const initialWindow = '`)
-//line views/terminal.qtpl:1044
+//line views/terminal.qtpl:1045
 	qw422016.E().S(JSAttr(p.Window))
-//line views/terminal.qtpl:1044
+//line views/terminal.qtpl:1045
 	qw422016.N().S(`';
     const initialIsRemote = `)
-//line views/terminal.qtpl:1045
+//line views/terminal.qtpl:1046
 	qw422016.E().V(p.IsRemote)
-//line views/terminal.qtpl:1045
+//line views/terminal.qtpl:1046
 	qw422016.N().S(`;
     const initialViewType = '`)
-//line views/terminal.qtpl:1046
+//line views/terminal.qtpl:1047
 	qw422016.E().S(JSAttr(p.ViewType))
-//line views/terminal.qtpl:1046
+//line views/terminal.qtpl:1047
 	qw422016.N().S(`';
     const initialServiceName = '`)
-//line views/terminal.qtpl:1047
+//line views/terminal.qtpl:1048
 	qw422016.E().S(JSAttr(p.ServiceName))
-//line views/terminal.qtpl:1047
+//line views/terminal.qtpl:1048
 	qw422016.N().S(`';
     const initialLogViewerName = '`)
-//line views/terminal.qtpl:1048
+//line views/terminal.qtpl:1049
 	qw422016.E().S(JSAttr(p.LogViewerName))
-//line views/terminal.qtpl:1048
+//line views/terminal.qtpl:1049
 	qw422016.N().S(`';
     const initialWorktree = '`)
-//line views/terminal.qtpl:1049
+//line views/terminal.qtpl:1050
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/terminal.qtpl:1049
+//line views/terminal.qtpl:1050
 	qw422016.N().S(`';
     const projectName = '`)
-//line views/terminal.qtpl:1050
+//line views/terminal.qtpl:1051
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/terminal.qtpl:1050
+//line views/terminal.qtpl:1051
 	qw422016.N().S(`';
     const customShortcuts = `)
-//line views/terminal.qtpl:1051
+//line views/terminal.qtpl:1052
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:1051
+//line views/terminal.qtpl:1052
 	qw422016.N().S(`;
     const notificationSettings = `)
-//line views/terminal.qtpl:1052
+//line views/terminal.qtpl:1053
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:1052
+//line views/terminal.qtpl:1053
 	qw422016.N().S(`;
     const initialServices = `)
-//line views/terminal.qtpl:1053
+//line views/terminal.qtpl:1054
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:1053
+//line views/terminal.qtpl:1054
 	qw422016.N().S(`;
     const initialLinks = `)
-//line views/terminal.qtpl:1054
+//line views/terminal.qtpl:1055
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:1054
+//line views/terminal.qtpl:1055
 	qw422016.N().S(`;
     const initialLogViewers = `)
-//line views/terminal.qtpl:1055
+//line views/terminal.qtpl:1056
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:1055
+//line views/terminal.qtpl:1056
 	qw422016.N().S(`;
 
     // Map of terminalKey -> {term, fitAddon, ws, container, isRemote}
@@ -1551,9 +1552,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
     // Clear history if server was restarted (session ID changed)
     const currentSessionID = '`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.E().S(JSAttr(p.SessionID()))
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`';
     const storedSessionID = sessionStorage.getItem('trellis-session-id');
     if (storedSessionID !== currentSessionID) {
@@ -4609,188 +4610,6 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
 
     // Render key=value pairs from entry.fields for kvpairs column type
-    function renderKvPairs(entry, keys, maxPairs) {
-        if (!entry.fields || !keys || keys.length === 0) {
-            return '';
-        }
-
-        const pairs = [];
-        for (const key of keys) {
-            if (entry.fields[key] !== undefined) {
-                pairs.push(key + '=' + String(entry.fields[key]));
-                if (maxPairs > 0 && pairs.length >= maxPairs) {
-                    break;
-                }
-            }
-        }
-        return pairs.join(' | ');
-    }
-
-    // ========== Unified Log Entry Functions ==========
-    // Shared between service logs and log viewer
-
-    // Format timestamp for display (absolute or relative)
-    function formatTimestamp(timestamp, useAbsolute) {
-        if (!timestamp) return '';
-        try {
-            const date = new Date(timestamp);
-            if (isNaN(date.getTime())) return String(timestamp);
-            if (useAbsolute) {
-                return date.toLocaleTimeString('en-US', { hour12: false }) + '.' +
-                       String(date.getMilliseconds()).padStart(3, '0');
-            } else {
-                const now = new Date();
-                const diffMs = now - date;
-                const diffSec = Math.floor(diffMs / 1000);
-                if (diffSec < 60) return diffSec + 's ago';
-                const diffMin = Math.floor(diffSec / 60);
-                if (diffMin < 60) return diffMin + 'm ago';
-                const diffHour = Math.floor(diffMin / 60);
-                if (diffHour < 24) return diffHour + 'h ago';
-                return Math.floor(diffHour / 24) + 'd ago';
-            }
-        } catch (e) {
-            return String(timestamp).substring(11, 23);
-        }
-    }
-
-    // Render a single log entry row (Flexbox)
-    // ctx: { container, layout, fieldMap, formatTs, onExpand, entryIndex }
-    function renderLogEntry(entry, ctx) {
-        const row = document.createElement('div');
-        row.className = 'logviewer-entry';
-        if (entry.level) {
-            row.className += ' level-' + entry.level.toLowerCase();
-        }
-        row.dataset.entryIndex = ctx.entryIndex;
-        row.onclick = () => ctx.onExpand(entry);
-
-        // Render configured columns in order using layout
-        for (const layoutCol of ctx.layout) {
-            const span = document.createElement('span');
-
-            // Handle kvpairs column type
-            if (layoutCol.type === 'kvpairs') {
-                span.className = 'column column-kvpairs';
-                const value = renderKvPairs(entry, layoutCol.keys, layoutCol.max_pairs);
-                span.textContent = value;
-                span.title = value;
-
-                // Apply width constraints
-                if (layoutCol.min_width > 0) {
-                    span.style.width = layoutCol.min_width + 'ch';
-                } else if (layoutCol.max_width > 0) {
-                    span.style.maxWidth = layoutCol.max_width + 'ch';
-                }
-                row.appendChild(span);
-                continue;
-            }
-
-            // Regular field column
-            const col = layoutCol.field;
-            span.className = 'column column-' + col;
-
-            // Check if this column maps to a core field via parser config
-            const mappedField = ctx.fieldMap ? ctx.fieldMap[col] : null;
-            if (mappedField && mappedField !== col) {
-                span.className += ' column-' + mappedField;
-            }
-
-            // Add column-timestamp class if timestamp flag is set
-            if (layoutCol.timestamp) {
-                span.className += ' column-timestamp';
-            }
-
-            // Get value based on column name
-            let value = '';
-            if (layoutCol.timestamp) {
-                value = ctx.formatTs(entry.timestamp);
-            } else if (mappedField === 'timestamp') {
-                value = ctx.formatTs(entry.timestamp);
-            } else if (mappedField === 'level') {
-                value = entry.level || 'INFO';
-                span.className += ' level-' + (entry.level || 'info').toLowerCase();
-            } else if (mappedField === 'message') {
-                value = entry.message || entry.raw || entry._raw || '';
-            } else if (entry.fields && entry.fields[col] !== undefined) {
-                value = String(entry.fields[col]);
-            } else if (entry[col] !== undefined) {
-                if (typeof entry[col] === 'object') {
-                    value = JSON.stringify(entry[col]);
-                } else {
-                    value = String(entry[col]);
-                }
-            }
-
-            // Apply width constraints
-            // min_width > 0: fixed width (reservation)
-            // max_width > 0 only: cap width but shrink to content
-            if (layoutCol.min_width > 0) {
-                span.style.width = layoutCol.min_width + 'ch';
-            } else if (layoutCol.max_width > 0) {
-                span.style.maxWidth = layoutCol.max_width + 'ch';
-            }
-
-            span.textContent = value;
-            span.title = value;
-            row.appendChild(span);
-        }
-
-        ctx.container.appendChild(row);
-    }
-
-    // Expand an entry to show all fields
-    // ctx: { expandedEl, contentEl, fieldNames, tbodySelector, filteredEntries, onSelect }
-    function expandEntry(entry, ctx) {
-        ctx.onSelect(entry);
-
-        let html = '';
-
-        // Show timestamp with original field name
-        const tsFieldName = (ctx.fieldNames && ctx.fieldNames['timestamp']) || 'timestamp';
-        if (entry.timestamp) {
-            html += '<div class="field"><span class="field-name">' + escapeHtml(tsFieldName) + ':</span>' +
-                    '<span class="field-value">' + escapeHtml(entry.timestamp) + '</span></div>';
-        }
-
-        // Show level with original field name (only if present)
-        const levelFieldName = (ctx.fieldNames && ctx.fieldNames['level']) || 'level';
-        if (entry.level) {
-            html += '<div class="field"><span class="field-name">' + escapeHtml(levelFieldName) + ':</span>' +
-                    '<span class="field-value">' + escapeHtml(entry.level) + '</span></div>';
-        }
-
-        // Show all fields from entry.fields
-        if (entry.fields) {
-            for (const [key, value] of Object.entries(entry.fields)) {
-                let displayValue = value;
-                if (typeof value === 'object') {
-                    displayValue = JSON.stringify(value, null, 2);
-                }
-                html += '<div class="field"><span class="field-name">' + escapeHtml(key) + ':</span>' +
-                        '<span class="field-value">' + escapeHtml(String(displayValue)) + '</span></div>';
-            }
-        }
-
-        // Add raw line
-        const rawLine = entry.raw || entry._raw;
-        if (rawLine) {
-            html += '<div class="raw-log">' + escapeHtml(rawLine) + '</div>';
-        }
-
-        ctx.contentEl.innerHTML = html;
-        ctx.expandedEl.style.display = 'flex';
-
-        // Highlight selected row
-        document.querySelectorAll(ctx.tbodySelector + ' .logviewer-entry.selected').forEach(el =>
-            el.classList.remove('selected'));
-        const idx = ctx.filteredEntries.indexOf(entry);
-        const rows = document.querySelectorAll(ctx.tbodySelector + ' .logviewer-entry');
-        if (rows[idx]) {
-            rows[idx].classList.add('selected');
-        }
-    }
-
     // ========== Log Viewer Functions ==========
 
     function renderLogViewerEntry(entry) {
@@ -4992,12 +4811,6 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         logViewerSelectedEntry = null;
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
     function closeLogViewerWs() {
         if (logViewerWs) {
             logViewerWs.onclose = null;  // Prevent reconnect on intentional close
@@ -5123,13 +4936,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         throw new Error(`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`Invalid time format: ${input}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`);
     }
 
@@ -5165,63 +4978,63 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         try {
             // Build query URL
             let url = `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`/api/v1/logs/${encodeURIComponent(currentLogViewerName)}/history`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`?start=${encodeURIComponent(startTime)}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`&end=${encodeURIComponent(endTime)}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             if (grep) {
                 url += `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`&grep=${encodeURIComponent(grep)}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             }
             if (before > 0) {
                 url += `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`&before=${before}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             }
             if (after > 0) {
                 url += `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`&after=${after}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             }
 
@@ -5229,13 +5042,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`HTTP ${response.status}`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`);
             }
 
@@ -5272,13 +5085,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             // Update connection status
             const statusEl = document.getElementById('logviewer-status');
             statusEl.textContent = `)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`${data.entries?.length || 0} results`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`;
             statusEl.className = 'logviewer-connection-status text-info';
 
@@ -5318,36 +5131,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4763
+//line views/terminal.qtpl:4576
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4763
+//line views/terminal.qtpl:4576
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 }
 
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 }
 
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 	return qs422016
-//line views/terminal.qtpl:4764
+//line views/terminal.qtpl:4577
 }

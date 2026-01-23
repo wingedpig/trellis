@@ -191,9 +191,16 @@ function expandEntry(entry, ctx) {
                 '<span class="field-value">' + escapeHtml(entry.level) + '</span></div>';
     }
 
-    // Show all fields from entry.fields
+    // Show all fields from entry.fields, skipping those already shown above
     if (entry.fields) {
+        const skipFields = new Set();
+        if (ctx.fieldNames) {
+            if (ctx.fieldNames.timestamp) skipFields.add(ctx.fieldNames.timestamp);
+            if (ctx.fieldNames.level) skipFields.add(ctx.fieldNames.level);
+            if (ctx.fieldNames.message) skipFields.add(ctx.fieldNames.message);
+        }
         for (const [key, value] of Object.entries(entry.fields)) {
+            if (skipFields.has(key)) continue;
             let displayValue = value;
             if (typeof value === 'object') {
                 displayValue = JSON.stringify(value, null, 2);
@@ -213,10 +220,10 @@ function expandEntry(entry, ctx) {
     ctx.expandedEl.style.display = 'flex';
 
     // Highlight selected row
-    document.querySelectorAll(ctx.tbodySelector + ' .selected').forEach(el =>
+    document.querySelectorAll(ctx.tbodySelector + ' .logviewer-entry.selected').forEach(el =>
         el.classList.remove('selected'));
     const idx = ctx.filteredEntries.indexOf(entry);
-    const rows = document.querySelectorAll(ctx.tbodySelector + ' > div');
+    const rows = document.querySelectorAll(ctx.tbodySelector + ' .logviewer-entry');
     if (rows[idx]) {
         rows[idx].classList.add('selected');
     }
