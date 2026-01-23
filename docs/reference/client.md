@@ -27,8 +27,8 @@ import (
 )
 
 func main() {
-    // Create a client (default Trellis port is 1000)
-    c := client.New("http://localhost:1000")
+    // Create a client (default Trellis port is 1234)
+    c := client.New("http://localhost:1234")
 
     ctx := context.Background()
 
@@ -56,7 +56,7 @@ func main() {
 The client supports Stripe-style date-based API versioning. By default, the latest version is used. Pin to a specific version for stability:
 
 ```go
-c := client.New("http://localhost:1000", client.WithVersion("2026-01-17"))
+c := client.New("http://localhost:1234", client.WithVersion("2026-01-17"))
 ```
 
 The version is sent via the `Trellis-Version` HTTP header on each request.
@@ -66,7 +66,7 @@ The version is sent via the `Trellis-Version` HTTP header on each request.
 ```go
 import "time"
 
-c := client.New("http://localhost:1000",
+c := client.New("http://localhost:1234",
     client.WithVersion("2026-01-17"),      // Pin API version
     client.WithTimeout(60 * time.Second),  // Custom timeout (default: 30s)
     client.WithHTTPClient(customClient),   // Custom http.Client

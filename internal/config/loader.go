@@ -85,7 +85,7 @@ func (l *Loader) FindConfig() (string, error) {
 func applyDefaults(cfg *Config) {
 	// Server defaults
 	if cfg.Server.Port == 0 {
-		cfg.Server.Port = 1000
+		cfg.Server.Port = 1234
 	}
 	if cfg.Server.Host == "" {
 		cfg.Server.Host = "127.0.0.1"

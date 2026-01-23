@@ -110,7 +110,7 @@ Options:
 
 The command will ask about:
   - Project name (defaults to current directory name)
-  - Server port (defaults to 1000)
+  - Server port (defaults to 1234)
   - Services to manage (name, command, watch binary)
   - Build workflow command
   - Log format (JSON or plain text)
@@ -122,7 +122,7 @@ Examples:
 After running init:
   1. Review and edit trellis.hjson as needed
   2. Run: ./trellis
-  3. Open: http://localhost:1000`)
+  3. Open: http://localhost:1234`)
 		return nil
 	}
 
@@ -153,10 +153,10 @@ After running init:
 	projectName := prompt(reader, "Project name", defaultName)
 
 	// Question 2: Port
-	portStr := prompt(reader, "Server port", "1000")
+	portStr := prompt(reader, "Server port", "1234")
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		port = 1000
+		port = 1234
 	}
 
 	// Question 3: Services

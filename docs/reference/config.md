@@ -26,7 +26,7 @@ Trellis searches for configuration in this order:
   }
 
   server: {
-    port: 1000
+    port: 1234
     host: "127.0.0.1"
   }
 
@@ -266,7 +266,7 @@ project: {
 ```hjson
 server: {
   host: "127.0.0.1"       // Bind address (use 0.0.0.0 for remote)
-  port: 1000              // HTTP port
+  port: 1234              // HTTP port
   tls_cert: "path"        // TLS certificate (for HTTPS)
   tls_key: "path"         // TLS private key
 }

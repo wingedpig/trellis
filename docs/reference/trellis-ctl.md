@@ -21,7 +21,7 @@ go build -o trellis-ctl ./cmd/trellis-ctl
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `TRELLIS_API` | Base URL of Trellis API | `http://localhost:1000` |
+| `TRELLIS_API` | Base URL of Trellis API | `http://localhost:1234` |
 
 In Trellis-managed tmux sessions, `TRELLIS_API` is set automatically.
 

@@ -142,7 +142,7 @@ Trellis looks for configuration in this order:
 
   // Trellis server configuration
   server: {
-    port: 1000
+    port: 1234
     host: "127.0.0.1"
 
     // Optional: Enable HTTPS (see section 15.2 for certificate generation)
@@ -1081,7 +1081,7 @@ Trellis provides an integrated VS Code experience using [code-server](https://gi
 │                                                             │
 │   ┌─────────────┐         ┌─────────────┐                  │
 │   │   Trellis   │ proxy   │ code-server │                  │
-│   │ (port 1000) │ ──────▶ │ (port 8443) │                  │
+│   │ (port 1234) │ ──────▶ │ (port 8443) │                  │
 │   └─────────────┘         └─────────────┘                  │
 │         │                        │                          │
 │         │    /vscode/*           │                          │
@@ -1092,8 +1092,8 @@ Trellis provides an integrated VS Code experience using [code-server](https://gi
            ▼ (network / Tailscale)
 ┌─────────────────────────────────────────────────────────────┐
 │  Browser                                                    │
-│  - Trellis dashboard: http://host:1000/                    │
-│  - VS Code editor:    http://host:1000/vscode/             │
+│  - Trellis dashboard: http://host:1234/                    │
+│  - VS Code editor:    http://host:1234/vscode/             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -1123,7 +1123,7 @@ Trellis provides an integrated VS Code experience using [code-server](https://gi
 
 | Feature | How |
 |---------|-----|
-| Single URL | All access through Trellis (host:1000) |
+| Single URL | All access through Trellis (host:1234) |
 | Single auth | No separate code-server password |
 | Worktree-aware | Workspace switches with worktree |
 | Error links | `vscode://` links open in integrated VS Code |
@@ -1211,7 +1211,7 @@ Trellis automatically sets environment variables in tmux sessions to enable inte
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `TRELLIS_API` | Base URL of the Trellis HTTP API | `http://localhost:8080` |
+| `TRELLIS_API` | Base URL of the Trellis HTTP API | `http://localhost:1234` |
 
 The `TRELLIS_API` variable is set when:
 - A new tmux session is created for a worktree
@@ -2431,7 +2431,7 @@ The UI uses WebSocket for real-time updates:
 - Log streaming
 - Event notifications
 
-Connection: `ws://localhost:1000/api/v1/events/ws`
+Connection: `ws://localhost:1234/api/v1/events/ws`
 
 Message format:
 ```json
@@ -2615,7 +2615,7 @@ import (
 
 func main() {
     // Create a client
-    c := client.New("http://localhost:8080")
+    c := client.New("http://localhost:1234")
 
     ctx := context.Background()
 
@@ -2643,7 +2643,7 @@ func main() {
 The client supports Stripe-style date-based API versioning. By default, the latest version is used. Pin to a specific version for stability:
 
 ```go
-c := client.New("http://localhost:8080", client.WithVersion("2026-01-17"))
+c := client.New("http://localhost:1234", client.WithVersion("2026-01-17"))
 ```
 
 The version is sent via the `Trellis-Version` HTTP header on each request.
@@ -2651,7 +2651,7 @@ The version is sent via the `Trellis-Version` HTTP header on each request.
 #### Configuration Options
 
 ```go
-c := client.New("http://localhost:8080",
+c := client.New("http://localhost:1234",
     client.WithVersion("2026-01-17"),      // Pin API version
     client.WithTimeout(60 * time.Second),  // Custom timeout (default: 30s)
     client.WithHTTPClient(customClient),   // Custom http.Client
@@ -3111,7 +3111,7 @@ By default, Trellis binds to `127.0.0.1` only:
 {
   server: {
     host: "127.0.0.1"  // localhost only
-    port: 1000
+    port: 1234
   }
 }
 ```
@@ -3126,7 +3126,7 @@ Trellis supports HTTPS for secure remote access. This is required when accessing
 {
   server: {
     host: "0.0.0.0"  // Allow remote access
-    port: 1000
+    port: 1234
     tls_cert: "~/.trellis/cert.pem"
     tls_key: "~/.trellis/key.pem"
   }
@@ -3164,10 +3164,10 @@ tailscale cert --cert-file ~/.trellis/cert.pem --key-file ~/.trellis/key.pem \
 
 ```
 # HTTP (no TLS configured)
-API server listening on http://0.0.0.0:1000
+API server listening on http://0.0.0.0:1234
 
 # HTTPS (TLS configured)
-API server listening on https://0.0.0.0:1000 (TLS enabled)
+API server listening on https://0.0.0.0:1234 (TLS enabled)
 ```
 
 ### 15.3 Command Execution
@@ -4213,7 +4213,7 @@ Complete example for a Go microservices project:
   }
 
   server: {
-    port: 1000
+    port: 1234
     host: "127.0.0.1"
   }
 
@@ -4339,7 +4339,7 @@ go build -o trellis-ctl ./cmd/trellis-ctl
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `TRELLIS_API` | Base URL of Trellis API | `http://localhost:8080` |
+| `TRELLIS_API` | Base URL of Trellis API | `http://localhost:1234` |
 
 In Trellis-managed tmux sessions, `TRELLIS_API` is set automatically.
 

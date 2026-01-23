@@ -29,7 +29,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0
 
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:1234/api/v1
     description: Local development server
 
 # Trellis is a local development tool with no authentication

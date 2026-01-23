@@ -59,7 +59,7 @@ Or create `trellis.hjson` manually in your project root:
   }
 
   server: {
-    port: 1000
+    port: 1234
   }
 
   services: [
@@ -92,7 +92,7 @@ Or create `trellis.hjson` manually in your project root:
 ./trellis
 ```
 
-Open http://localhost:1000 in your browser.
+Open http://localhost:1234 in your browser.
 
 ### CLI
 
@@ -171,7 +171,7 @@ A Go client library is available:
 ```go
 import "github.com/wingedpig/trellis/pkg/client"
 
-c := client.New("http://localhost:1000")
+c := client.New("http://localhost:1234")
 services, _ := c.Services.List(ctx)
 ```
 

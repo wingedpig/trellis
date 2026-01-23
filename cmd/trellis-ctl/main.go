@@ -25,7 +25,7 @@ import (
 
 var (
 	version    = "0.90"
-	apiURL     = "http://localhost:1000"
+	apiURL     = "http://localhost:1234"
 	jsonOutput = false
 
 	// API client instance
@@ -111,7 +111,7 @@ Global Flags:
   -json          Output in JSON format
 
 Environment:
-  TRELLIS_API    Base URL of Trellis API (default: http://localhost:1000)
+  TRELLIS_API    Base URL of Trellis API (default: http://localhost:1234)
 
 Commands:
   status [service]         Show status of all services or a specific service

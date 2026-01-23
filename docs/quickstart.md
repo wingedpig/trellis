@@ -29,7 +29,7 @@ Alternatively, create `trellis.hjson` manually in your project root:
 
   // HTTP server settings
   server: {
-    port: 1000
+    port: 1234
     host: "127.0.0.1"
   }
 
@@ -86,7 +86,7 @@ Trellis will:
 
 ## 3. Open the Web Interface
 
-Open http://localhost:1000 in your browser.
+Open http://localhost:1234 in your browser.
 
 From here you can:
 - View service status

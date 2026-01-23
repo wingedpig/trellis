@@ -305,7 +305,7 @@ func TestLoader_Load_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check defaults are applied
-	assert.Equal(t, 1000, cfg.Server.Port)
+	assert.Equal(t, 1234, cfg.Server.Port)
 	assert.Equal(t, "127.0.0.1", cfg.Server.Host)
 	assert.Equal(t, "info", cfg.Logging.Level)
 	assert.Equal(t, "json", cfg.Logging.Format)
