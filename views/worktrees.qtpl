@@ -395,6 +395,15 @@ function validateAndConfirmCreate(event) {
 }
 
 function createWorktree(branchName, switchTo) {
+    var modal = new bootstrap.Modal(document.getElementById('activationModal'));
+    document.getElementById('activationTitle').textContent = 'Creating worktree...';
+    document.getElementById('activationProgress').innerHTML = '<p>Creating branch <strong>' + branchName + '</strong> and worktree directory...</p>';
+    document.getElementById('activationProgress').style.display = 'block';
+    document.getElementById('activationResults').style.display = 'none';
+    document.getElementById('activationFooter').style.display = 'none';
+    document.getElementById('activationSpinner').style.display = 'inline-block';
+    modal.show();
+
     fetch('/api/v1/worktrees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,12 +415,34 @@ function createWorktree(branchName, switchTo) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.error) {
-            showAlert('Error: ' + data.error.message, 'Error');
+            document.getElementById('activationProgress').style.display = 'none';
+            document.getElementById('activationResults').style.display = 'block';
+            document.getElementById('activationFooter').style.display = 'flex';
+            document.getElementById('activationSpinner').style.display = 'none';
+            document.getElementById('activationTitle').textContent = 'Creation Failed';
+            document.getElementById('activationStatusAlert').className = 'alert alert-danger';
+            document.getElementById('activationStatus').textContent = data.error.message || data.error;
+            document.getElementById('activationDuration').textContent = '';
+            document.getElementById('hookResultsContainer').innerHTML = '';
+            document.getElementById('activationOkBtn').onclick = function() { modal.hide(); };
+            document.getElementById('activationOkBtn').focus();
         } else {
+            modal.hide();
             location.reload();
         }
     })
-    .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+    .catch(function(err) {
+        document.getElementById('activationProgress').style.display = 'none';
+        document.getElementById('activationResults').style.display = 'block';
+        document.getElementById('activationFooter').style.display = 'flex';
+        document.getElementById('activationSpinner').style.display = 'none';
+        document.getElementById('activationTitle').textContent = 'Error';
+        document.getElementById('activationStatusAlert').className = 'alert alert-danger';
+        document.getElementById('activationStatus').textContent = 'Error: ' + err;
+        document.getElementById('activationDuration').textContent = '';
+        document.getElementById('hookResultsContainer').innerHTML = '';
+        document.getElementById('activationOkBtn').onclick = function() { modal.hide(); };
+    });
 }
 
 function showRemoveModal(worktreeName, branchName) {
@@ -429,23 +460,55 @@ function showRemoveModal(worktreeName, branchName) {
 
 document.getElementById('confirmRemoveBtn').onclick = function() {
     var deleteBranch = document.getElementById('deleteBranchCheckbox').checked;
-    var url = '/api/v1/worktrees/' + encodeURIComponent(currentRemoveWorktree);
+    var worktreeName = currentRemoveWorktree;
+    var url = '/api/v1/worktrees/' + encodeURIComponent(worktreeName);
     if (deleteBranch) {
         url += '?delete_branch=1';
     }
 
     bootstrap.Modal.getInstance(document.getElementById('removeWorktreeModal')).hide();
 
+    var modal = new bootstrap.Modal(document.getElementById('activationModal'));
+    document.getElementById('activationTitle').textContent = 'Removing worktree...';
+    document.getElementById('activationProgress').innerHTML = '<p>Removing <strong>' + worktreeName + '</strong>...</p>';
+    document.getElementById('activationProgress').style.display = 'block';
+    document.getElementById('activationResults').style.display = 'none';
+    document.getElementById('activationFooter').style.display = 'none';
+    document.getElementById('activationSpinner').style.display = 'inline-block';
+    modal.show();
+
     fetch(url, { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.error) {
-                showAlert('Error: ' + data.error.message, 'Error');
+                document.getElementById('activationProgress').style.display = 'none';
+                document.getElementById('activationResults').style.display = 'block';
+                document.getElementById('activationFooter').style.display = 'flex';
+                document.getElementById('activationSpinner').style.display = 'none';
+                document.getElementById('activationTitle').textContent = 'Removal Failed';
+                document.getElementById('activationStatusAlert').className = 'alert alert-danger';
+                document.getElementById('activationStatus').textContent = data.error.message || data.error;
+                document.getElementById('activationDuration').textContent = '';
+                document.getElementById('hookResultsContainer').innerHTML = '';
+                document.getElementById('activationOkBtn').onclick = function() { modal.hide(); };
+                document.getElementById('activationOkBtn').focus();
             } else {
+                modal.hide();
                 location.reload();
             }
         })
-        .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
+        .catch(function(err) {
+            document.getElementById('activationProgress').style.display = 'none';
+            document.getElementById('activationResults').style.display = 'block';
+            document.getElementById('activationFooter').style.display = 'flex';
+            document.getElementById('activationSpinner').style.display = 'none';
+            document.getElementById('activationTitle').textContent = 'Error';
+            document.getElementById('activationStatusAlert').className = 'alert alert-danger';
+            document.getElementById('activationStatus').textContent = 'Error: ' + err;
+            document.getElementById('activationDuration').textContent = '';
+            document.getElementById('hookResultsContainer').innerHTML = '';
+            document.getElementById('activationOkBtn').onclick = function() { modal.hide(); };
+        });
 };
 
 // Update preview as user types
