@@ -977,7 +977,7 @@ func TestTraceClient_ListGroups(t *testing.T) {
 		},
 	}
 
-	server := mockServer(t, apiHandler(groups, http.StatusOK))
+	server := mockServer(t, apiHandler(map[string]interface{}{"groups": groups}, http.StatusOK))
 	defer server.Close()
 
 	c := New(server.URL)

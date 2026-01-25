@@ -97,10 +97,12 @@ func (t *TraceClient) ListGroups(ctx context.Context) ([]TraceGroup, error) {
 		return nil, err
 	}
 
-	var groups []TraceGroup
-	if err := json.Unmarshal(data, &groups); err != nil {
+	var resp struct {
+		Groups []TraceGroup `json:"groups"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("failed to parse trace groups: %w", err)
 	}
 
-	return groups, nil
+	return resp.Groups, nil
 }
