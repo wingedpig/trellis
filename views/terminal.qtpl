@@ -294,7 +294,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     <option value="{%s p.Session %}/{%s p.Window %}" selected>@{%s p.SessionDisplayName() %} - {%s p.Window %}</option>
                 </select>
 
-                {% if !p.IsRemote %}
+                {% if p.ViewType == "local" %}
                 <div class="btn-group" role="group">
                     <button id="showTerminalBtn" class="btn btn-sm btn-terminal active" onclick="showTerminal()">
                         <i class="fa-solid fa-terminal"></i>
@@ -3152,6 +3152,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         }
         document.getElementById('service-wrapper').style.display = 'flex';
 
+        // Hide workflow selector (not applicable for service logs)
+        const workflowSelect = document.getElementById('workflowSelect');
+        if (workflowSelect) {
+            workflowSelect.style.display = 'none';
+        }
+        const showCodeBtn = document.getElementById('showCodeBtn');
+        if (showCodeBtn) {
+            showCodeBtn.style.display = 'none';
+        }
+
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');
             document.getElementById('showCodeBtn').classList.remove('active');
@@ -3751,6 +3761,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         }
         document.getElementById('service-wrapper').style.display = 'none';
         document.getElementById('logviewer-wrapper').style.display = 'flex';
+
+        // Hide workflow selector (not applicable for log viewers)
+        const workflowSelect = document.getElementById('workflowSelect');
+        if (workflowSelect) {
+            workflowSelect.style.display = 'none';
+        }
+        const showCodeBtn = document.getElementById('showCodeBtn');
+        if (showCodeBtn) {
+            showCodeBtn.style.display = 'none';
+        }
 
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');

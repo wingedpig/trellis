@@ -673,7 +673,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
                 `)
 //line views/terminal.qtpl:297
-	if !p.IsRemote {
+	if p.ViewType == "local" {
 //line views/terminal.qtpl:297
 		qw422016.N().S(`
                 <div class="btn-group" role="group">
@@ -3637,6 +3637,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
         document.getElementById('service-wrapper').style.display = 'flex';
 
+        // Hide workflow selector (not applicable for service logs)
+        const workflowSelect = document.getElementById('workflowSelect');
+        if (workflowSelect) {
+            workflowSelect.style.display = 'none';
+        }
+        const showCodeBtn = document.getElementById('showCodeBtn');
+        if (showCodeBtn) {
+            showCodeBtn.style.display = 'none';
+        }
+
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');
             document.getElementById('showCodeBtn').classList.remove('active');
@@ -4236,6 +4246,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
         document.getElementById('service-wrapper').style.display = 'none';
         document.getElementById('logviewer-wrapper').style.display = 'flex';
+
+        // Hide workflow selector (not applicable for log viewers)
+        const workflowSelect = document.getElementById('workflowSelect');
+        if (workflowSelect) {
+            workflowSelect.style.display = 'none';
+        }
+        const showCodeBtn = document.getElementById('showCodeBtn');
+        if (showCodeBtn) {
+            showCodeBtn.style.display = 'none';
+        }
 
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');
@@ -5131,36 +5151,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4576
+//line views/terminal.qtpl:4596
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4576
+//line views/terminal.qtpl:4596
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 }
 
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 }
 
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 	return qs422016
-//line views/terminal.qtpl:4577
+//line views/terminal.qtpl:4597
 }
