@@ -124,6 +124,8 @@ func (e *RealTmuxExecutor) ListWindows(ctx context.Context, session string) ([]W
 func (e *RealTmuxExecutor) CapturePane(ctx context.Context, target string, withHistory bool) ([]byte, error) {
 	args := []string{"capture-pane", "-t", target, "-p", "-e"}
 	if withHistory {
+		// -S - captures from start of history
+		// Without -E, captures up to the current cursor line (not empty lines below)
 		args = append(args, "-S", "-")
 	}
 

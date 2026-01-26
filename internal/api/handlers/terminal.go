@@ -357,16 +357,19 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 		}
 	}
 
+	// Get cursor position BEFORE sending scrollback (tmux position is authoritative)
+	cursorX, cursorY, cursorErr := h.mgr.GetCursorPosition(ctx, session, window)
+	if cursorErr == nil {
+		log.Printf("Terminal WebSocket: tmux cursor at (%d, %d)", cursorX, cursorY)
+	}
+
 	// Send initial scrollback (now captured at correct size)
 	scrollback, err := h.mgr.GetScrollback(ctx, session, window)
 	if err == nil && len(scrollback) > 0 {
 		log.Printf("Terminal WebSocket: sending scrollback, %d bytes", len(scrollback))
 		validOutput := strings.ToValidUTF8(string(scrollback), "")
-		// Replace trailing newline with space - capture-pane adds a final newline
-		// but we need the cursor to end up at the right position
-		if strings.HasSuffix(validOutput, "\n") {
-			validOutput = validOutput[:len(validOutput)-1] + " "
-		}
+		// Trim single trailing newline - capture-pane adds one final newline
+		validOutput = strings.TrimSuffix(validOutput, "\n")
 		writeMu.Lock()
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		conn.WriteMessage(websocket.TextMessage, []byte(validOutput))
@@ -376,6 +379,17 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 		log.Printf("Terminal WebSocket: failed to get scrollback: %v", err)
 	} else {
 		log.Printf("Terminal WebSocket: no scrollback data")
+	}
+
+	// Position cursor using the tmux cursor position (relative to visible viewport)
+	if cursorErr == nil {
+		// ANSI escape: ESC [ row ; col H (1-based coordinates)
+		cursorEsc := fmt.Sprintf("\x1b[%d;%dH", cursorY+1, cursorX+1)
+		writeMu.Lock()
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		conn.WriteMessage(websocket.TextMessage, []byte(cursorEsc))
+		writeMu.Unlock()
+		log.Printf("Terminal WebSocket: positioned cursor at row=%d col=%d", cursorY+1, cursorX+1)
 	}
 
 	// Set up pipe-pane for streaming output
