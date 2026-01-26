@@ -1353,8 +1353,22 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             if (notificationSettings.failures_only && payload.success) {
                 return; // Don't notify on success if failures_only is true
             }
-            title = payload.success ? 'Trellis: Workflow Succeeded' : 'Trellis: Workflow Failed';
-            body = 'Workflow ' + (payload.name || payload.workflow_id || 'unknown') + (payload.success ? ' completed successfully' : ' failed');
+            // Use test-specific messages if test counts are available
+            if (payload.tests_total !== undefined) {
+                const passed = payload.tests_passed || 0;
+                const failed = payload.tests_failed || 0;
+                const total = payload.tests_total || 0;
+                if (failed > 0) {
+                    title = 'Trellis: Tests Failed';
+                    body = (payload.name || 'Tests') + ': ' + passed + '/' + total + ' passed, ' + failed + ' failed';
+                } else {
+                    title = 'Trellis: Tests Passed';
+                    body = (payload.name || 'Tests') + ': ' + passed + '/' + total + ' passed';
+                }
+            } else {
+                title = payload.success ? 'Trellis: Workflow Succeeded' : 'Trellis: Workflow Failed';
+                body = 'Workflow ' + (payload.name || payload.workflow_id || 'unknown') + (payload.success ? ' completed successfully' : ' failed');
+            }
         } else if (eventType === 'trace.completed') {
             const payload = event.payload || {};
             title = 'Trellis: Trace Completed';

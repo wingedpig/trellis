@@ -12,12 +12,184 @@ import (
 
 // FormatOutput formats workflow output based on the parser type.
 // For HTML parser, output is passed through unchanged.
+// For go_test_json parser, test results are rendered as a summary.
 // For other parsers, output is HTML-escaped with clickable file links.
 func FormatOutput(output string, parsedLines []ParsedLine, parserName string) string {
 	if parserName == "html" {
 		return output
 	}
+	if parserName == "go_test_json" {
+		// During streaming, parsedLines is nil - don't show raw JSON
+		if len(parsedLines) == 0 {
+			return "<span class=\"text-muted\">Running tests...</span>"
+		}
+		return FormatTestResults(parsedLines, output)
+	}
 	return FormatOutputHTML(output, parsedLines)
+}
+
+// FormatTestResults formats go test -json parsed results into readable HTML.
+func FormatTestResults(parsedLines []ParsedLine, rawOutput string) string {
+	if len(parsedLines) == 0 {
+		// No parsed lines - fall back to showing raw output
+		return FormatOutputHTML(rawOutput, nil)
+	}
+
+	var sb strings.Builder
+
+	// Count results
+	var passed, failed, skipped int
+	var failures []ParsedLine
+	for _, line := range parsedLines {
+		switch line.Type {
+		case "test_pass":
+			passed++
+		case "test_fail":
+			failed++
+			failures = append(failures, line)
+		case "test_skip":
+			skipped++
+		}
+	}
+
+	// Summary header
+	total := passed + failed + skipped
+	if failed > 0 {
+		sb.WriteString(fmt.Sprintf("<span class=\"text-danger\"><strong>FAIL</strong></span> - %d/%d tests passed", passed, total))
+	} else {
+		sb.WriteString(fmt.Sprintf("<span class=\"text-success\"><strong>PASS</strong></span> - %d/%d tests passed", passed, total))
+	}
+	if skipped > 0 {
+		sb.WriteString(fmt.Sprintf(", %d skipped", skipped))
+	}
+	sb.WriteString("<br><br>")
+
+	// Show failures with details (expanded by default)
+	if len(failures) > 0 {
+		sb.WriteString("<details open><summary style=\"cursor: pointer;\"><strong>Failed Tests</strong> <span class=\"text-muted\">(")
+		sb.WriteString(fmt.Sprintf("%d", failed))
+		sb.WriteString(")</span></summary><div style=\"margin-left: 1em; margin-top: 0.5em;\">")
+		for _, f := range failures {
+			sb.WriteString(fmt.Sprintf("<span class=\"text-danger\">✗</span> %s/%s<br>",
+				html.EscapeString(f.Package), html.EscapeString(f.TestName)))
+			if f.RawOutput != "" {
+				// Format the test output, making file:line references clickable
+				formattedOutput := formatTestOutput(f.RawOutput)
+				sb.WriteString("<pre style=\"margin-left: 1em; margin-top: 0.5em; margin-bottom: 1em;\">")
+				sb.WriteString(formattedOutput)
+				sb.WriteString("</pre>")
+			}
+		}
+		sb.WriteString("</div></details>")
+	}
+
+	// Show passed tests (collapsed by default if there are failures)
+	if passed > 0 {
+		if failed > 0 {
+			sb.WriteString("<details><summary style=\"cursor: pointer;\"><strong>Passed Tests</strong> <span class=\"text-muted\">(")
+		} else {
+			sb.WriteString("<details open><summary style=\"cursor: pointer;\"><strong>Passed Tests</strong> <span class=\"text-muted\">(")
+		}
+		sb.WriteString(fmt.Sprintf("%d", passed))
+		sb.WriteString(")</span></summary><div style=\"margin-left: 1em; margin-top: 0.5em;\">")
+		for _, line := range parsedLines {
+			if line.Type == "test_pass" {
+				sb.WriteString(fmt.Sprintf("<span class=\"text-success\">✓</span> %s/%s<br>",
+					html.EscapeString(line.Package), html.EscapeString(line.TestName)))
+			}
+		}
+		sb.WriteString("</div></details>")
+	}
+
+	// Show skipped tests (collapsed by default)
+	if skipped > 0 {
+		sb.WriteString("<details><summary style=\"cursor: pointer;\"><strong>Skipped Tests</strong> <span class=\"text-muted\">(")
+		sb.WriteString(fmt.Sprintf("%d", skipped))
+		sb.WriteString(")</span></summary><div style=\"margin-left: 1em; margin-top: 0.5em;\">")
+		for _, line := range parsedLines {
+			if line.Type == "test_skip" {
+				sb.WriteString(fmt.Sprintf("<span class=\"text-warning\">○</span> %s/%s",
+					html.EscapeString(line.Package), html.EscapeString(line.TestName)))
+				// Extract skip reason from output
+				if reason := extractSkipReason(line.RawOutput); reason != "" {
+					sb.WriteString(fmt.Sprintf(" - <span class=\"text-muted\">%s</span>", html.EscapeString(reason)))
+				}
+				sb.WriteString("<br>")
+			}
+		}
+		sb.WriteString("</div></details>")
+	}
+
+	return sb.String()
+}
+
+// formatTestOutput formats test failure output, making file:line references clickable.
+func formatTestOutput(output string) string {
+	lines := strings.Split(output, "\n")
+	var result []string
+
+	// Pattern for file:line:col or file:line references
+	fileLinePattern := regexp.MustCompile(`(\S+\.go):(\d+)(?::(\d+))?`)
+
+	for _, line := range lines {
+		// Skip empty lines and redundant markers
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed == "---" {
+			continue
+		}
+
+		// Make file:line references clickable
+		escaped := html.EscapeString(line)
+		escaped = fileLinePattern.ReplaceAllStringFunc(escaped, func(match string) string {
+			// The match is already escaped, need to unescape for processing
+			unescaped := html.UnescapeString(match)
+			parts := fileLinePattern.FindStringSubmatch(unescaped)
+			if parts == nil {
+				return match
+			}
+			file := parts[1]
+			lineNum := parts[2]
+			col := "0"
+			if len(parts) > 3 && parts[3] != "" {
+				col = parts[3]
+			}
+			return fmt.Sprintf("<a href=\"#\" class=\"text-danger\" onclick=\"openFileAtLine('%s', %s, %s); return false;\">%s</a>",
+				html.EscapeString(file), lineNum, col, match)
+		})
+
+		result = append(result, escaped)
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// extractSkipReason extracts the skip reason from test output.
+// Go test output for skipped tests looks like:
+//
+//	=== RUN   TestFoo
+//	    foo_test.go:10: skipping in short mode
+//	--- SKIP: TestFoo (0.00s)
+func extractSkipReason(output string) string {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Skip the === RUN and --- SKIP lines
+		if strings.HasPrefix(trimmed, "===") || strings.HasPrefix(trimmed, "---") {
+			continue
+		}
+		// Look for lines with file:line: prefix (the actual skip message)
+		if idx := strings.Index(trimmed, ".go:"); idx != -1 {
+			// Find the colon after line number
+			rest := trimmed[idx+4:]
+			if colonIdx := strings.Index(rest, ": "); colonIdx != -1 {
+				reason := strings.TrimSpace(rest[colonIdx+2:])
+				if reason != "" {
+					return reason
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // FormatOutputHTML converts raw output to HTML with clickable file links.

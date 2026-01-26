@@ -149,10 +149,12 @@ func (p *GoTestJSONParser) Parse(output string) []ParsedLine {
 				RawOutput: rawOutput,
 			})
 		case "skip":
+			rawOutput := strings.Join(testOutput[key], "")
 			result = append(result, ParsedLine{
-				Type:     "test_skip",
-				Package:  event.Package,
-				TestName: event.Test,
+				Type:      "test_skip",
+				Package:   event.Package,
+				TestName:  event.Test,
+				RawOutput: rawOutput,
 			})
 		}
 	}

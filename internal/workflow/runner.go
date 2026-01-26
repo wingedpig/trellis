@@ -451,8 +451,10 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 				runID := status.ID
 				state.mu.Unlock()
 
-				// Notify subscribers of new output
-				state.notifySubscribers(runID, line)
+				// Notify subscribers of new output (skip for go_test_json as raw JSON is not useful)
+				if wf.OutputParser != "go_test_json" {
+					state.notifySubscribers(runID, line)
+				}
 			}
 
 			// If scanner stopped due to error (e.g., line too long), drain to prevent deadlock
@@ -642,6 +644,24 @@ func (r *RealRunner) emitFinished(ctx context.Context, status *WorkflowStatus, w
 	}
 	if status.Error != "" {
 		payload["error"] = status.Error
+	}
+	// Add test counts for go_test_json parser
+	if wf.OutputParser == "go_test_json" && len(status.ParsedLines) > 0 {
+		var passed, failed, skipped int
+		for _, line := range status.ParsedLines {
+			switch line.Type {
+			case "test_pass":
+				passed++
+			case "test_fail":
+				failed++
+			case "test_skip":
+				skipped++
+			}
+		}
+		payload["tests_passed"] = passed
+		payload["tests_failed"] = failed
+		payload["tests_skipped"] = skipped
+		payload["tests_total"] = passed + failed + skipped
 	}
 	r.emitEvent(ctx, "workflow.finished", payload)
 }

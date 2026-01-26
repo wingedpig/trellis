@@ -341,3 +341,94 @@ func TestGoTestJSONParser_RealWorldOutput(t *testing.T) {
 	assert.Equal(t, "TestSubtract", result[1].TestName)
 	assert.Contains(t, result[1].RawOutput, "expected 5, got 3")
 }
+
+func TestFormatOutput_GoTestJSON(t *testing.T) {
+	parser := &GoTestJSONParser{}
+
+	output := `{"Time":"2024-01-15T14:00:00.000Z","Action":"pass","Package":"pkg","Test":"TestOne"}
+{"Time":"2024-01-15T14:00:00.001Z","Action":"fail","Package":"pkg","Test":"TestTwo"}`
+
+	parsedLines := parser.Parse(output)
+	html := FormatOutput(output, parsedLines, "go_test_json")
+
+	// Should NOT contain raw JSON
+	assert.NotContains(t, html, `"Action"`)
+	assert.NotContains(t, html, `"Package"`)
+
+	// Should contain formatted test results
+	assert.Contains(t, html, "FAIL")
+	assert.Contains(t, html, "TestOne")
+	assert.Contains(t, html, "TestTwo")
+}
+
+func TestFormatTestResults(t *testing.T) {
+	parser := &GoTestJSONParser{}
+
+	output := `{"Time":"2024-01-15T14:00:00.000Z","Action":"run","Package":"github.com/example/app/pkg","Test":"TestAdd"}
+{"Time":"2024-01-15T14:00:00.001Z","Action":"output","Package":"github.com/example/app/pkg","Test":"TestAdd","Output":"=== RUN   TestAdd\n"}
+{"Time":"2024-01-15T14:00:00.002Z","Action":"output","Package":"github.com/example/app/pkg","Test":"TestAdd","Output":"--- PASS: TestAdd (0.00s)\n"}
+{"Time":"2024-01-15T14:00:00.003Z","Action":"pass","Package":"github.com/example/app/pkg","Test":"TestAdd","Elapsed":0.001}
+{"Time":"2024-01-15T14:00:00.004Z","Action":"run","Package":"github.com/example/app/pkg","Test":"TestSubtract"}
+{"Time":"2024-01-15T14:00:00.005Z","Action":"output","Package":"github.com/example/app/pkg","Test":"TestSubtract","Output":"=== RUN   TestSubtract\n"}
+{"Time":"2024-01-15T14:00:00.006Z","Action":"output","Package":"github.com/example/app/pkg","Test":"TestSubtract","Output":"    math_test.go:20: expected 5, got 3\n"}
+{"Time":"2024-01-15T14:00:00.007Z","Action":"output","Package":"github.com/example/app/pkg","Test":"TestSubtract","Output":"--- FAIL: TestSubtract (0.00s)\n"}
+{"Time":"2024-01-15T14:00:00.008Z","Action":"fail","Package":"github.com/example/app/pkg","Test":"TestSubtract","Elapsed":0.001}
+{"Time":"2024-01-15T14:00:00.009Z","Action":"pass","Package":"github.com/example/app/pkg","Elapsed":0.01}
+`
+
+	parsedLines := parser.Parse(output)
+	html := FormatTestResults(parsedLines, output)
+
+	t.Logf("Generated HTML:\n%s", html)
+
+	// Should contain summary
+	assert.Contains(t, html, "FAIL")
+	assert.Contains(t, html, "1/2 tests passed")
+
+	// Should contain failed test name
+	assert.Contains(t, html, "TestSubtract")
+
+	// Should contain passed test name
+	assert.Contains(t, html, "TestAdd")
+
+	// Should have clickable link for file:line
+	assert.Contains(t, html, "math_test.go")
+	assert.Contains(t, html, "openFileAtLine")
+}
+
+func TestExtractSkipReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		output   string
+		expected string
+	}{
+		{
+			name: "short mode skip",
+			output: `=== RUN   TestIntegration
+    integration_test.go:15: skipping in short mode
+--- SKIP: TestIntegration (0.00s)
+`,
+			expected: "skipping in short mode",
+		},
+		{
+			name: "custom skip message",
+			output: `=== RUN   TestDatabase
+    db_test.go:42: database not available
+--- SKIP: TestDatabase (0.00s)
+`,
+			expected: "database not available",
+		},
+		{
+			name:     "no skip reason",
+			output:   "--- SKIP: TestFoo (0.00s)\n",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractSkipReason(tt.output)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

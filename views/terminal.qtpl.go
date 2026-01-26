@@ -1838,8 +1838,22 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (notificationSettings.failures_only && payload.success) {
                 return; // Don't notify on success if failures_only is true
             }
-            title = payload.success ? 'Trellis: Workflow Succeeded' : 'Trellis: Workflow Failed';
-            body = 'Workflow ' + (payload.name || payload.workflow_id || 'unknown') + (payload.success ? ' completed successfully' : ' failed');
+            // Use test-specific messages if test counts are available
+            if (payload.tests_total !== undefined) {
+                const passed = payload.tests_passed || 0;
+                const failed = payload.tests_failed || 0;
+                const total = payload.tests_total || 0;
+                if (failed > 0) {
+                    title = 'Trellis: Tests Failed';
+                    body = (payload.name || 'Tests') + ': ' + passed + '/' + total + ' passed, ' + failed + ' failed';
+                } else {
+                    title = 'Trellis: Tests Passed';
+                    body = (payload.name || 'Tests') + ': ' + passed + '/' + total + ' passed';
+                }
+            } else {
+                title = payload.success ? 'Trellis: Workflow Succeeded' : 'Trellis: Workflow Failed';
+                body = 'Workflow ' + (payload.name || payload.workflow_id || 'unknown') + (payload.success ? ' completed successfully' : ' failed');
+            }
         } else if (eventType === 'trace.completed') {
             const payload = event.payload || {};
             title = 'Trellis: Trace Completed';
@@ -5151,36 +5165,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4596
+//line views/terminal.qtpl:4610
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4596
+//line views/terminal.qtpl:4610
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 }
 
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 }
 
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 	return qs422016
-//line views/terminal.qtpl:4597
+//line views/terminal.qtpl:4611
 }
