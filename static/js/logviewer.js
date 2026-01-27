@@ -164,6 +164,36 @@ function renderLogEntry(entry, ctx) {
     ctx.container.appendChild(row);
 }
 
+// Helper to create a field row with copy button
+// Uses data-value attribute with base64 encoding to safely handle any value
+function fieldRow(name, value) {
+    const escapedValue = escapeHtml(String(value));
+    const copyId = 'copy-' + Math.random().toString(36).substr(2, 9);
+    // Encode value as base64 to avoid any escaping issues with special characters
+    const encodedValue = btoa(unescape(encodeURIComponent(String(value))));
+    return '<div class="field">' +
+           '<span class="field-name"><i class="fa-regular fa-copy copy-btn" id="' + copyId + '" title="Copy value" ' +
+           'data-copy-value="' + encodedValue + '" onclick="copyFieldValue(this)"></i>' +
+           escapeHtml(name) + ':</span>' +
+           '<span class="field-value">' + escapedValue + '</span></div>';
+}
+
+// Copy field value to clipboard
+function copyFieldValue(icon) {
+    // Decode base64 value from data attribute
+    const encodedValue = icon.getAttribute('data-copy-value');
+    const value = decodeURIComponent(escape(atob(encodedValue)));
+    navigator.clipboard.writeText(value).then(function() {
+        // Show feedback
+        icon.className = 'fa-solid fa-check copy-btn copied';
+        setTimeout(function() {
+            icon.className = 'fa-regular fa-copy copy-btn';
+        }, 1500);
+    }).catch(function(err) {
+        console.error('Failed to copy:', err);
+    });
+}
+
 // Expand an entry to show all fields
 // ctx: { expandedEl, contentEl, fieldNames, tbodySelector, filteredEntries, onSelect }
 function expandEntry(entry, ctx) {
@@ -174,21 +204,18 @@ function expandEntry(entry, ctx) {
     // Show timestamp with original field name
     const tsFieldName = (ctx.fieldNames && ctx.fieldNames['timestamp']) || 'timestamp';
     if (entry.timestamp) {
-        html += '<div class="field"><span class="field-name">' + escapeHtml(tsFieldName) + ':</span>' +
-                '<span class="field-value">' + escapeHtml(entry.timestamp) + '</span></div>';
+        html += fieldRow(tsFieldName, entry.timestamp);
     }
 
     // Show source if present (for trace entries)
     if (entry.source) {
-        html += '<div class="field"><span class="field-name">source:</span>' +
-                '<span class="field-value">' + escapeHtml(entry.source) + '</span></div>';
+        html += fieldRow('source', entry.source);
     }
 
     // Show level with original field name (only if present)
     const levelFieldName = (ctx.fieldNames && ctx.fieldNames['level']) || 'level';
     if (entry.level) {
-        html += '<div class="field"><span class="field-name">' + escapeHtml(levelFieldName) + ':</span>' +
-                '<span class="field-value">' + escapeHtml(entry.level) + '</span></div>';
+        html += fieldRow(levelFieldName, entry.level);
     }
 
     // Show all fields from entry.fields, skipping those already shown above
@@ -205,8 +232,7 @@ function expandEntry(entry, ctx) {
             if (typeof value === 'object') {
                 displayValue = JSON.stringify(value, null, 2);
             }
-            html += '<div class="field"><span class="field-name">' + escapeHtml(key) + ':</span>' +
-                    '<span class="field-value">' + escapeHtml(String(displayValue)) + '</span></div>';
+            html += fieldRow(key, displayValue);
         }
     }
 
