@@ -213,6 +213,13 @@ a:hover {
 .form-control::placeholder {
     color: var(--trellis-text-muted);
 }
+/* Date input styling for dark mode */
+input[type="date"] {
+    color-scheme: dark;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+}
 .input-group-text {
     background-color: var(--trellis-card-header-bg);
     border-color: var(--trellis-input-border);

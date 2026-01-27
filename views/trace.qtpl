@@ -55,17 +55,30 @@ type TracePage struct {
                 </div>
             </div>
             <div class="row">
-                <div class="col-md-3 mb-3">
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Time Mode:</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="timeMode" id="timeModeRange" value="range" checked onchange="toggleTimeMode()">
+                        <label class="btn btn-outline-secondary btn-sm" for="timeModeRange">Range</label>
+                        <input type="radio" class="btn-check" name="timeMode" id="timeModeDay" value="day" onchange="toggleTimeMode()">
+                        <label class="btn btn-outline-secondary btn-sm" for="timeModeDay">Day</label>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3" id="startTimeGroup">
                     <label for="startTime" class="form-label">Start Time:</label>
                     <input type="text" class="form-control" id="startTime" name="start"
-                           placeholder="1h, 6:00am, 2025-01-10"
+                           placeholder="1h, 6:00am"
                            value="1h">
                 </div>
-                <div class="col-md-3 mb-3">
+                <div class="col-md-2 mb-3" id="endTimeGroup">
                     <label for="endTime" class="form-label">End Time:</label>
                     <input type="text" class="form-control" id="endTime" name="end"
-                           placeholder="now, 7:00am, 2025-01-10"
+                           placeholder="now, 7:00am"
                            value="now">
+                </div>
+                <div class="col-md-2 mb-3" id="specificDayGroup" style="display: none;">
+                    <label for="specificDay" class="form-label">Date:</label>
+                    <input type="date" class="form-control" id="specificDay" name="specific_day">
                 </div>
                 <div class="col-md-3 mb-3">
                     <label for="reportName" class="form-label">Report Name (optional):</label>
@@ -179,15 +192,27 @@ type TracePage struct {
 </div>
 
 <script>
+function toggleTimeMode() {
+    var isRangeMode = document.getElementById('timeModeRange').checked;
+    document.getElementById('startTimeGroup').style.display = isRangeMode ? '' : 'none';
+    document.getElementById('endTimeGroup').style.display = isRangeMode ? '' : 'none';
+    document.getElementById('specificDayGroup').style.display = isRangeMode ? 'none' : '';
+
+    // Set default value for specific day to today
+    if (!isRangeMode && !document.getElementById('specificDay').value) {
+        var today = new Date().toISOString().split('T')[0];
+        document.getElementById('specificDay').value = today;
+    }
+}
+
 function executeTrace(event) {
     event.preventDefault();
 
     var traceId = document.getElementById('traceId').value.trim();
     var group = document.getElementById('traceGroup').value;
-    var startTime = document.getElementById('startTime').value.trim();
-    var endTime = document.getElementById('endTime').value.trim();
     var reportName = document.getElementById('reportName').value.trim();
     var expandByID = document.getElementById('expandByID').checked;
+    var isRangeMode = document.getElementById('timeModeRange').checked;
 
     if (!traceId || !group) {
         alert('Please enter a trace ID and select a trace group');
@@ -209,15 +234,28 @@ function executeTrace(event) {
         body.name = reportName;
     }
 
-    // Parse times
-    if (startTime) {
-        body.start = parseTimeInput(startTime, false);
-    }
-    if (endTime) {
-        if (endTime === 'now') {
-            body.end = new Date().toISOString();
-        } else {
-            body.end = parseTimeInput(endTime, true);
+    // Parse times based on mode
+    if (isRangeMode) {
+        var startTime = document.getElementById('startTime').value.trim();
+        var endTime = document.getElementById('endTime').value.trim();
+        if (startTime) {
+            body.start = parseTimeInput(startTime, false);
+        }
+        if (endTime) {
+            if (endTime === 'now') {
+                body.end = new Date().toISOString();
+            } else {
+                body.end = parseTimeInput(endTime, true);
+            }
+        }
+    } else {
+        // Specific day mode - set start to 00:00:00 and end to 23:59:59
+        var specificDay = document.getElementById('specificDay').value;
+        if (specificDay) {
+            var startDate = new Date(specificDay + 'T00:00:00');
+            var endDate = new Date(specificDay + 'T23:59:59.999');
+            body.start = startDate.toISOString();
+            body.end = endDate.toISOString();
         }
     }
 
