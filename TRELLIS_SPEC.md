@@ -1341,6 +1341,7 @@ Log Viewers provide structured, searchable log viewing with support for remote s
       // Where logs come from
       source: {
         // Source type: "ssh", "file", "command", "docker", "kubernetes"
+        // Note: "service" sources are auto-generated (see section 10.2)
         type: "ssh"
 
         // SSH source options
@@ -1452,6 +1453,34 @@ Log Viewers provide structured, searchable log viewing with support for remote s
 ```
 
 ### 10.2 Source Types
+
+#### Service Source (Auto-generated)
+
+Service sources read from running services' in-memory log buffers (`LogBuffer`). They are **auto-generated at startup** for every service with a `logging.parser` configured — no manual configuration is needed.
+
+Service log viewers are named `svc:<service-name>` and are automatically added to a `services` trace group, enabling distributed tracing across dev services:
+
+```bash
+# Search across all service log buffers
+trellis-ctl trace "req-123" services -since 1h
+```
+
+**How it works:**
+- At startup, Trellis creates a `ServiceSource` for each service with a parser
+- The source reads from the service's in-memory ring buffer via `ReadRange()`
+- A `svc:*` log viewer is created with the service's parser/derive/layout config (merged with `logging_defaults`)
+- All `svc:*` viewers are collected into a `services` trace group
+- Time filtering is handled by the viewer after parsing; grep filtering is applied at the source level
+- Internal `[trellis]` messages (start/stop notifications) are automatically filtered out
+
+**Characteristics:**
+- No files on disk — data comes from the in-memory `LogBuffer`
+- No rotated files — `ListRotatedFiles()` returns nil
+- Buffer wrapping: overwritten lines are lost (acceptable for dev — recent history focus)
+- Service not running: returns whatever is in the buffer (empty if never started)
+- Thread-safe: `LogBuffer.Lines()` returns a snapshot under read lock
+
+**Worktree switching:** When switching worktrees, service log viewers are recreated with updated parser configs from the new worktree's expanded configuration.
 
 #### SSH Source
 
@@ -1923,22 +1952,23 @@ Log viewers emit events:
 
 ```
 internal/logs/
-├── source.go          # LogSource interface
-├── source_ssh.go      # SSH source implementation
-├── source_file.go     # Local file source
-├── source_command.go  # Command source
-├── source_docker.go   # Docker source
-├── source_k8s.go      # Kubernetes source
-├── parser.go          # LogParser interface
-├── parser_json.go     # JSON parser
-├── parser_logfmt.go   # Logfmt parser
-├── parser_regex.go    # Regex parser
-├── parser_syslog.go   # Syslog parser
-├── entry.go           # LogEntry type
-├── filter.go          # Filter parsing and evaluation
-├── buffer.go          # Ring buffer for entries
-├── viewer.go          # LogViewer coordinator
-└── manager.go         # Manages all log viewers
+├── source.go            # LogSource interface
+├── source_ssh.go        # SSH source implementation
+├── source_file.go       # Local file source
+├── source_command.go    # Command source
+├── source_docker.go     # Docker source
+├── source_k8s.go        # Kubernetes source
+├── source_service.go    # Service log buffer source (ServiceLogProvider interface + ServiceSource)
+├── parser.go            # LogParser interface
+├── parser_json.go       # JSON parser
+├── parser_logfmt.go     # Logfmt parser
+├── parser_regex.go      # Regex parser
+├── parser_syslog.go     # Syslog parser
+├── entry.go             # LogEntry type
+├── filter.go            # Filter parsing and evaluation
+├── buffer.go            # Ring buffer for entries
+├── viewer.go            # LogViewer coordinator (NewViewer + NewViewerWithSource)
+└── manager.go           # Manages all log viewers (AddViewer, RemoveServiceViewers)
 ```
 
 **Performance considerations:**
@@ -1981,6 +2011,27 @@ Distributed tracing allows searching for a trace ID (or any pattern) across mult
   ]
 }
 ```
+
+#### Auto-generated `services` Trace Group
+
+When services have `logging.parser` configured (directly or via `logging_defaults`), Trellis automatically creates:
+
+1. A `svc:<name>` log viewer for each service with a parser (using the service's in-memory log buffer as the source)
+2. A `services` trace group containing all `svc:*` viewers
+
+This enables tracing across dev services with no additional configuration:
+
+```bash
+# Search all service log buffers for a trace ID
+trellis-ctl trace "req-123" services -since 1h
+
+# View the auto-generated services group
+trellis-ctl trace-report -groups
+```
+
+If a `services` trace group already exists in config, the auto-generated `svc:*` viewers are appended to it rather than creating a duplicate group.
+
+The `svc:*` viewers also participate in two-pass ID expansion — if a service's parser has an `id` field configured, IDs extracted from matching entries are used to find related entries across all services in the group.
 
 ### 11.2 CLI Commands
 

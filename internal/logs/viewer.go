@@ -38,6 +38,13 @@ func NewViewer(cfg config.LogViewerConfig) (*Viewer, error) {
 		return nil, err
 	}
 
+	return NewViewerWithSource(cfg, source)
+}
+
+// NewViewerWithSource creates a new log viewer with a pre-built LogSource.
+// This is used for service log viewers where the source is a ServiceSource
+// rather than a source created from config.
+func NewViewerWithSource(cfg config.LogViewerConfig, source LogSource) (*Viewer, error) {
 	parser, err := NewParser(cfg.Parser)
 	if err != nil {
 		return nil, err

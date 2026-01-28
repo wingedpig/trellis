@@ -224,6 +224,16 @@ trace_groups: [
 ]
 ```
 
+#### Service Tracing (Dev Environment)
+
+When services have `logging.parser` configured (directly or via `logging_defaults`), a `services` trace group is auto-generated that searches all service log buffers:
+```bash
+trellis-ctl -json trace "req-123" services -since 1h   # Search all dev service logs
+trellis-ctl -json trace-report -groups                  # See the auto-generated "services" group
+```
+
+This requires no configuration — `svc:<name>` log viewers are created automatically from each service's in-memory ring buffer.
+
 ## Common Workflows
 
 ### After Making Code Changes
@@ -244,6 +254,16 @@ trace_groups: [
 2. Activate: `trellis-ctl worktree activate <name>`
 3. Wait for services to restart
 4. Verify: `trellis-ctl status`
+
+### Debugging Across Dev Services
+
+When a request touches multiple services locally:
+```bash
+# Search all service log buffers for a trace/request ID
+trellis-ctl -json trace "req-abc123" services -since 1h
+
+# The result shows the request flow across all services with parsers configured
+```
 
 ### Investigating a Production Error
 

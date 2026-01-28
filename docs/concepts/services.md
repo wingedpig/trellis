@@ -141,6 +141,20 @@ trellis-ctl crash newest
 trellis-ctl crash list
 ```
 
+## Service Log Tracing
+
+Services with `logging.parser` configured (directly or via `logging_defaults`) are automatically registered as trace-searchable log sources. Trellis creates `svc:<name>` log viewers backed by each service's in-memory ring buffer and collects them into a `services` trace group:
+
+```bash
+# Search all service log buffers for a trace ID
+trellis-ctl trace "req-123" services -since 1h
+
+# View available trace groups
+trellis-ctl trace-report -groups
+```
+
+This enables distributed tracing across dev services with zero configuration. Two-pass ID expansion works when the service parser includes an `id` field (e.g., `id: "request_id"`).
+
 ## Service Events
 
 Services emit events throughout their lifecycle:

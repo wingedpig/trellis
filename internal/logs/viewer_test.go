@@ -552,3 +552,154 @@ func TestViewerDoubleStart(t *testing.T) {
 	// Clean up
 	viewer.Stop()
 }
+
+func TestNewViewerWithSource(t *testing.T) {
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{
+			"api": {"line1", "line2"},
+		},
+	}
+	source := NewServiceSource("api", provider)
+
+	cfg := config.LogViewerConfig{
+		Name: "svc:api",
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewerWithSource(cfg, source)
+	if err != nil {
+		t.Fatalf("NewViewerWithSource failed: %v", err)
+	}
+
+	if viewer == nil {
+		t.Fatal("NewViewerWithSource returned nil viewer")
+	}
+
+	if viewer.Name() != "svc:api" {
+		t.Errorf("Name() = %q, want %q", viewer.Name(), "svc:api")
+	}
+
+	// Source should be the one we provided
+	returnedCfg := viewer.Config()
+	if returnedCfg.Name != "svc:api" {
+		t.Errorf("Config().Name = %q, want %q", returnedCfg.Name, "svc:api")
+	}
+}
+
+func TestNewViewerWithSource_InvalidParser(t *testing.T) {
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{"api": {}},
+	}
+	source := NewServiceSource("api", provider)
+
+	cfg := config.LogViewerConfig{
+		Name: "svc:api",
+		Parser: config.LogParserConfig{
+			Type:    "regex",
+			// Missing pattern - should cause error
+		},
+	}
+
+	_, err := NewViewerWithSource(cfg, source)
+	if err == nil {
+		t.Error("NewViewerWithSource with invalid parser should return error")
+	}
+}
+
+func TestNewViewerWithSource_WithDeriver(t *testing.T) {
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{"api": {}},
+	}
+	source := NewServiceSource("api", provider)
+
+	cfg := config.LogViewerConfig{
+		Name: "svc:api",
+		Parser: config.LogParserConfig{
+			Type:      "json",
+			Timestamp: "ts",
+		},
+		Derive: map[string]config.DeriveConfig{
+			"short_ts": {
+				From: "ts",
+				Op:   "timefmt",
+				Args: map[string]interface{}{"format": "15:04:05"},
+			},
+		},
+	}
+
+	viewer, err := NewViewerWithSource(cfg, source)
+	if err != nil {
+		t.Fatalf("NewViewerWithSource with deriver failed: %v", err)
+	}
+
+	if viewer == nil {
+		t.Fatal("NewViewerWithSource returned nil viewer")
+	}
+}
+
+func TestNewViewerWithSource_DefaultBufferSize(t *testing.T) {
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{"api": {}},
+	}
+	source := NewServiceSource("api", provider)
+
+	cfg := config.LogViewerConfig{
+		Name: "svc:api",
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+		// No buffer config - should use default 100k
+	}
+
+	viewer, err := NewViewerWithSource(cfg, source)
+	if err != nil {
+		t.Fatalf("NewViewerWithSource failed: %v", err)
+	}
+
+	status := viewer.Status()
+	if status.BufferMax != 100000 {
+		t.Errorf("Default buffer max = %d, want 100000", status.BufferMax)
+	}
+}
+
+func TestNewViewerWithSource_ProcessLine(t *testing.T) {
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{"api": {}},
+	}
+	source := NewServiceSource("api", provider)
+
+	cfg := config.LogViewerConfig{
+		Name: "svc:api",
+		Parser: config.LogParserConfig{
+			Type:      "json",
+			Timestamp: "ts",
+			Level:     "level",
+			Message:   "msg",
+		},
+	}
+
+	viewer, err := NewViewerWithSource(cfg, source)
+	if err != nil {
+		t.Fatalf("NewViewerWithSource failed: %v", err)
+	}
+
+	// Manually process a line through the viewer
+	viewer.processLine(`{"ts":"2024-01-15T10:30:00Z","level":"error","msg":"service error"}`)
+
+	if viewer.buffer.Size() != 1 {
+		t.Errorf("Buffer size = %d, want 1", viewer.buffer.Size())
+	}
+
+	entries := viewer.buffer.Get(0)
+	if len(entries) != 1 {
+		t.Fatalf("Got %d entries, want 1", len(entries))
+	}
+	if entries[0].Level != LevelError {
+		t.Errorf("Entry.Level = %v, want %v", entries[0].Level, LevelError)
+	}
+	if entries[0].Message != "service error" {
+		t.Errorf("Entry.Message = %q, want %q", entries[0].Message, "service error")
+	}
+}

@@ -45,6 +45,10 @@ For external log sources, configure log viewers:
 
 ## Source Types
 
+### Service Source (Automatic)
+
+Services with `logging.parser` configured automatically get a log viewer (`svc:<name>`) that reads from the service's in-memory ring buffer. These are created at startup and require no manual configuration. See [Distributed Tracing](#service-tracing-dev-environment) for usage.
+
 ### File Source
 ```hjson
 source: {
@@ -178,7 +182,23 @@ Search for a trace ID across multiple log sources:
 trellis-ctl trace abc123 api-flow -since 1h
 ```
 
+### Service Tracing (Dev Environment)
+
+When services have `logging.parser` configured (directly or via `logging_defaults`), Trellis automatically creates a `services` trace group that searches all service log buffers:
+
+```bash
+# Search across all dev service logs
+trellis-ctl trace "req-123" services -since 1h
+
+# View available trace groups (includes auto-generated "services" group)
+trellis-ctl trace-report -groups
+```
+
+This works with zero configuration — service log viewers (`svc:api`, `svc:worker`, etc.) are created automatically from each service's in-memory ring buffer. Two-pass ID expansion works if the service parser has an `id` field configured.
+
 ### Configure Trace Groups
+
+For production log sources, configure trace groups explicitly:
 
 ```hjson
 {

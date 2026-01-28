@@ -182,11 +182,14 @@ trellis-ctl trace abc123 api-flow -since 1h
 trellis-ctl trace "user-456" auth-flow -since 6:00am -until 7:00am
 trellis-ctl trace abc123 api-flow -since 2025-01-10 -until 2025-01-10
 
+# Trace across dev service logs (auto-generated group)
+trellis-ctl trace "req-123" services -since 1h
+
 # View reports
 trellis-ctl trace-report -list
 trellis-ctl trace-report <name>
 trellis-ctl trace-report <name> -json
-trellis-ctl trace-report -groups
+trellis-ctl trace-report -groups              # Shows auto-generated "services" group
 trellis-ctl trace-report -delete <name>
 ```
 

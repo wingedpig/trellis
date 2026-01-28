@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +61,50 @@ func (m *Manager) Initialize(configs []config.LogViewerConfig) error {
 	}
 
 	return nil
+}
+
+// AddViewer registers a programmatically-created viewer (e.g., service log viewers).
+func (m *Manager) AddViewer(viewer *Viewer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.viewers[viewer.Name()] = viewer
+}
+
+// RemoveServiceViewers stops and removes all viewers whose names start with "svc:".
+func (m *Manager) RemoveServiceViewers() {
+	m.mu.Lock()
+
+	var toRemove []string
+	for name := range m.viewers {
+		if strings.HasPrefix(name, "svc:") {
+			toRemove = append(toRemove, name)
+		}
+	}
+
+	// Cancel monitor goroutines for service viewers
+	for _, name := range toRemove {
+		if cancel, ok := m.monitorCancel[name]; ok {
+			cancel()
+			delete(m.monitorCancel, name)
+		}
+	}
+
+	// Stop and remove service viewers
+	for _, name := range toRemove {
+		if viewer, ok := m.viewers[name]; ok {
+			if err := viewer.Stop(); err != nil {
+				log.Printf("Failed to stop service viewer %s: %v", name, err)
+			}
+			delete(m.viewers, name)
+		}
+	}
+
+	m.mu.Unlock()
+
+	if len(toRemove) > 0 {
+		// Wait for monitor goroutines to exit
+		m.monitorWg.Wait()
+	}
 }
 
 // Start stores the context for on-demand viewer startup.
@@ -159,21 +204,26 @@ func (m *Manager) Stop() {
 	m.monitorWg.Wait()
 }
 
-// UpdateConfigs stops all viewers and reinitializes with new configs.
-// This is used when switching worktrees to update paths that depend on worktree templates.
+// UpdateConfigs stops explicit (non-service) viewers and reinitializes with new configs.
+// Service viewers (names starting with "svc:") are preserved — they are managed
+// separately via RemoveServiceViewers/AddViewer.
 func (m *Manager) UpdateConfigs(configs []config.LogViewerConfig) error {
 	m.mu.Lock()
 
-	// Cancel all monitor goroutines
+	// Cancel monitor goroutines for non-service viewers only
 	for name, cancel := range m.monitorCancel {
-		cancel()
-		delete(m.monitorCancel, name)
+		if !strings.HasPrefix(name, "svc:") {
+			cancel()
+			delete(m.monitorCancel, name)
+		}
 	}
 
-	// Stop all viewers
+	// Stop non-service viewers
 	for name, viewer := range m.viewers {
-		if err := viewer.Stop(); err != nil {
-			log.Printf("Failed to stop log viewer %s during config update: %v", name, err)
+		if !strings.HasPrefix(name, "svc:") {
+			if err := viewer.Stop(); err != nil {
+				log.Printf("Failed to stop log viewer %s during config update: %v", name, err)
+			}
 		}
 	}
 
@@ -186,8 +236,14 @@ func (m *Manager) UpdateConfigs(configs []config.LogViewerConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Clear old viewers
-	m.viewers = make(map[string]*Viewer)
+	// Preserve service viewers, clear explicit viewers
+	preserved := make(map[string]*Viewer)
+	for name, viewer := range m.viewers {
+		if strings.HasPrefix(name, "svc:") {
+			preserved[name] = viewer
+		}
+	}
+	m.viewers = preserved
 
 	// Create new viewers from updated config
 	for _, cfg := range configs {
@@ -198,7 +254,7 @@ func (m *Manager) UpdateConfigs(configs []config.LogViewerConfig) error {
 		m.viewers[cfg.Name] = viewer
 	}
 
-	log.Printf("Updated %d log viewers with new config", len(configs))
+	log.Printf("Updated %d log viewers with new config (preserved %d service viewers)", len(configs), len(preserved))
 	return nil
 }
 

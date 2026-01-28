@@ -102,6 +102,7 @@ type Manager interface {
 	Restart(ctx context.Context, name string, trigger RestartTrigger) error
 	Status(name string) (ServiceStatus, error)
 	Logs(name string, lines int) ([]string, error)
+	LogSize(name string) (int, error)                            // Get number of lines in log buffer
 	ParsedLogs(name string, lines int) ([]*logs.LogEntry, error) // Get parsed log entries
 	HasParser(name string) bool                                  // Check if service has log parser
 	ClearLogs(name string) error

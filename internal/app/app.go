@@ -317,18 +317,26 @@ func (app *App) Initialize(ctx context.Context) error {
 		workingDir,
 	)
 
-	// Initialize log manager
-	if len(cfg.LogViewers) > 0 {
+	// Initialize log manager (if services exist OR log viewers configured)
+	if len(cfg.LogViewers) > 0 || len(cfg.Services) > 0 {
 		app.logManager = logs.NewManager(app.eventBus, cfg.LogViewerSettings)
-		if err := app.logManager.Initialize(cfg.LogViewers); err != nil {
-			log.Printf("Warning: failed to initialize log viewers: %v", err)
-		} else {
-			log.Printf("Initialized %d log viewers", len(cfg.LogViewers))
+		if len(cfg.LogViewers) > 0 {
+			if err := app.logManager.Initialize(cfg.LogViewers); err != nil {
+				log.Printf("Warning: failed to initialize log viewers: %v", err)
+			} else {
+				log.Printf("Initialized %d log viewers", len(cfg.LogViewers))
+			}
 		}
 	}
 
+	// Create service log viewers (svc:* viewers from service log buffers)
+	if app.logManager != nil && len(cfg.Services) > 0 {
+		svcViewerNames := app.createServiceLogViewers(cfg)
+		app.injectServicesTraceGroup(cfg, svcViewerNames)
+	}
+
 	// Initialize trace manager (requires log manager)
-	if app.logManager != nil && len(cfg.TraceGroups) > 0 {
+	if app.logManager != nil && (len(cfg.TraceGroups) > 0) {
 		var err error
 		app.traceManager, err = trace.NewManager(app.logManager, cfg, app.eventBus)
 		if err != nil {
@@ -538,8 +546,17 @@ func (app *App) Initialize(ctx context.Context) error {
 
 		// Update log manager with new configs (paths may depend on worktree)
 		if app.logManager != nil {
+			// Remove old service viewers first
+			app.logManager.RemoveServiceViewers()
+
 			if err := app.logManager.UpdateConfigs(expandedConfig.LogViewers); err != nil {
 				log.Printf("Warning: failed to update log viewers: %v", err)
+			}
+
+			// Recreate service log viewers with updated parser configs
+			if len(expandedConfig.Services) > 0 {
+				svcViewerNames := app.createServiceLogViewers(expandedConfig)
+				app.injectServicesTraceGroup(expandedConfig, svcViewerNames)
 			}
 		}
 
@@ -885,4 +902,102 @@ func convertWorkflowInputs(inputs []config.WorkflowInput) []workflow.WorkflowInp
 		}
 	}
 	return result
+}
+
+// serviceLogAdapter implements logs.ServiceLogProvider by delegating to service.Manager.
+type serviceLogAdapter struct {
+	mgr service.Manager
+}
+
+func (a *serviceLogAdapter) ServiceLogs(name string, n int) ([]string, error) {
+	return a.mgr.Logs(name, n)
+}
+
+func (a *serviceLogAdapter) ServiceLogSize(name string) (int, error) {
+	return a.mgr.LogSize(name)
+}
+
+// createServiceLogViewers creates svc:* log viewers from running services' in-memory
+// log buffers. Only services with a parser configured (after applying LoggingDefaults)
+// are included, since services without a parser can't participate in structured tracing.
+// Returns the list of viewer names created.
+func (app *App) createServiceLogViewers(cfg *config.Config) []string {
+	provider := &serviceLogAdapter{mgr: app.serviceManager}
+	var viewerNames []string
+
+	for _, svcCfg := range cfg.Services {
+		// Apply logging defaults to get merged config
+		logging := svcCfg.Logging
+		logging.ApplyDefaults(&cfg.LoggingDefaults)
+
+		// Skip services without a parser — they can't participate in structured tracing
+		if logging.Parser.Type == "" {
+			continue
+		}
+
+		viewerName := "svc:" + svcCfg.Name
+
+		// Build LogViewerConfig from the service's logging config
+		viewerCfg := config.LogViewerConfig{
+			Name:   viewerName,
+			Parser: logging.Parser,
+			Derive: logging.Derive,
+			Layout: logging.Layout,
+		}
+
+		// Create source and viewer
+		source := logs.NewServiceSource(svcCfg.Name, provider)
+		viewer, err := logs.NewViewerWithSource(viewerCfg, source)
+		if err != nil {
+			log.Printf("Warning: failed to create service log viewer for %s: %v", svcCfg.Name, err)
+			continue
+		}
+
+		app.logManager.AddViewer(viewer)
+		viewerNames = append(viewerNames, viewerName)
+
+		// Append config to cfg.LogViewers so trace manager's logViewerConfig map
+		// picks up the parser.id field for two-pass ID expansion
+		cfg.LogViewers = append(cfg.LogViewers, viewerCfg)
+	}
+
+	if len(viewerNames) > 0 {
+		log.Printf("Created %d service log viewers: %v", len(viewerNames), viewerNames)
+	}
+
+	return viewerNames
+}
+
+// injectServicesTraceGroup ensures a "services" trace group exists that includes
+// all svc:* viewers. If the group already exists in config, the service viewer
+// names are appended; otherwise a new group is created.
+func (app *App) injectServicesTraceGroup(cfg *config.Config, viewerNames []string) {
+	if len(viewerNames) == 0 {
+		return
+	}
+
+	// Check if a "services" group already exists
+	for i := range cfg.TraceGroups {
+		if cfg.TraceGroups[i].Name == "services" {
+			// Append service viewer names (avoid duplicates)
+			existing := make(map[string]bool)
+			for _, name := range cfg.TraceGroups[i].LogViewers {
+				existing[name] = true
+			}
+			for _, name := range viewerNames {
+				if !existing[name] {
+					cfg.TraceGroups[i].LogViewers = append(cfg.TraceGroups[i].LogViewers, name)
+				}
+			}
+			log.Printf("Updated 'services' trace group with %d viewers", len(cfg.TraceGroups[i].LogViewers))
+			return
+		}
+	}
+
+	// Create a new "services" trace group
+	cfg.TraceGroups = append(cfg.TraceGroups, config.TraceGroupConfig{
+		Name:       "services",
+		LogViewers: viewerNames,
+	})
+	log.Printf("Created 'services' trace group with %d viewers", len(viewerNames))
 }

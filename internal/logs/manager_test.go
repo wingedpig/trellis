@@ -723,3 +723,237 @@ func TestManager_StopStartCycle(t *testing.T) {
 	assert.LessOrEqual(t, len(connectedEvents), 3, "Too many connected events suggests duplicate goroutines")
 	assert.Equal(t, len(connectedEvents), len(disconnectedEvents), "Mismatched connected/disconnected events")
 }
+
+func TestManagerAddViewer(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{})
+	require.NoError(t, manager.Initialize(nil))
+
+	// Create a service source viewer
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{"api": {"line1"}},
+	}
+	source := NewServiceSource("api", provider)
+	cfg := config.LogViewerConfig{
+		Name:   "svc:api",
+		Parser: config.LogParserConfig{Type: "json"},
+	}
+	viewer, err := NewViewerWithSource(cfg, source)
+	require.NoError(t, err)
+
+	// Add the viewer
+	manager.AddViewer(viewer)
+
+	// Should be retrievable
+	got, ok := manager.Get("svc:api")
+	assert.True(t, ok)
+	assert.Equal(t, "svc:api", got.Name())
+
+	// Should appear in list
+	names := manager.List()
+	assert.Contains(t, names, "svc:api")
+}
+
+func TestManagerAddViewer_Multiple(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{})
+	require.NoError(t, manager.Initialize(nil))
+
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{
+			"api":    {"line1"},
+			"worker": {"line2"},
+		},
+	}
+
+	for _, name := range []string{"api", "worker"} {
+		source := NewServiceSource(name, provider)
+		cfg := config.LogViewerConfig{
+			Name:   "svc:" + name,
+			Parser: config.LogParserConfig{Type: "json"},
+		}
+		viewer, err := NewViewerWithSource(cfg, source)
+		require.NoError(t, err)
+		manager.AddViewer(viewer)
+	}
+
+	names := manager.List()
+	assert.Len(t, names, 2)
+	assert.Contains(t, names, "svc:api")
+	assert.Contains(t, names, "svc:worker")
+}
+
+func TestManagerRemoveServiceViewers(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{})
+
+	// Initialize with a regular viewer
+	configs := []config.LogViewerConfig{
+		{
+			Name: "regular-viewer",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/test.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}
+	require.NoError(t, manager.Initialize(configs))
+
+	// Add service viewers
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{
+			"api":    {"line1"},
+			"worker": {"line2"},
+		},
+	}
+	for _, name := range []string{"api", "worker"} {
+		source := NewServiceSource(name, provider)
+		cfg := config.LogViewerConfig{
+			Name:   "svc:" + name,
+			Parser: config.LogParserConfig{Type: "json"},
+		}
+		viewer, err := NewViewerWithSource(cfg, source)
+		require.NoError(t, err)
+		manager.AddViewer(viewer)
+	}
+
+	// Should have 3 viewers total
+	assert.Len(t, manager.List(), 3)
+
+	// Remove service viewers
+	manager.RemoveServiceViewers()
+
+	// Only regular viewer should remain
+	names := manager.List()
+	assert.Len(t, names, 1)
+	assert.Contains(t, names, "regular-viewer")
+
+	// Service viewers should be gone
+	_, ok := manager.Get("svc:api")
+	assert.False(t, ok)
+	_, ok = manager.Get("svc:worker")
+	assert.False(t, ok)
+}
+
+func TestManagerRemoveServiceViewers_NoServiceViewers(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{})
+
+	configs := []config.LogViewerConfig{
+		{
+			Name: "regular-viewer",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/test.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}
+	require.NoError(t, manager.Initialize(configs))
+
+	// Removing service viewers when none exist should be a no-op
+	manager.RemoveServiceViewers()
+
+	names := manager.List()
+	assert.Len(t, names, 1)
+	assert.Contains(t, names, "regular-viewer")
+}
+
+func TestManagerUpdateConfigs_PreservesServiceViewers(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{})
+
+	// Initialize with regular viewers
+	configs := []config.LogViewerConfig{
+		{
+			Name: "viewer-a",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/a.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}
+	require.NoError(t, manager.Initialize(configs))
+
+	// Add a service viewer
+	provider := &mockServiceLogProvider{
+		logs: map[string][]string{"api": {"line1"}},
+	}
+	source := NewServiceSource("api", provider)
+	svcCfg := config.LogViewerConfig{
+		Name:   "svc:api",
+		Parser: config.LogParserConfig{Type: "json"},
+	}
+	viewer, err := NewViewerWithSource(svcCfg, source)
+	require.NoError(t, err)
+	manager.AddViewer(viewer)
+
+	// Should have 2 viewers
+	assert.Len(t, manager.List(), 2)
+
+	// Update configs with a new set of regular viewers
+	newConfigs := []config.LogViewerConfig{
+		{
+			Name: "viewer-b",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/b.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}
+	err = manager.UpdateConfigs(newConfigs)
+	require.NoError(t, err)
+
+	// Should have 2 viewers: new regular + preserved service
+	names := manager.List()
+	assert.Len(t, names, 2)
+	assert.Contains(t, names, "viewer-b")
+	assert.Contains(t, names, "svc:api")
+
+	// Old regular viewer should be gone
+	_, ok := manager.Get("viewer-a")
+	assert.False(t, ok)
+}
+
+func TestManagerUpdateConfigs_OldBehaviorWithoutServiceViewers(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{})
+
+	// Initialize with viewers
+	configs := []config.LogViewerConfig{
+		{
+			Name: "viewer-a",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/a.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+		{
+			Name: "viewer-b",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/b.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}
+	require.NoError(t, manager.Initialize(configs))
+	assert.Len(t, manager.List(), 2)
+
+	// UpdateConfigs with different viewers
+	newConfigs := []config.LogViewerConfig{
+		{
+			Name: "viewer-c",
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/c.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}
+	err := manager.UpdateConfigs(newConfigs)
+	require.NoError(t, err)
+
+	// Only new viewer should exist
+	names := manager.List()
+	assert.Len(t, names, 1)
+	assert.Contains(t, names, "viewer-c")
+}

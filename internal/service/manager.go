@@ -320,6 +320,19 @@ func (m *ServiceManager) Logs(name string, lines int) ([]string, error) {
 	return svc.process.Logs(lines), nil
 }
 
+// LogSize returns the number of lines in the service's log buffer.
+func (m *ServiceManager) LogSize(name string) (int, error) {
+	m.mu.RLock()
+	svc, ok := m.services[name]
+	m.mu.RUnlock()
+
+	if !ok {
+		return 0, fmt.Errorf("service %q not found", name)
+	}
+
+	return svc.process.LogSize(), nil
+}
+
 // ParsedLogs returns parsed log entries for a service.
 func (m *ServiceManager) ParsedLogs(name string, lines int) ([]*logs.LogEntry, error) {
 	m.mu.RLock()

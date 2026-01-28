@@ -559,3 +559,42 @@ func TestManager_Concurrency(t *testing.T) {
 		<-done
 	}
 }
+
+func TestManager_LogSize(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	services := []config.ServiceConfig{
+		{Name: "test-service", Command: []string{"sh", "-c", "echo hello; echo world"}, WorkDir: "/tmp"},
+	}
+
+	mgr := NewManager(services, bus, nil)
+	defer mgr.StopAll(context.Background())
+
+	// Empty buffer initially
+	size, err := mgr.LogSize("test-service")
+	require.NoError(t, err)
+	assert.Equal(t, 0, size)
+
+	// Start service to generate some output
+	err = mgr.Start(context.Background(), "test-service")
+	require.NoError(t, err)
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Buffer should have some lines now
+	size, err = mgr.LogSize("test-service")
+	require.NoError(t, err)
+	assert.Greater(t, size, 0)
+}
+
+func TestManager_LogSize_NotFound(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	mgr := NewManager(nil, bus, nil)
+
+	_, err := mgr.LogSize("nonexistent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}

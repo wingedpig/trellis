@@ -269,6 +269,11 @@ func (p *Process) HasParser() bool {
 	return p.logs.HasParser()
 }
 
+// LogSize returns the number of lines in the log buffer.
+func (p *Process) LogSize() int {
+	return p.logs.Size()
+}
+
 // ClearLogs clears the log buffer.
 func (p *Process) ClearLogs() {
 	p.logs.Clear()

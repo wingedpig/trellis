@@ -78,6 +78,13 @@ func (m *mockServiceManager) Logs(name string, lines int) ([]string, error) {
 	return []string{"log line 1", "log line 2"}, nil
 }
 
+func (m *mockServiceManager) LogSize(name string) (int, error) {
+	if _, ok := m.services[name]; !ok {
+		return 0, &serviceNotFoundError{name: name}
+	}
+	return 2, nil
+}
+
 func (m *mockServiceManager) ClearLogs(name string) error {
 	if _, ok := m.services[name]; !ok {
 		return &serviceNotFoundError{name: name}

@@ -532,6 +532,7 @@ log_viewers: [
 
     source: {
       type: "ssh"                 // "file", "ssh", "command", "docker", "kubernetes"
+                                  // Note: "service" sources are auto-generated for services with parsers
       host: "web01.example.com"
       path: "/var/log/nginx"      // Log directory
       current: "access.log"       // Active log file name
@@ -588,6 +589,8 @@ trace_groups: [
   }
 ]
 ```
+
+**Auto-generated `services` group:** When services have `logging.parser` configured (directly or via `logging_defaults`), Trellis automatically creates `svc:*` log viewers and a `services` trace group. Use `trellis-ctl trace <id> services -since 1h` to search across dev service logs with no additional configuration. If you define a `services` trace group in config, the auto-generated viewers are appended to it.
 
 ### crashes
 
