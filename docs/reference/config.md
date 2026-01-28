@@ -237,6 +237,18 @@ Trellis searches for configuration in this order:
       confirm_message: "This will delete all data. Continue?"
       restart_services: true
     }
+    {
+      id: "deploy"
+      name: "Deploy"
+      inputs: [
+        { name: "environment", type: "select", label: "Environment", options: ["staging", "production"], default: "staging", required: true }
+        { name: "deploy_date", type: "datepicker", label: "Deploy Date" }
+        { name: "dry_run", type: "checkbox", label: "Dry run", default: false }
+      ]
+      confirm: true
+      confirm_message: "Deploy to {{ .Inputs.environment }}?"
+      command: ["./deploy.sh", "--env={{ .Inputs.environment }}", "--date={{ .Inputs.deploy_date }}", "{{ if .Inputs.dry_run }}--dry-run{{ end }}"]
+    }
   ]
 
   ui: {
@@ -398,9 +410,69 @@ workflows: [
     confirm_message: "Are you sure?"
     requires_stopped: ["api"]     // Services to stop first
     restart_services: false       // Restart watched services after
+
+    // Input parameters (prompts user before execution)
+    inputs: [
+      {
+        name: "environment"       // Variable name for templates
+        type: "select"            // "text", "select", "checkbox", or "datepicker"
+        label: "Target Environment"
+        options: ["staging", "production"]
+        default: "staging"
+        required: true
+      }
+      {
+        name: "version"
+        type: "text"
+        label: "Version Tag"
+        placeholder: "e.g., v1.2.3"
+      }
+      {
+        name: "deploy_date"
+        type: "datepicker"
+        label: "Deploy Date"
+        // default: "2024-01-15"  // Optional, defaults to today
+      }
+      {
+        name: "dry_run"
+        type: "checkbox"
+        label: "Dry run (don't actually deploy)"
+        default: false
+      }
+    ]
   }
 ]
 ```
+
+#### Workflow Inputs
+
+Workflows can define input parameters that prompt the user with a dialog before execution:
+
+| Input Type | Description | Fields |
+|------------|-------------|--------|
+| `text` | Free-form text input | `placeholder`, `default`, `required` |
+| `select` | Dropdown with predefined options | `options` (array), `default`, `required` |
+| `checkbox` | Boolean toggle | `default` (bool) |
+| `datepicker` | Date selector | `default` (YYYY-MM-DD string), `required` |
+
+Input values are available in command and confirm_message templates via `{{ .Inputs.name }}`:
+
+```hjson
+{
+  id: "deploy"
+  name: "Deploy"
+  inputs: [
+    { name: "env", type: "select", options: ["staging", "prod"], required: true }
+    { name: "scheduled_date", type: "datepicker", label: "Scheduled Date" }
+    { name: "dry_run", type: "checkbox", label: "Dry run", default: false }
+  ]
+  confirm: true
+  confirm_message: "Deploy to {{ .Inputs.env }} on {{ .Inputs.scheduled_date }}?"
+  command: ["./deploy.sh", "--env={{ .Inputs.env }}", "--date={{ .Inputs.scheduled_date }}", "{{ if .Inputs.dry_run }}--dry-run{{ end }}"]
+}
+```
+
+The datepicker defaults to today's date if no default is specified. Date values are passed as `YYYY-MM-DD` strings (e.g., `2024-01-15`).
 
 ### terminal
 
@@ -610,6 +682,7 @@ ui: {
 | `{{.Worktree.Binaries}}` | Configured binaries path |
 | `{{.Worktree.Name}}` | Worktree directory name |
 | `{{.Service.Name}}` | Current service name |
+| `{{.Inputs.<name>}}` | Workflow input value (in workflow commands/confirm_message only) |
 
 ## Template Functions
 

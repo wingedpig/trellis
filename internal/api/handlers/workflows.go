@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -47,6 +48,11 @@ func (h *WorkflowHandler) Get(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, wf)
 }
 
+// workflowRunRequest represents the JSON body for running a workflow with inputs.
+type workflowRunRequest struct {
+	Inputs map[string]any `json:"inputs"`
+}
+
 // Run executes a workflow.
 func (h *WorkflowHandler) Run(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -56,6 +62,22 @@ func (h *WorkflowHandler) Run(w http.ResponseWriter, r *http.Request) {
 	worktreeName := r.URL.Query().Get("worktree")
 
 	opts := workflow.RunOptions{}
+
+	// Parse inputs from request body if present (check Content-Type since ContentLength may be -1)
+	contentType := r.Header.Get("Content-Type")
+	if r.Body != nil && (contentType == "application/json" || r.ContentLength > 0) {
+		var req workflowRunRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// Only error if we expected JSON content
+			if contentType == "application/json" {
+				WriteError(w, http.StatusBadRequest, ErrWorkflowError, "invalid request body: "+err.Error())
+				return
+			}
+			// Otherwise ignore decode errors (empty body is fine for workflows without inputs)
+		} else {
+			opts.Inputs = req.Inputs
+		}
+	}
 
 	// If worktree specified, resolve to path
 	if worktreeName != "" && h.worktreeMgr != nil {

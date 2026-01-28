@@ -302,6 +302,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			ConfirmMessage:  wf.ConfirmMessage,
 			RequiresStopped: wf.RequiresStopped,
 			RestartServices: wf.RestartServices,
+			Inputs:          convertWorkflowInputs(wf.Inputs),
 		})
 	}
 
@@ -528,6 +529,7 @@ func (app *App) Initialize(ctx context.Context) error {
 					ConfirmMessage:  wf.ConfirmMessage,
 					RequiresStopped: wf.RequiresStopped,
 					RestartServices: wf.RestartServices,
+					Inputs:          convertWorkflowInputs(wf.Inputs),
 				})
 			}
 			app.workflowRunner.UpdateConfig(workflowConfigs, worktreePath)
@@ -860,6 +862,26 @@ func getCommandsAsArray(cmds interface{}) [][]string {
 		parsed := getCommandAsStrings(cmd)
 		if len(parsed) > 0 {
 			result = append(result, parsed)
+		}
+	}
+	return result
+}
+
+// convertWorkflowInputs converts config.WorkflowInput to workflow.WorkflowInput.
+func convertWorkflowInputs(inputs []config.WorkflowInput) []workflow.WorkflowInput {
+	if len(inputs) == 0 {
+		return nil
+	}
+	result := make([]workflow.WorkflowInput, len(inputs))
+	for i, input := range inputs {
+		result[i] = workflow.WorkflowInput{
+			Name:        input.Name,
+			Type:        input.Type,
+			Label:       input.Label,
+			Placeholder: input.Placeholder,
+			Options:     input.Options,
+			Default:     input.Default,
+			Required:    input.Required,
 		}
 	}
 	return result

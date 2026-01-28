@@ -1132,6 +1132,20 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         color: var(--trellis-text-muted);
         margin-right: 8px;
     }
+    .logviewer-expanded-content .field-name .copy-btn {
+        margin-right: 6px;
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 11px;
+        transition: opacity 0.15s, color 0.15s;
+    }
+    .logviewer-expanded-content .field-name .copy-btn:hover {
+        opacity: 1;
+    }
+    .logviewer-expanded-content .field-name .copy-btn.copied {
+        opacity: 1;
+        color: var(--bs-success);
+    }
     .logviewer-expanded-content .field-value {
         color: var(--bs-body-color);
     }
@@ -1325,37 +1339,37 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                         <td>Show this help</td>
                     </tr>
                     `)
-//line views/terminal.qtpl:926
+//line views/terminal.qtpl:940
 	if len(p.Shortcuts) > 0 {
-//line views/terminal.qtpl:926
+//line views/terminal.qtpl:940
 		qw422016.N().S(`
                     <tr><td colspan="2" style="padding-top: 12px;"><strong>Custom Shortcuts</strong></td></tr>
                     `)
-//line views/terminal.qtpl:928
+//line views/terminal.qtpl:942
 		for _, sc := range p.Shortcuts {
-//line views/terminal.qtpl:928
+//line views/terminal.qtpl:942
 			qw422016.N().S(`
                     <tr>
                         <td>`)
-//line views/terminal.qtpl:930
+//line views/terminal.qtpl:944
 			streamshortcutKeyDisplay(qw422016, sc.Key)
-//line views/terminal.qtpl:930
+//line views/terminal.qtpl:944
 			qw422016.N().S(`</td>
                         <td>Jump to `)
-//line views/terminal.qtpl:931
+//line views/terminal.qtpl:945
 			qw422016.E().S(sc.Window)
-//line views/terminal.qtpl:931
+//line views/terminal.qtpl:945
 			qw422016.N().S(`</td>
                     </tr>
                     `)
-//line views/terminal.qtpl:933
+//line views/terminal.qtpl:947
 		}
-//line views/terminal.qtpl:933
+//line views/terminal.qtpl:947
 		qw422016.N().S(`
                     `)
-//line views/terminal.qtpl:934
+//line views/terminal.qtpl:948
 	}
-//line views/terminal.qtpl:934
+//line views/terminal.qtpl:948
 	qw422016.N().S(`
                 </table>
             </div>
@@ -1458,12 +1472,33 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     </div>
 </div>
 
+<!-- Workflow Inputs Modal -->
+<div class="modal fade" id="workflowInputsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="workflowInputsTitle">Workflow Inputs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="workflowInputsForm">
+                    <!-- Dynamic inputs will be inserted here -->
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="workflowInputsContinue">Continue</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 `)
-//line views/terminal.qtpl:1038
+//line views/terminal.qtpl:1073
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "terminal")
-//line views/terminal.qtpl:1038
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1471,69 +1506,69 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="/static/js/logviewer.js"></script>
 <script>
     const initialSession = '`)
-//line views/terminal.qtpl:1044
+//line views/terminal.qtpl:1079
 	qw422016.E().S(JSAttr(p.Session))
-//line views/terminal.qtpl:1044
+//line views/terminal.qtpl:1079
 	qw422016.N().S(`';
     const initialWindow = '`)
-//line views/terminal.qtpl:1045
+//line views/terminal.qtpl:1080
 	qw422016.E().S(JSAttr(p.Window))
-//line views/terminal.qtpl:1045
+//line views/terminal.qtpl:1080
 	qw422016.N().S(`';
     const initialIsRemote = `)
-//line views/terminal.qtpl:1046
+//line views/terminal.qtpl:1081
 	qw422016.E().V(p.IsRemote)
-//line views/terminal.qtpl:1046
+//line views/terminal.qtpl:1081
 	qw422016.N().S(`;
     const initialViewType = '`)
-//line views/terminal.qtpl:1047
+//line views/terminal.qtpl:1082
 	qw422016.E().S(JSAttr(p.ViewType))
-//line views/terminal.qtpl:1047
+//line views/terminal.qtpl:1082
 	qw422016.N().S(`';
     const initialServiceName = '`)
-//line views/terminal.qtpl:1048
+//line views/terminal.qtpl:1083
 	qw422016.E().S(JSAttr(p.ServiceName))
-//line views/terminal.qtpl:1048
+//line views/terminal.qtpl:1083
 	qw422016.N().S(`';
     const initialLogViewerName = '`)
-//line views/terminal.qtpl:1049
+//line views/terminal.qtpl:1084
 	qw422016.E().S(JSAttr(p.LogViewerName))
-//line views/terminal.qtpl:1049
+//line views/terminal.qtpl:1084
 	qw422016.N().S(`';
     const initialWorktree = '`)
-//line views/terminal.qtpl:1050
+//line views/terminal.qtpl:1085
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/terminal.qtpl:1050
+//line views/terminal.qtpl:1085
 	qw422016.N().S(`';
     const projectName = '`)
-//line views/terminal.qtpl:1051
+//line views/terminal.qtpl:1086
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/terminal.qtpl:1051
+//line views/terminal.qtpl:1086
 	qw422016.N().S(`';
     const customShortcuts = `)
-//line views/terminal.qtpl:1052
+//line views/terminal.qtpl:1087
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:1052
+//line views/terminal.qtpl:1087
 	qw422016.N().S(`;
     const notificationSettings = `)
-//line views/terminal.qtpl:1053
+//line views/terminal.qtpl:1088
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:1053
+//line views/terminal.qtpl:1088
 	qw422016.N().S(`;
     const initialServices = `)
-//line views/terminal.qtpl:1054
+//line views/terminal.qtpl:1089
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:1054
+//line views/terminal.qtpl:1089
 	qw422016.N().S(`;
     const initialLinks = `)
-//line views/terminal.qtpl:1055
+//line views/terminal.qtpl:1090
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:1055
+//line views/terminal.qtpl:1090
 	qw422016.N().S(`;
     const initialLogViewers = `)
-//line views/terminal.qtpl:1056
+//line views/terminal.qtpl:1091
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:1056
+//line views/terminal.qtpl:1091
 	qw422016.N().S(`;
 
     // Map of terminalKey -> {term, fitAddon, ws, container, isRemote}
@@ -1552,9 +1587,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
     // Clear history if server was restarted (session ID changed)
     const currentSessionID = '`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.E().S(JSAttr(p.SessionID()))
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`';
     const storedSessionID = sessionStorage.getItem('trellis-session-id');
     if (storedSessionID !== currentSessionID) {
@@ -2790,6 +2825,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
     });
 
+    // Store workflow configurations for inputs access
+    let workflowConfigs = {};
+
     // Load workflow list for selector
     fetch('/api/v1/workflows')
         .then(r => r.json())
@@ -2799,6 +2837,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 data.data.sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
                 for (const wf of data.data) {
                     if (wf.ID && wf.ID.startsWith('_')) continue;
+                    // Store full workflow config
+                    workflowConfigs[wf.ID] = wf;
                     const opt = document.createElement('option');
                     opt.value = wf.ID;
                     opt.textContent = wf.Name;
@@ -2806,6 +2846,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     opt.dataset.confirm = wf.Confirm || false;
                     opt.dataset.confirmMessage = wf.ConfirmMessage || '';
                     opt.dataset.restartServices = wf.RestartServices || false;
+                    opt.dataset.hasInputs = (wf.Inputs && wf.Inputs.length > 0) ? 'true' : 'false';
                     select.appendChild(opt);
                 }
             }
@@ -2819,7 +2860,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 const confirm = selectedOption.dataset.confirm === 'true';
                 const confirmMessage = selectedOption.dataset.confirmMessage || '';
                 const restartServices = selectedOption.dataset.restartServices === 'true';
-                runWorkflow(this.value, confirm, confirmMessage, restartServices);
+                const hasInputs = selectedOption.dataset.hasInputs === 'true';
+                const wfConfig = workflowConfigs[this.value];
+                runWorkflow(this.value, confirm, confirmMessage, restartServices, hasInputs ? wfConfig : null);
                 this.value = '';
             }
         });
@@ -2854,7 +2897,18 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         // Cmd+V (Mac) or Ctrl+Shift+V (others) to paste into terminal
+        // But only if not focused on an input field or modal is not open
         if ((e.metaKey && e.key === 'v') || (e.ctrlKey && e.shiftKey && e.key === 'V')) {
+            // Check if we're in an input field or a modal is open
+            const activeEl = document.activeElement;
+            const isInInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable);
+            const modalOpen = document.querySelector('.modal.show') !== null;
+
+            if (isInInput || modalOpen) {
+                // Let the default paste behavior work for inputs/modals
+                return;
+            }
+
             e.preventDefault();
             navigator.clipboard.readText().then(text => {
                 const termData = terminals[currentTerminalKey];
@@ -3415,20 +3469,198 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         });
     }
 
-    function runWorkflow(id, requiresConfirm, confirmMsg, restartServices) {
-        if (requiresConfirm) {
+    function runWorkflow(id, requiresConfirm, confirmMsg, restartServices, wfConfig) {
+        // If workflow has inputs, show inputs dialog first
+        if (wfConfig && wfConfig.Inputs && wfConfig.Inputs.length > 0) {
+            showWorkflowInputs(wfConfig).then(function(inputs) {
+                if (inputs === null) return; // User cancelled
+
+                // Now check for confirmation
+                if (requiresConfirm) {
+                    // Expand confirm message with inputs
+                    let msg = confirmMsg || 'Are you sure you want to run this workflow?';
+                    msg = expandTemplateWithInputs(msg, inputs);
+                    showWorkflowConfirm(msg, 'Run Workflow').then(function(confirmed) {
+                        if (confirmed) {
+                            executeWorkflow(id, restartServices, inputs);
+                        }
+                    });
+                } else {
+                    executeWorkflow(id, restartServices, inputs);
+                }
+            });
+        } else if (requiresConfirm) {
             const msg = confirmMsg || 'Are you sure you want to run this workflow?';
             showWorkflowConfirm(msg, 'Run Workflow').then(function(confirmed) {
                 if (confirmed) {
-                    executeWorkflow(id, restartServices);
+                    executeWorkflow(id, restartServices, null);
                 }
             });
         } else {
-            executeWorkflow(id, restartServices);
+            executeWorkflow(id, restartServices, null);
         }
     }
 
-    function executeWorkflow(id, restartServices) {
+    // Simple template expansion for confirm messages
+    function expandTemplateWithInputs(template, inputs) {
+        if (!template || !inputs) return template;
+        // Replace {{ .Inputs.name }} patterns
+        return template.replace(/\{\{\s*\.Inputs\.(\w+)\s*\}\}/g, function(match, key) {
+            return inputs[key] !== undefined ? inputs[key] : match;
+        });
+    }
+
+    // Show workflow inputs dialog and return a promise with input values
+    function showWorkflowInputs(wfConfig) {
+        return new Promise(function(resolve) {
+            const form = document.getElementById('workflowInputsForm');
+            const titleEl = document.getElementById('workflowInputsTitle');
+
+            // Set title
+            titleEl.textContent = wfConfig.Name + ' - Inputs';
+
+            // Clear and build form
+            form.innerHTML = '';
+
+            for (const input of wfConfig.Inputs) {
+                const div = document.createElement('div');
+                div.className = 'mb-3';
+
+                const label = document.createElement('label');
+                label.className = 'form-label';
+                label.textContent = input.Label || input.Name;
+                if (input.Required) {
+                    const required = document.createElement('span');
+                    required.className = 'text-danger';
+                    required.textContent = ' *';
+                    label.appendChild(required);
+                }
+                label.setAttribute('for', 'wf-input-' + input.Name);
+                div.appendChild(label);
+
+                if (input.Type === 'select') {
+                    const select = document.createElement('select');
+                    select.className = 'form-select';
+                    select.id = 'wf-input-' + input.Name;
+                    select.name = input.Name;
+                    if (input.Required) select.required = true;
+
+                    // Add empty option if not required
+                    if (!input.Required) {
+                        const emptyOpt = document.createElement('option');
+                        emptyOpt.value = '';
+                        emptyOpt.textContent = '-- Select --';
+                        select.appendChild(emptyOpt);
+                    }
+
+                    for (const opt of (input.Options || [])) {
+                        const option = document.createElement('option');
+                        option.value = opt;
+                        option.textContent = opt;
+                        if (input.Default === opt) option.selected = true;
+                        select.appendChild(option);
+                    }
+                    div.appendChild(select);
+
+                } else if (input.Type === 'checkbox') {
+                    const checkDiv = document.createElement('div');
+                    checkDiv.className = 'form-check';
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'form-check-input';
+                    checkbox.id = 'wf-input-' + input.Name;
+                    checkbox.name = input.Name;
+                    if (input.Default === true) checkbox.checked = true;
+
+                    const checkLabel = document.createElement('label');
+                    checkLabel.className = 'form-check-label';
+                    checkLabel.setAttribute('for', 'wf-input-' + input.Name);
+                    checkLabel.textContent = input.Label || input.Name;
+
+                    checkDiv.appendChild(checkbox);
+                    checkDiv.appendChild(checkLabel);
+
+                    // For checkbox, don't add the label above
+                    div.innerHTML = '';
+                    div.appendChild(checkDiv);
+
+                } else if (input.Type === 'datepicker') {
+                    const dateInput = document.createElement('input');
+                    dateInput.type = 'date';
+                    dateInput.className = 'form-control';
+                    dateInput.id = 'wf-input-' + input.Name;
+                    dateInput.name = input.Name;
+                    if (input.Default) {
+                        dateInput.value = input.Default;
+                    } else {
+                        // Default to today's date
+                        dateInput.value = new Date().toISOString().split('T')[0];
+                    }
+                    if (input.Required) dateInput.required = true;
+                    div.appendChild(dateInput);
+
+                } else {
+                    // Default to text input
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.className = 'form-control';
+                    textInput.id = 'wf-input-' + input.Name;
+                    textInput.name = input.Name;
+                    if (input.Placeholder) textInput.placeholder = input.Placeholder;
+                    if (input.Default) textInput.value = input.Default;
+                    if (input.Required) textInput.required = true;
+                    div.appendChild(textInput);
+                }
+
+                form.appendChild(div);
+            }
+
+            const modal = new bootstrap.Modal(document.getElementById('workflowInputsModal'));
+            const continueBtn = document.getElementById('workflowInputsContinue');
+            const modalEl = document.getElementById('workflowInputsModal');
+
+            // Clone button to remove old listeners
+            const newContinueBtn = continueBtn.cloneNode(true);
+            continueBtn.parentNode.replaceChild(newContinueBtn, continueBtn);
+
+            newContinueBtn.addEventListener('click', function() {
+                // Validate required fields
+                if (!form.checkValidity()) {
+                    form.reportValidity();
+                    return;
+                }
+
+                // Collect input values
+                const inputs = {};
+                for (const input of wfConfig.Inputs) {
+                    const el = document.getElementById('wf-input-' + input.Name);
+                    if (input.Type === 'checkbox') {
+                        inputs[input.Name] = el.checked;
+                    } else {
+                        inputs[input.Name] = el.value;
+                    }
+                }
+
+                modal.hide();
+                resolve(inputs);
+            }, { once: true });
+
+            modalEl.addEventListener('hidden.bs.modal', function() {
+                resolve(null); // User cancelled
+            }, { once: true });
+
+            modal.show();
+
+            // Focus first input when modal is shown
+            modalEl.addEventListener('shown.bs.modal', function() {
+                const firstInput = form.querySelector('input, select');
+                if (firstInput) firstInput.focus();
+            }, { once: true });
+        });
+    }
+
+    function executeWorkflow(id, restartServices, inputs) {
         const output = document.querySelector('#workflow-output code');
         showWorkflowOutput('Running: ' + id);
 
@@ -3450,23 +3682,34 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                         output.textContent += 'Watched services stopped.\n\n';
                     }
                     // Now run the actual workflow
-                    runActualWorkflow(id, output);
+                    runActualWorkflow(id, output, inputs);
                 })
                 .catch(err => {
                     output.textContent += 'Error stopping services: ' + err + '\n';
                     // Still try to run the workflow
-                    runActualWorkflow(id, output);
+                    runActualWorkflow(id, output, inputs);
                 });
         } else {
             output.textContent = 'Starting workflow...\n';
-            runActualWorkflow(id, output);
+            runActualWorkflow(id, output, inputs);
         }
     }
 
     let currentWorkflowWs = null; // Track current workflow WebSocket connection
 
-    function runActualWorkflow(id, output) {
-        fetch('/api/v1/workflows/' + id + '/run?worktree=' + encodeURIComponent(currentWorktree), { method: 'POST' })
+    function runActualWorkflow(id, output, inputs) {
+        const fetchOptions = {
+            method: 'POST',
+            headers: {}
+        };
+
+        // If we have inputs, send them as JSON body
+        if (inputs && Object.keys(inputs).length > 0) {
+            fetchOptions.headers['Content-Type'] = 'application/json';
+            fetchOptions.body = JSON.stringify({ inputs: inputs });
+        }
+
+        fetch('/api/v1/workflows/' + id + '/run?worktree=' + encodeURIComponent(currentWorktree), fetchOptions)
             .then(r => r.json())
             .then(data => {
                 if (data.error) {
@@ -4970,13 +5213,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         throw new Error(`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`Invalid time format: ${input}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`);
     }
 
@@ -5012,63 +5255,63 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         try {
             // Build query URL
             let url = `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`/api/v1/logs/${encodeURIComponent(currentLogViewerName)}/history`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`?start=${encodeURIComponent(startTime)}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`&end=${encodeURIComponent(endTime)}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             if (grep) {
                 url += `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`&grep=${encodeURIComponent(grep)}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             }
             if (before > 0) {
                 url += `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`&before=${before}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             }
             if (after > 0) {
                 url += `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`&after=${after}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             }
 
@@ -5076,13 +5319,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`HTTP ${response.status}`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`);
             }
 
@@ -5119,13 +5362,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             // Update connection status
             const statusEl = document.getElementById('logviewer-status');
             statusEl.textContent = `)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`${data.entries?.length || 0} results`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1108
 	qw422016.N().S(`;
             statusEl.className = 'logviewer-connection-status text-info';
 
@@ -5165,36 +5408,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4610
+//line views/terminal.qtpl:4853
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4610
+//line views/terminal.qtpl:4853
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 }
 
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 }
 
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 	return qs422016
-//line views/terminal.qtpl:4611
+//line views/terminal.qtpl:4854
 }

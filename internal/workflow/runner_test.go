@@ -670,3 +670,186 @@ func TestRunner_MultipleSubscribers_Completion(t *testing.T) {
 		runner.Unsubscribe(runID, channels[i])
 	}
 }
+
+func TestRunner_Run_WithInputs(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	// Create workflow with template placeholders
+	workflows := []WorkflowConfig{
+		{
+			ID:       "deploy",
+			Name:     "Deploy",
+			Commands: [][]string{{"echo", "Deploying to {{ .Inputs.environment }} version {{ .Inputs.version }}"}},
+			Inputs: []WorkflowInput{
+				{Name: "environment", Type: "select", Options: []string{"staging", "production"}},
+				{Name: "version", Type: "text"},
+			},
+		},
+	}
+
+	runner := NewRunner(workflows, bus, nil, "")
+
+	// Run with inputs
+	opts := RunOptions{
+		Inputs: map[string]any{
+			"environment": "production",
+			"version":     "v1.2.3",
+		},
+	}
+
+	status, err := runner.RunWithOptions(context.Background(), "deploy", opts)
+	require.NoError(t, err)
+	assert.Equal(t, "Deploy", status.Name)
+
+	// Wait for completion
+	time.Sleep(100 * time.Millisecond)
+
+	finalStatus, ok := runner.Status(status.ID)
+	require.True(t, ok)
+	assert.Equal(t, StateSuccess, finalStatus.State)
+	assert.Contains(t, finalStatus.Output, "Deploying to production version v1.2.3")
+}
+
+func TestRunner_Run_WithInputs_Conditional(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	// Create workflow with conditional template
+	workflows := []WorkflowConfig{
+		{
+			ID:       "build",
+			Name:     "Build",
+			Commands: [][]string{{"echo", "Building{{ if .Inputs.dry_run }} (dry run){{ end }}"}},
+			Inputs: []WorkflowInput{
+				{Name: "dry_run", Type: "checkbox", Default: false},
+			},
+		},
+	}
+
+	runner := NewRunner(workflows, bus, nil, "")
+
+	// Test with dry_run=true
+	opts := RunOptions{
+		Inputs: map[string]any{
+			"dry_run": true,
+		},
+	}
+
+	status, err := runner.RunWithOptions(context.Background(), "build", opts)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	finalStatus, ok := runner.Status(status.ID)
+	require.True(t, ok)
+	assert.Equal(t, StateSuccess, finalStatus.State)
+	assert.Contains(t, finalStatus.Output, "Building (dry run)")
+
+	// Test with dry_run=false
+	opts2 := RunOptions{
+		Inputs: map[string]any{
+			"dry_run": false,
+		},
+	}
+
+	status2, err := runner.RunWithOptions(context.Background(), "build", opts2)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	finalStatus2, ok := runner.Status(status2.ID)
+	require.True(t, ok)
+	assert.Equal(t, StateSuccess, finalStatus2.State)
+	assert.Contains(t, finalStatus2.Output, "Building\n")
+	assert.NotContains(t, finalStatus2.Output, "dry run")
+}
+
+func TestExpandCommandsWithInputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		commands [][]string
+		inputs   map[string]any
+		expected [][]string
+	}{
+		{
+			name:     "no inputs",
+			commands: [][]string{{"echo", "hello"}},
+			inputs:   nil,
+			expected: [][]string{{"echo", "hello"}},
+		},
+		{
+			name:     "simple substitution",
+			commands: [][]string{{"echo", "{{ .Inputs.name }}"}},
+			inputs:   map[string]any{"name": "world"},
+			expected: [][]string{{"echo", "world"}},
+		},
+		{
+			name:     "multiple inputs",
+			commands: [][]string{{"deploy.sh", "--env={{ .Inputs.env }}", "--version={{ .Inputs.version }}"}},
+			inputs:   map[string]any{"env": "prod", "version": "v1.0"},
+			expected: [][]string{{"deploy.sh", "--env=prod", "--version=v1.0"}},
+		},
+		{
+			name:     "conditional",
+			commands: [][]string{{"echo", "{{ if .Inputs.verbose }}--verbose{{ end }}"}},
+			inputs:   map[string]any{"verbose": true},
+			expected: [][]string{{"echo", "--verbose"}},
+		},
+		{
+			name:     "conditional false",
+			commands: [][]string{{"echo", "{{ if .Inputs.verbose }}--verbose{{ end }}"}},
+			inputs:   map[string]any{"verbose": false},
+			expected: [][]string{{"echo", ""}},
+		},
+		{
+			name:     "no template markers",
+			commands: [][]string{{"echo", "plain text"}},
+			inputs:   map[string]any{"unused": "value"},
+			expected: [][]string{{"echo", "plain text"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := expandCommandsWithInputs(tt.commands, tt.inputs)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExpandConfirmMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		message  string
+		inputs   map[string]any
+		expected string
+	}{
+		{
+			name:     "empty message",
+			message:  "",
+			inputs:   map[string]any{"env": "prod"},
+			expected: "",
+		},
+		{
+			name:     "no inputs",
+			message:  "Deploy to {{ .Inputs.env }}?",
+			inputs:   nil,
+			expected: "Deploy to {{ .Inputs.env }}?",
+		},
+		{
+			name:     "simple substitution",
+			message:  "Deploy {{ .Inputs.version }} to {{ .Inputs.env }}?",
+			inputs:   map[string]any{"env": "production", "version": "v1.2.3"},
+			expected: "Deploy v1.2.3 to production?",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := expandConfirmMessage(tt.message, tt.inputs)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

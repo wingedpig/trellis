@@ -126,18 +126,30 @@ type ServiceLoggingConfig struct {
 	Layout     []LayoutColumnConfig       `json:"layout"` // Columns to display (in order)
 }
 
+// WorkflowInput defines a parameter that prompts the user before execution.
+type WorkflowInput struct {
+	Name        string   `json:"name"`        // Variable name for templates
+	Type        string   `json:"type"`        // "text", "select", "checkbox"
+	Label       string   `json:"label"`       // Display label
+	Placeholder string   `json:"placeholder"` // Placeholder for text inputs
+	Options     []string `json:"options"`     // Options for select type
+	Default     any      `json:"default"`     // Default value
+	Required    bool     `json:"required"`    // Whether required
+}
+
 // WorkflowConfig defines a workflow action.
 type WorkflowConfig struct {
-	ID              string      `json:"id"`
-	Name            string      `json:"name"`
-	Command         interface{} `json:"command"`  // string or []string (single command, for backwards compat)
-	Commands        interface{} `json:"commands"` // array of commands to run in sequence
-	Timeout         string      `json:"timeout"`
-	OutputParser    string      `json:"output_parser"`
-	Confirm         bool        `json:"confirm"`
-	ConfirmMessage  string      `json:"confirm_message"`
-	RequiresStopped []string    `json:"requires_stopped"`
-	RestartServices bool        `json:"restart_services"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Command         interface{}     `json:"command"`  // string or []string (single command, for backwards compat)
+	Commands        interface{}     `json:"commands"` // array of commands to run in sequence
+	Timeout         string          `json:"timeout"`
+	OutputParser    string          `json:"output_parser"`
+	Confirm         bool            `json:"confirm"`
+	ConfirmMessage  string          `json:"confirm_message"`
+	RequiresStopped []string        `json:"requires_stopped"`
+	RestartServices bool            `json:"restart_services"`
+	Inputs          []WorkflowInput `json:"inputs"` // Input parameters to prompt user for
 }
 
 // CrashesConfig configures crash history storage.
@@ -282,6 +294,7 @@ type TemplateContext struct {
 	Worktree WorktreeTemplateData
 	Project  ProjectTemplateData
 	Service  *ServiceTemplateData
+	Inputs   map[string]any // User-supplied workflow input values
 }
 
 // WorktreeTemplateData provides worktree data for templates.

@@ -5,6 +5,7 @@ package workflow
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/events"
@@ -321,6 +323,21 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 		status.Duration = status.FinishedAt.Sub(status.StartedAt)
 		state.mu.Unlock()
 		return
+	}
+
+	// Expand command templates with inputs
+	if len(opts.Inputs) > 0 {
+		var err error
+		commands, err = expandCommandsWithInputs(commands, opts.Inputs)
+		if err != nil {
+			state.mu.Lock()
+			status.State = StateFailed
+			status.Error = fmt.Sprintf("failed to expand inputs: %v", err)
+			status.FinishedAt = time.Now()
+			status.Duration = status.FinishedAt.Sub(status.StartedAt)
+			state.mu.Unlock()
+			return
+		}
 	}
 
 	// Set working directory
@@ -753,4 +770,65 @@ func (state *runState) notifyComplete(runID string, status *WorkflowStatus) {
 			// Timeout waiting for this subscriber, continue with others
 		}
 	}
+}
+
+// inputTemplateData is the data structure passed to templates for input expansion.
+type inputTemplateData struct {
+	Inputs map[string]any
+}
+
+// expandCommandsWithInputs expands Go templates in command arguments using the provided inputs.
+func expandCommandsWithInputs(commands [][]string, inputs map[string]any) ([][]string, error) {
+	if len(inputs) == 0 {
+		return commands, nil
+	}
+
+	data := inputTemplateData{Inputs: inputs}
+	result := make([][]string, len(commands))
+
+	for i, cmd := range commands {
+		expandedCmd := make([]string, len(cmd))
+		for j, arg := range cmd {
+			expanded, err := expandTemplate(arg, data)
+			if err != nil {
+				return nil, fmt.Errorf("failed to expand template in command arg %q: %w", arg, err)
+			}
+			expandedCmd[j] = expanded
+		}
+		result[i] = expandedCmd
+	}
+
+	return result, nil
+}
+
+// expandTemplate expands a single template string with the provided data.
+func expandTemplate(text string, data inputTemplateData) (string, error) {
+	if !strings.Contains(text, "{{") {
+		return text, nil
+	}
+
+	tmpl, err := template.New("").Parse(text)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+// expandConfirmMessage expands the confirm message template with inputs.
+func expandConfirmMessage(message string, inputs map[string]any) string {
+	if message == "" || len(inputs) == 0 {
+		return message
+	}
+
+	expanded, err := expandTemplate(message, inputTemplateData{Inputs: inputs})
+	if err != nil {
+		return message // Return original on error
+	}
+	return expanded
 }

@@ -329,13 +329,34 @@ function formatLocalDateTime(isoString) {
     return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+// Format a time range smartly:
+// - Same day: "Jan 15, 10:30 - 14:45"
+// - Different days: "Jan 15, 10:30 - Jan 16, 14:45"
+function formatTimeRange(startISO, endISO) {
+    var start = new Date(startISO);
+    var end = new Date(endISO);
+
+    var startDate = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    var endDate = end.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    var startTime = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    var endTime = end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (startDate === endDate) {
+        // Same day: show date once
+        return startDate + ', ' + startTime + ' - ' + endTime;
+    } else {
+        // Different days: show both dates
+        return startDate + ', ' + startTime + ' - ' + endDate + ', ' + endTime;
+    }
+}
+
 // Initialize
 (function() {
     document.querySelectorAll('.time-range').forEach(function(el) {
         var start = el.dataset.start;
         var end = el.dataset.end;
         if (start && end) {
-            el.textContent = formatLocalTime(start) + ' - ' + formatLocalTime(end);
+            el.textContent = formatTimeRange(start, end);
         }
     });
     document.querySelectorAll('.created-time').forEach(function(el) {
@@ -357,41 +378,41 @@ function formatLocalDateTime(isoString) {
 </script>
 
 `)
-//line views/trace_report.qtpl:264
+//line views/trace_report.qtpl:285
 	p.StreamFooter(qw422016)
-//line views/trace_report.qtpl:264
+//line views/trace_report.qtpl:285
 	qw422016.N().S(`
 `)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 }
 
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 func (p *TraceReportPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	p.StreamRender(qw422016)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	qt422016.ReleaseWriter(qw422016)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 }
 
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 func (p *TraceReportPage) Render() string {
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	p.WriteRender(qb422016)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	qs422016 := string(qb422016.B)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 	return qs422016
-//line views/trace_report.qtpl:265
+//line views/trace_report.qtpl:286
 }
 
-//line views/trace_report.qtpl:268
+//line views/trace_report.qtpl:289
 func levelBadgeClass(level string) string {
 	switch level {
 	case "ERROR", "error", "ERR":

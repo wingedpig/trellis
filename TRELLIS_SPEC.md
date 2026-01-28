@@ -210,6 +210,7 @@ Configuration values can use template variables:
 | `{{.Project.Root}}` | Main project root | `/home/user/project` |
 | `{{.Project.Name}}` | Project name | `my-project` |
 | `{{.Service.Name}}` | Current service name | `api` |
+| `{{.Inputs.<name>}}` | Workflow input value (workflows only) | `production` |
 
 Templates use Go's `text/template` syntax with additional functions:
 
@@ -2489,6 +2490,33 @@ GET    /api/v1/workflows/:runID/status     # Workflow run status
 GET    /api/v1/workflows/:runID/stream     # WebSocket: stream workflow output
 ```
 
+**Running a workflow with inputs:**
+
+`POST /api/v1/workflows/:id/run?worktree=<name>`
+
+Request body (optional, for workflows with inputs):
+```json
+{
+  "inputs": {
+    "environment": "production",
+    "version": "v1.2.3",
+    "dry_run": true
+  }
+}
+```
+
+Response:
+```json
+{
+  "data": {
+    "ID": "deploy-1706000000000",
+    "Name": "Deploy",
+    "State": "running",
+    "StartedAt": "2024-01-23T10:00:00Z"
+  }
+}
+```
+
 #### Events
 
 ```
@@ -2871,7 +2899,7 @@ Workflows are user-triggered actions:
 
       // Command to run (use either command OR commands, not both)
       // Must be an array where each element is a separate argument.
-      // Templates ({{.Worktree.*}}) are expanded before execution.
+      // Templates ({{.Worktree.*}}, {{.Inputs.*}}) are expanded before execution.
       // For shell features, use: ["sh", "-c", "command | other"]
       command: ["go", "test", "-json", "-count=1", "./..."]
 
@@ -2894,7 +2922,7 @@ Workflows are user-triggered actions:
       // Optional: require user confirmation before running (default: false)
       confirm: false
 
-      // Optional: custom confirmation message
+      // Optional: custom confirmation message (supports {{.Inputs.*}} templates)
       confirm_message: "Are you sure?"
 
       // Optional: specific services that must be stopped before running
@@ -2904,6 +2932,20 @@ Workflows are user-triggered actions:
       // When true: stops services with watching=true → runs workflow → restarts them (if successful)
       // Services with watching: false (e.g., databases) are NOT stopped/restarted
       restart_services: false
+
+      // Optional: input parameters that prompt the user before execution
+      // Values are available in command/confirm_message templates as {{.Inputs.<name>}}
+      inputs: [
+        {
+          name: "environment"     // Variable name for templates (required)
+          type: "select"          // "text", "select", "checkbox", or "datepicker" (required)
+          label: "Environment"    // Display label
+          options: ["staging", "production"]  // For select type only
+          default: "staging"      // Default value
+          required: true          // Whether field is required
+          placeholder: ""         // Placeholder text for text inputs
+        }
+      ]
     }
   ]
 }
@@ -2948,6 +2990,42 @@ Workflows are user-triggered actions:
       output_parser: "go"
       restart_services: true
     }
+    {
+      // Workflow with input parameters
+      id: "deploy"
+      name: "Deploy"
+      inputs: [
+        {
+          name: "environment"
+          type: "select"
+          label: "Target Environment"
+          options: ["staging", "production"]
+          default: "staging"
+          required: true
+        }
+        {
+          name: "version"
+          type: "text"
+          label: "Version Tag"
+          placeholder: "e.g., v1.2.3"
+        }
+        {
+          name: "deploy_date"
+          type: "datepicker"
+          label: "Deploy Date"
+          // Defaults to today if not specified
+        }
+        {
+          name: "dry_run"
+          type: "checkbox"
+          label: "Dry run (don't actually deploy)"
+          default: false
+        }
+      ]
+      confirm: true
+      confirm_message: "Deploy {{ .Inputs.version }} to {{ .Inputs.environment }}?"
+      command: ["./deploy.sh", "--env={{ .Inputs.environment }}", "--version={{ .Inputs.version }}", "--date={{ .Inputs.deploy_date }}", "{{ if .Inputs.dry_run }}--dry-run{{ end }}"]
+    }
   ]
 }
 ```
@@ -2980,20 +3058,22 @@ Workflows execute in the **viewed worktree's directory**, not necessarily the ac
 The working directory is set to the worktree root (e.g., `/home/user/project` for main, `/home/user/project-feature` for a worktree).
 
 **Execution model:**
-1. If `confirm: true`, UI shows confirmation dialog and waits for user approval
-2. If `restart_services: true`, UI calls `_stop_watched` to stop watched services first
-3. Client calls `POST /api/v1/workflows/:id/run?worktree=<name>` (worktree parameter optional)
-4. Server resolves worktree name to path (or uses active worktree if not specified)
-5. Server stops any `requires_stopped` services (if specified)
-6. Server returns immediately with a `runID`
-7. Client opens WebSocket to `GET /api/v1/workflows/:runID/stream`
-8. Workflow executes in background (in the specified worktree's directory):
-   - For single command: runs the command, streaming stdout/stderr
-   - For multiple commands: runs each command sequentially with headers (e.g., `=== Command 1/3: make clean ===`)
-   - If any command fails, subsequent commands are skipped
-9. Server streams output line-by-line over WebSocket as it arrives
-10. When workflow completes, server sends final status and closes connection
-11. If `restart_services: true` and workflow succeeded, server restarts watched services
+1. If workflow has `inputs`, UI shows inputs dialog and collects values from user
+2. If `confirm: true`, UI shows confirmation dialog (with inputs expanded in `confirm_message`) and waits for user approval
+3. If `restart_services: true`, UI calls `_stop_watched` to stop watched services first
+4. Client calls `POST /api/v1/workflows/:id/run?worktree=<name>` with inputs in request body
+5. Server resolves worktree name to path (or uses active worktree if not specified)
+6. Server expands `{{.Inputs.*}}` templates in command arguments using provided input values
+7. Server stops any `requires_stopped` services (if specified)
+8. Server returns immediately with a `runID`
+9. Client opens WebSocket to `GET /api/v1/workflows/:runID/stream`
+10. Workflow executes in background (in the specified worktree's directory):
+    - For single command: runs the command, streaming stdout/stderr
+    - For multiple commands: runs each command sequentially with headers (e.g., `=== Command 1/3: make clean ===`)
+    - If any command fails, subsequent commands are skipped
+11. Server streams output line-by-line over WebSocket as it arrives
+12. When workflow completes, server sends final status and closes connection
+13. If `restart_services: true` and workflow succeeded, server restarts watched services
 
 **Note:** Services with `watching: false` (e.g., databases, external tools) are never stopped/restarted by `restart_services`. Only services with `watching: true` (default) are affected.
 

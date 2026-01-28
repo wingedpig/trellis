@@ -8,6 +8,17 @@ import (
 	"time"
 )
 
+// WorkflowInput defines a parameter that prompts the user before execution.
+type WorkflowInput struct {
+	Name        string   // Variable name for templates
+	Type        string   // "text", "select", "checkbox"
+	Label       string   // Display label
+	Placeholder string   // Placeholder for text inputs
+	Options     []string // Options for select type
+	Default     any      // Default value
+	Required    bool     // Whether required
+}
+
 // WorkflowConfig defines a workflow from configuration.
 type WorkflowConfig struct {
 	ID              string
@@ -20,6 +31,7 @@ type WorkflowConfig struct {
 	ConfirmMessage  string
 	RequiresStopped []string
 	RestartServices bool
+	Inputs          []WorkflowInput // Input parameters to prompt user for
 }
 
 // GetCommands returns the commands to execute, preferring Commands over Command.
@@ -115,6 +127,8 @@ type RunOptions struct {
 	WorkingDir string
 	// Env adds environment variables.
 	Env map[string]string
+	// Inputs provides user-supplied input values for template expansion.
+	Inputs map[string]any
 }
 
 // OutputParser parses workflow output into structured lines.

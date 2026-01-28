@@ -5,6 +5,7 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
 	"text/template"
@@ -29,13 +30,45 @@ func NewTemplateExpander() *TemplateExpander {
 	}
 }
 
+// inputsPlaceholderPrefix is used to temporarily preserve .Inputs references during config expansion.
+const inputsPlaceholderPrefix = "\x00TRELLIS_INPUTS_"
+
 // Expand expands template variables in a string value.
+// Templates referencing .Inputs are preserved (they are expanded at runtime).
 func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, error) {
 	if !strings.Contains(value, "{{") {
 		return value, nil
 	}
 
-	tmpl, err := template.New("").Funcs(e.funcMap).Parse(value)
+	// Temporarily replace .Inputs references with placeholders to preserve them
+	// They will be expanded at runtime when the workflow is executed
+	preserved := value
+	hasInputs := strings.Contains(value, ".Inputs")
+	if hasInputs {
+		// Use a regex to find and replace {{ ... .Inputs ... }} patterns
+		inputsPattern := regexp.MustCompile(`\{\{[^}]*\.Inputs\.[^}]*\}\}`)
+		matches := inputsPattern.FindAllString(value, -1)
+		for i, match := range matches {
+			placeholder := fmt.Sprintf("%s%d\x00", inputsPlaceholderPrefix, i)
+			preserved = strings.Replace(preserved, match, placeholder, 1)
+		}
+	}
+
+	// If nothing left to expand, restore and return
+	if !strings.Contains(preserved, "{{") {
+		// Restore .Inputs patterns
+		if hasInputs {
+			inputsPattern := regexp.MustCompile(`\{\{[^}]*\.Inputs\.[^}]*\}\}`)
+			matches := inputsPattern.FindAllString(value, -1)
+			for i, match := range matches {
+				placeholder := fmt.Sprintf("%s%d\x00", inputsPlaceholderPrefix, i)
+				preserved = strings.Replace(preserved, placeholder, match, 1)
+			}
+		}
+		return preserved, nil
+	}
+
+	tmpl, err := template.New("").Funcs(e.funcMap).Parse(preserved)
 	if err != nil {
 		return "", err
 	}
@@ -45,7 +78,19 @@ func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, e
 		return "", err
 	}
 
-	return buf.String(), nil
+	result := buf.String()
+
+	// Restore .Inputs patterns
+	if hasInputs {
+		inputsPattern := regexp.MustCompile(`\{\{[^}]*\.Inputs\.[^}]*\}\}`)
+		matches := inputsPattern.FindAllString(value, -1)
+		for i, match := range matches {
+			placeholder := fmt.Sprintf("%s%d\x00", inputsPlaceholderPrefix, i)
+			result = strings.Replace(result, placeholder, match, 1)
+		}
+	}
+
+	return result, nil
 }
 
 // ExpandConfig expands all template variables in the config.
