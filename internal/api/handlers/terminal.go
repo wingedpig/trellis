@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,8 +23,14 @@ import (
 	"github.com/wingedpig/trellis/internal/terminal"
 )
 
-// Mutex to serialize tmux send-keys commands (matches runner's approach)
-var tmuxSendMutex sync.Mutex
+// Per-target mutexes to serialize tmux send-keys commands per pane.
+// Different tmux panes don't conflict; only input to the same pane needs serialization.
+var tmuxTargetMutexes sync.Map // map[string]*sync.Mutex
+
+func getTargetMutex(target string) *sync.Mutex {
+	val, _ := tmuxTargetMutexes.LoadOrStore(target, &sync.Mutex{})
+	return val.(*sync.Mutex)
+}
 
 // terminalMessage represents a message from the terminal frontend.
 type terminalMessage struct {
@@ -35,19 +42,53 @@ type terminalMessage struct {
 
 // TerminalHandler handles terminal-related API requests.
 type TerminalHandler struct {
-	mgr terminal.Manager
+	mgr   terminal.Manager
+	mu    sync.Mutex
+	conns map[*websocket.Conn]struct{} // Active WebSocket connections
 }
 
 // NewTerminalHandler creates a new terminal handler.
 func NewTerminalHandler(mgr terminal.Manager) *TerminalHandler {
 	return &TerminalHandler{
-		mgr: mgr,
+		mgr:   mgr,
+		conns: make(map[*websocket.Conn]struct{}),
 	}
 }
 
-// Shutdown cleans up resources (no-op for now, sessions clean up on disconnect).
+// trackConn registers a WebSocket connection for shutdown tracking.
+func (h *TerminalHandler) trackConn(conn *websocket.Conn) {
+	h.mu.Lock()
+	h.conns[conn] = struct{}{}
+	h.mu.Unlock()
+}
+
+// untrackConn removes a WebSocket connection from shutdown tracking.
+func (h *TerminalHandler) untrackConn(conn *websocket.Conn) {
+	h.mu.Lock()
+	delete(h.conns, conn)
+	h.mu.Unlock()
+}
+
+// Shutdown closes all active WebSocket connections to allow graceful server shutdown.
 func (h *TerminalHandler) Shutdown() {
-	// Remote sessions are cleaned up when their WebSocket disconnects
+	h.mu.Lock()
+	conns := make([]*websocket.Conn, 0, len(h.conns))
+	for conn := range h.conns {
+		conns = append(conns, conn)
+	}
+	h.mu.Unlock()
+
+	if len(conns) > 0 {
+		log.Printf("Terminal handler: closing %d active WebSocket connections", len(conns))
+	}
+
+	for _, conn := range conns {
+		// Send close message and close connection
+		conn.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"),
+			time.Now().Add(time.Second))
+		conn.Close()
+	}
 }
 
 // ListSessions returns all terminal sessions.
@@ -84,7 +125,11 @@ func (h *TerminalHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Terminal WebSocket: upgrade failed: %v", err)
 		return
 	}
-	defer conn.Close()
+	h.trackConn(conn)
+	defer func() {
+		h.untrackConn(conn)
+		conn.Close()
+	}()
 	log.Printf("Terminal WebSocket: upgrade successful")
 
 	// Configure keepalive with ping/pong
@@ -497,21 +542,23 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 					data = strings.TrimSuffix(data, "\x1b[201~")
 				}
 
-				// Serialize tmux commands with mutex (matches runner's approach)
-				tmuxSendMutex.Lock()
-
-				// Rate limit
+				// Rate limit (outside mutex so other terminals aren't blocked)
 				if time.Since(lastInput) < time.Millisecond {
 					time.Sleep(time.Millisecond)
 				}
 
-				// Send input to tmux
+				// Serialize tmux commands per target pane
+				targetMu := getTargetMutex(target)
+				targetMu.Lock()
+
+				// Send input to tmux (with 5s timeout to prevent hangs)
+				cmdCtx, cmdCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				if data == "\r" {
 					// Enter key - execute command
-					exec.Command("tmux", "send-keys", "-t", target, "Enter").Run()
+					exec.CommandContext(cmdCtx, "tmux", "send-keys", "-t", target, "Enter").Run()
 				} else if data == "\n" {
 					// Newline (Shift-Enter) - add without executing
-					exec.Command("tmux", "send-keys", "-t", target, "-l", data).Run()
+					exec.CommandContext(cmdCtx, "tmux", "send-keys", "-t", target, "-l", data).Run()
 				} else if len(data) == 1 && data[0] < 32 {
 					// Control character (Ctrl+A through Ctrl+Z, etc.)
 					// Use send-keys with tmux key name format: C-a, C-b, etc.
@@ -524,24 +571,25 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 						// Other control chars - send literally
 						keyName = fmt.Sprintf("C-%c", ctrlChar+64)
 					}
-					exec.Command("tmux", "send-keys", "-t", target, keyName).Run()
+					exec.CommandContext(cmdCtx, "tmux", "send-keys", "-t", target, keyName).Run()
 				} else if strings.HasPrefix(data, "\x1b") {
 					// Escape sequence (arrow keys, function keys, etc.)
 					// Send literally so tmux interprets it
-					exec.Command("tmux", "send-keys", "-t", target, "-l", data).Run()
+					exec.CommandContext(cmdCtx, "tmux", "send-keys", "-t", target, "-l", data).Run()
 				} else {
 					// Regular text - use load-buffer/paste-buffer for special chars like semicolons
-					cmd := exec.Command("tmux", "load-buffer", "-")
+					cmd := exec.CommandContext(cmdCtx, "tmux", "load-buffer", "-")
 					cmd.Stdin = strings.NewReader(data)
 					if err := cmd.Run(); err != nil {
 						log.Printf("Terminal: failed to load buffer: %v", err)
 					} else {
-						exec.Command("tmux", "paste-buffer", "-d", "-t", target).Run()
+						exec.CommandContext(cmdCtx, "tmux", "paste-buffer", "-d", "-t", target).Run()
 					}
 				}
+				cmdCancel()
 
 				lastInput = time.Now()
-				tmuxSendMutex.Unlock()
+				targetMu.Unlock()
 
 			case "resize":
 				if msg.Cols > 0 && msg.Rows > 0 {

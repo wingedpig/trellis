@@ -393,6 +393,13 @@ window.TrellisNav = (function() {
         }, true);
     }
 
+    // Debounce timer for nav picker refresh on events
+    let navPickerDebounceTimer = null;
+    function debouncedNavPicker() {
+        clearTimeout(navPickerDebounceTimer);
+        navPickerDebounceTimer = setTimeout(initNavPicker, 200);
+    }
+
     // Initialize navigation picker
     function initNavPicker() {
         fetch('/api/v1/nav/options')
@@ -631,9 +638,9 @@ window.TrellisNav = (function() {
                 if (msg.type) {
                     // Handle notifications for all event types
                     handleEventNotification(msg);
-                    // Refresh nav picker for worktree/service events
+                    // Refresh nav picker for worktree/service events (debounced to avoid request storms)
                     if (msg.type.startsWith('worktree.') || msg.type.startsWith('service.')) {
-                        initNavPicker();
+                        debouncedNavPicker();
                     }
                 }
             } catch (e) {}

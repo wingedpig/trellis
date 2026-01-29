@@ -81,10 +81,17 @@ func (m *Manager) RemoveServiceViewers() {
 		}
 	}
 
+	// Track how many goroutines we're cancelling so we can wait for just those
+	var wg sync.WaitGroup
+
 	// Cancel monitor goroutines for service viewers
 	for _, name := range toRemove {
 		if cancel, ok := m.monitorCancel[name]; ok {
-			cancel()
+			wg.Add(1)
+			go func(c context.CancelFunc) {
+				c()
+				wg.Done()
+			}(cancel)
 			delete(m.monitorCancel, name)
 		}
 	}
@@ -101,10 +108,9 @@ func (m *Manager) RemoveServiceViewers() {
 
 	m.mu.Unlock()
 
-	if len(toRemove) > 0 {
-		// Wait for monitor goroutines to exit
-		m.monitorWg.Wait()
-	}
+	// Wait for the cancel calls to complete (goroutines will exit on their own time
+	// via monitorWg, but we don't block on non-service viewers)
+	wg.Wait()
 }
 
 // Start stores the context for on-demand viewer startup.

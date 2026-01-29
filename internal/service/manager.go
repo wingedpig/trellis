@@ -802,6 +802,7 @@ func (m *ServiceManager) UpdateConfigs(configs []config.ServiceConfig) {
 		if svc, ok := m.services[name]; ok {
 			// Update existing service config and create new process
 			log.Printf("Updating service %s: old workdir=%s, new workdir=%s", name, svc.config.WorkDir, cfg.WorkDir)
+			svc.process.CloseLogSubscribers() // Close orphaned subscribers before replacing
 			svc.config = cfg
 			svc.process = NewProcess(cfg, m.bus)
 			svc.restartCount = 0 // Reset restart count for new worktree

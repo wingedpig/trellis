@@ -123,6 +123,17 @@ func (b *LogBuffer) Unsubscribe(ch chan LogLine) {
 	close(ch)
 }
 
+// CloseAllSubscribers closes all subscriber channels and resets the subscriber map.
+// This is used when replacing a process to ensure orphaned subscribers exit cleanly.
+func (b *LogBuffer) CloseAllSubscribers() {
+	b.subMu.Lock()
+	for ch := range b.subscribers {
+		close(ch)
+	}
+	b.subscribers = make(map[chan LogLine]struct{})
+	b.subMu.Unlock()
+}
+
 // Sequence returns the current sequence number.
 func (b *LogBuffer) Sequence() int64 {
 	b.mu.RLock()

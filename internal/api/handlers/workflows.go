@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -68,12 +69,13 @@ func (h *WorkflowHandler) Run(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil && (contentType == "application/json" || r.ContentLength > 0) {
 		var req workflowRunRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			// Only error if we expected JSON content
-			if contentType == "application/json" {
-				WriteError(w, http.StatusBadRequest, ErrWorkflowError, "invalid request body: "+err.Error())
-				return
+			// EOF means empty body - that's fine for workflows without inputs
+			if err != io.EOF {
+				if contentType == "application/json" {
+					WriteError(w, http.StatusBadRequest, ErrWorkflowError, "invalid request body: "+err.Error())
+					return
+				}
 			}
-			// Otherwise ignore decode errors (empty body is fine for workflows without inputs)
 		} else {
 			opts.Inputs = req.Inputs
 		}

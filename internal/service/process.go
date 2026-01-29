@@ -289,6 +289,12 @@ func (p *Process) UnsubscribeLogs(ch chan LogLine) {
 	p.logs.Unsubscribe(ch)
 }
 
+// CloseLogSubscribers closes all log subscriber channels.
+// Used before replacing a process to ensure orphaned subscribers exit cleanly.
+func (p *Process) CloseLogSubscribers() {
+	p.logs.CloseAllSubscribers()
+}
+
 // LogSequence returns the current log sequence number.
 func (p *Process) LogSequence() int64 {
 	return p.logs.Sequence()

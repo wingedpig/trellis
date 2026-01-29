@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"strconv"
 	"time"
 
@@ -287,6 +288,9 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/crashes/{id}", crashHandler.Get).Methods("GET")
 		api.HandleFunc("/crashes/{id}", crashHandler.Delete).Methods("DELETE")
 	}
+
+	// Debug/profiling endpoints
+	r.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	return r
 }
