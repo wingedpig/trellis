@@ -166,6 +166,23 @@
     margin-right: 8px;
 }
 
+.trace-expanded-content .field-name .copy-btn {
+    margin-right: 6px;
+    cursor: pointer;
+    opacity: 0.5;
+    font-size: 11px;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.trace-expanded-content .field-name .copy-btn:hover {
+    opacity: 1;
+}
+
+.trace-expanded-content .field-name .copy-btn.copied {
+    opacity: 1;
+    color: var(--bs-success);
+}
+
 .trace-expanded-content .field-value {
     color: var(--bs-body-color);
 }
