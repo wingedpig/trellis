@@ -204,7 +204,8 @@ window.TrellisNav = (function() {
         const placeholder = document.createElement('option');
         placeholder.value = '';
         select.appendChild(placeholder);
-        const currentPath = window.location.pathname;
+        // Normalize currentPath the same way history keys are normalized
+        const currentPath = normalizeHistoryKey(window.location.pathname);
         for (const key of navHistory) {
             if (key === currentPath) continue;
             const opt = document.createElement('option');
