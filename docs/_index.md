@@ -30,6 +30,15 @@ Trellis is a **local web app** that acts as a control panel for your development
 - [Worktrees](/docs/concepts/worktrees/) - Git worktree integration and environment isolation
 - [Logging](/docs/concepts/logging/) - Log sources, parsers, and filtering
 
+## Web Interface
+
+- [Terminal Page](/docs/pages/terminal/) - Main view: terminals, service logs, log viewers, remote windows
+- [Status Page](/docs/pages/status/) - Monitor and control services
+- [Worktrees Page](/docs/pages/worktrees/) - Manage git worktrees
+- [Events Page](/docs/pages/events/) - View system event timeline
+- [Crashes Page](/docs/pages/crashes/) - Review crash reports
+- [Trace Page](/docs/pages/trace/) - Distributed tracing across log sources
+
 ## Reference
 
 - [Configuration](/docs/reference/config/) - Complete config file reference

@@ -294,14 +294,26 @@ func GetAheadBehind(ctx context.Context, worktreePath, defaultBranch string) (ah
 	return ahead, behind
 }
 
-// IsDirty returns true if the worktree has uncommitted changes.
+// IsDirty returns true if the worktree has uncommitted changes to tracked files.
+// Untracked files (shown as ?? in git status) are ignored.
 func IsDirty(ctx context.Context, worktreePath string) bool {
 	cmd := exec.CommandContext(ctx, "git", "-C", worktreePath, "status", "--porcelain")
 	output, err := cmd.Output()
 	if err != nil {
 		return false
 	}
-	return len(strings.TrimSpace(string(output))) > 0
+	// Check each line - ignore untracked files (??)
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Untracked files start with "??"
+		if !strings.HasPrefix(line, "??") {
+			return true
+		}
+	}
+	return false
 }
 
 // GetDefaultBranch returns the default branch name (main or master).

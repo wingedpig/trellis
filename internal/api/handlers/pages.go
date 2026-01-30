@@ -514,6 +514,8 @@ func (h *PageHandler) Worktrees(w http.ResponseWriter, r *http.Request) {
 	var projectName, binariesDir string
 
 	if h.worktrees != nil {
+		// Refresh to get current dirty/ahead/behind status
+		_ = h.worktrees.Refresh()
 		wts, _ = h.worktrees.List()
 		active = h.worktrees.Active()
 		projectName = h.worktrees.ProjectName()

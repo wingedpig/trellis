@@ -52,6 +52,12 @@ func NewWorktreeHandler(mgr worktree.Manager) *WorktreeHandler {
 
 // List returns all worktrees.
 func (h *WorktreeHandler) List(w http.ResponseWriter, r *http.Request) {
+	// Refresh worktree data to get current dirty/ahead/behind status
+	if err := h.mgr.Refresh(); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
+		return
+	}
+
 	worktrees, err := h.mgr.List()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
@@ -190,6 +196,12 @@ func (h *WorktreeHandler) Remove(w http.ResponseWriter, r *http.Request) {
 
 // Info returns information about worktrees for the UI.
 func (h *WorktreeHandler) Info(w http.ResponseWriter, r *http.Request) {
+	// Refresh worktree data to get current dirty/ahead/behind status
+	if err := h.mgr.Refresh(); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
+		return
+	}
+
 	worktrees, err := h.mgr.List()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
