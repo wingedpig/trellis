@@ -900,7 +900,7 @@ func cmdRestart(args []string) error {
 
 func cmdWorkflow(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: trellis-ctl workflow <list|run|status> [args]")
+		return fmt.Errorf("usage: trellis-ctl workflow <list|describe|run|status> [args]")
 	}
 
 	subcmd := args[0]
@@ -909,6 +909,8 @@ func cmdWorkflow(args []string) error {
 	switch subcmd {
 	case "list":
 		return cmdWorkflowList()
+	case "describe":
+		return cmdWorkflowDescribe(subargs)
 	case "run":
 		return cmdWorkflowRun(subargs)
 	case "status":
@@ -930,14 +932,92 @@ func cmdWorkflowList() error {
 		return nil
 	}
 
-	fmt.Printf("%-20s %-30s %s\n", "ID", "NAME", "OPTIONS")
-	fmt.Println(strings.Repeat("-", 70))
+	fmt.Printf("%-20s %-30s %s\n", "ID", "NAME", "DESCRIPTION")
+	fmt.Println(strings.Repeat("-", 80))
 	for _, wf := range workflows {
-		opts := []string{}
-		if wf.Confirm {
-			opts = append(opts, "confirm")
+		desc := wf.Description
+		if len(desc) > 30 {
+			desc = desc[:27] + "..."
 		}
-		fmt.Printf("%-20s %-30s %s\n", wf.ID, wf.Name, strings.Join(opts, ", "))
+		fmt.Printf("%-20s %-30s %s\n", wf.ID, wf.Name, desc)
+	}
+
+	return nil
+}
+
+func cmdWorkflowDescribe(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: trellis-ctl workflow describe <id>")
+	}
+
+	ctx := context.Background()
+	id := args[0]
+
+	wf, err := apiClient.Workflows.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if jsonOutput {
+		printJSON(wf)
+		return nil
+	}
+
+	fmt.Printf("Workflow: %s\n", wf.ID)
+	fmt.Printf("Name: %s\n", wf.Name)
+	if wf.Description != "" {
+		fmt.Printf("Description: %s\n", wf.Description)
+	}
+
+	if len(wf.Inputs) > 0 {
+		fmt.Println("\nInputs:")
+		for _, input := range wf.Inputs {
+			// Build the flag name and requirement indicator
+			required := "(optional)"
+			if input.Required {
+				required = "(required)"
+			}
+
+			// Get display name
+			displayName := input.Name
+			if input.Label != "" {
+				displayName = input.Label
+			}
+
+			fmt.Printf("  --%s    %s %s\n", input.Name, displayName, required)
+
+			// Description
+			if input.Description != "" {
+				fmt.Printf("             %s\n", input.Description)
+			}
+
+			// Type-specific info
+			switch input.Type {
+			case "select":
+				if len(input.Options) > 0 {
+					fmt.Printf("             Options: %s\n", strings.Join(input.Options, ", "))
+				}
+			case "datepicker":
+				fmt.Printf("             Type: date (YYYY-MM-DD)\n")
+			case "checkbox":
+				fmt.Printf("             Type: boolean\n")
+			}
+
+			// Validation constraints
+			if len(input.AllowedValues) > 0 {
+				fmt.Printf("             Allowed: %s\n", strings.Join(input.AllowedValues, ", "))
+			}
+			if input.Pattern != "" {
+				fmt.Printf("             Pattern: %s\n", input.Pattern)
+			}
+
+			// Default value
+			if input.Default != nil {
+				fmt.Printf("             Default: %v\n", input.Default)
+			}
+
+			fmt.Println()
+		}
 	}
 
 	return nil
@@ -945,16 +1025,39 @@ func cmdWorkflowList() error {
 
 func cmdWorkflowRun(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: trellis-ctl workflow run <id>")
+		return fmt.Errorf("usage: trellis-ctl workflow run <id> [--input=value ...]")
 	}
 
 	ctx := context.Background()
 	id := args[0]
+
+	// Parse --name=value inputs from remaining args
+	inputs := make(map[string]any)
+	for _, arg := range args[1:] {
+		if strings.HasPrefix(arg, "--") {
+			// Remove the -- prefix
+			arg = strings.TrimPrefix(arg, "--")
+			// Split on first =
+			parts := strings.SplitN(arg, "=", 2)
+			if len(parts) == 2 {
+				inputs[parts[0]] = parts[1]
+			} else {
+				// Flag without value, treat as boolean true
+				inputs[parts[0]] = true
+			}
+		}
+	}
+
 	if !jsonOutput {
 		fmt.Printf("Running workflow: %s\n", id)
 	}
 
-	status, err := apiClient.Workflows.Run(ctx, id, nil)
+	opts := &client.RunOptions{}
+	if len(inputs) > 0 {
+		opts.Inputs = inputs
+	}
+
+	status, err := apiClient.Workflows.Run(ctx, id, opts)
 	if err != nil {
 		return err
 	}

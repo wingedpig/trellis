@@ -57,6 +57,9 @@ type RunOptions struct {
 	// Worktree specifies which worktree to run the workflow in.
 	// If empty, uses the currently active worktree.
 	Worktree string `json:"worktree,omitempty"`
+
+	// Inputs provides values for workflow input parameters.
+	Inputs map[string]any `json:"inputs,omitempty"`
 }
 
 // Run starts executing a workflow.
@@ -77,7 +80,16 @@ func (w *WorkflowClient) Run(ctx context.Context, id string, opts *RunOptions) (
 		path += "?worktree=" + opts.Worktree
 	}
 
-	data, err := w.c.post(ctx, path)
+	var data json.RawMessage
+	var err error
+
+	// Use POST with JSON body if inputs are provided
+	if opts != nil && len(opts.Inputs) > 0 {
+		body := map[string]any{"inputs": opts.Inputs}
+		data, err = w.c.postJSON(ctx, path, body)
+	} else {
+		data, err = w.c.post(ctx, path)
+	}
 	if err != nil {
 		return nil, err
 	}

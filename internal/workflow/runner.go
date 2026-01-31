@@ -198,6 +198,13 @@ func (r *RealRunner) RunWithOptions(ctx context.Context, id string, opts RunOpti
 		return nil, fmt.Errorf("workflow %q not found", id)
 	}
 
+	// Validate inputs against workflow constraints
+	if len(wf.Inputs) > 0 && opts.Inputs != nil {
+		if err := ValidateInputs(wf.Inputs, opts.Inputs); err != nil {
+			return nil, err
+		}
+	}
+
 	// Handle built-in workflows synchronously (they're fast)
 	if strings.HasPrefix(id, "_") {
 		return r.runBuiltin(ctx, wf)

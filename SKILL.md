@@ -94,12 +94,33 @@ trellis-ctl restart backend
 ```
 
 ### Workflows
-List and run workflows:
+List, describe, and run workflows:
 ```bash
-trellis-ctl workflow list           # List all workflows
-trellis-ctl workflow run build      # Run a workflow (waits for completion)
-trellis-ctl workflow status build   # Check workflow status
+trellis-ctl workflow list              # List all workflows with descriptions
+trellis-ctl workflow describe <id>     # Show workflow inputs and validation rules
+trellis-ctl workflow run <id>          # Run a workflow (waits for completion)
+trellis-ctl workflow run <id> --arg=value  # Run with input arguments
+trellis-ctl workflow status <id>       # Check workflow status
 ```
+
+**Discovering and running workflows with inputs:**
+```bash
+# See what inputs a workflow expects
+trellis-ctl workflow describe find-email
+
+# Output shows:
+#   --msgid    Email message ID (optional)
+#              Pattern: ^[a-zA-Z0-9._@<>-]+$
+#   --id       Database ID (optional)
+#              Pattern: ^[0-9]+$
+#   --date     Date to search (required)
+#              Type: date (YYYY-MM-DD)
+
+# Run with validated inputs
+trellis-ctl workflow run find-email --date=2024-01-15 --id=12345
+```
+
+Workflow inputs are validated server-side against configured patterns and allowed values. Invalid inputs return an error without executing the workflow.
 
 ### Worktrees
 List and switch git worktrees:
@@ -310,4 +331,39 @@ trellis-ctl -json trace req-abc123 web -since 9:30am -until 10:30am
 
 # Step 4: Notify the user
 trellis-ctl notify "Found issue: group lookup fails when ID contains special chars"
+```
+
+### Querying Production Data
+
+When you need to fetch data from production databases to understand an issue:
+
+1. **Discover available workflows** that can query production:
+   ```bash
+   trellis-ctl workflow list
+   trellis-ctl workflow describe <workflow-id>
+   ```
+
+2. **Run the workflow with validated inputs**:
+   ```bash
+   trellis-ctl -json workflow run db-fetch --table=users --id=12345
+   ```
+
+Workflow inputs are validated against configured patterns and allowed values before execution, ensuring safe queries. For example, a workflow configured with:
+- `allowed_values: ["users", "groups", "messages"]` for table
+- `pattern: "^[0-9]+$"` for ID
+
+Will reject attempts to query unauthorized tables or pass malformed IDs.
+
+**Example: Investigating a user issue**
+```bash
+# 1. Run trace to find the error
+trellis-ctl -json trace req-abc123 api-flow -since 1h
+
+# 2. Trace shows user_id=12345 had an error - fetch the user record
+trellis-ctl -json workflow run db-fetch --table=users --id=12345
+
+# 3. Examine the returned JSON to understand the user's state
+# 4. Read relevant source code to understand the bug
+# 5. Notify with findings
+trellis-ctl notify "User 12345 has invalid subscription_tier causing the error"
 ```

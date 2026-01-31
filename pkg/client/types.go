@@ -148,6 +148,9 @@ type Workflow struct {
 	// Name is the human-readable display name.
 	Name string `json:"Name"`
 
+	// Description is a description for CLI help and discoverability.
+	Description string `json:"Description"`
+
 	// Command is a single command to execute (mutually exclusive with Commands).
 	Command []string `json:"Command"`
 
@@ -165,6 +168,42 @@ type Workflow struct {
 
 	// RestartServices indicates whether to restart services after completion.
 	RestartServices bool `json:"RestartServices"`
+
+	// Inputs defines the input parameters for this workflow.
+	Inputs []WorkflowInput `json:"Inputs"`
+}
+
+// WorkflowInput defines a parameter that can be passed when running a workflow.
+type WorkflowInput struct {
+	// Name is the variable name used in command templates.
+	Name string `json:"Name"`
+
+	// Type is the input type: "text", "select", "checkbox", or "datepicker".
+	Type string `json:"Type"`
+
+	// Label is the human-readable display label.
+	Label string `json:"Label"`
+
+	// Description is a description for CLI help.
+	Description string `json:"Description"`
+
+	// Placeholder is placeholder text for text inputs.
+	Placeholder string `json:"Placeholder"`
+
+	// Options are the available choices for select inputs.
+	Options []string `json:"Options"`
+
+	// AllowedValues is a whitelist of allowed values for validation.
+	AllowedValues []string `json:"AllowedValues"`
+
+	// Pattern is a regex pattern for validation.
+	Pattern string `json:"Pattern"`
+
+	// Default is the default value.
+	Default any `json:"Default"`
+
+	// Required indicates whether this input must be provided.
+	Required bool `json:"Required"`
 }
 
 // WorkflowStatus represents the current status of a workflow execution.

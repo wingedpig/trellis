@@ -388,6 +388,9 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   //
   // Workflows are commands you run frequently. They can be triggered from the
   // UI (Cmd/Ctrl + /) or via trellis-ctl.
+  //
+  // Workflows can have input parameters that are validated before execution.
+  // Use 'trellis-ctl workflow describe <id>' to see a workflow's inputs.
   workflows: [
 `)
 
@@ -396,6 +399,7 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
     // {
     //   id: "build"                   // Unique identifier (used in CLI)
     //   name: "Build"                 // Display name
+    //   description: "Build the project"  // Shown in trellis-ctl workflow list
     //   command: ["make", "build"]    // Command to run
     //
     //   // For multiple sequential commands:
@@ -408,6 +412,30 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
     //   // output_parser: "go"        // Parse output: "go", "go_test_json", "generic", "html", "none"
     //   // restart_services: true     // Restart watched services after completion
     // }
+    //
+    // Example workflow with validated inputs (for CLI/automation):
+    // {
+    //   id: "db-fetch"
+    //   name: "Fetch DB Record"
+    //   description: "Fetch a database record by table and ID"
+    //   command: ["ssh", "prod-server", "dbfetch", "{{ .Inputs.table }}", "{{ .Inputs.id }}"]
+    //   inputs: [
+    //     {
+    //       name: "table"
+    //       type: "text"
+    //       description: "Database table name"
+    //       allowed_values: ["users", "groups", "messages"]  // Only these tables allowed
+    //       required: true
+    //     }
+    //     {
+    //       name: "id"
+    //       type: "text"
+    //       description: "Record ID"
+    //       pattern: "^[0-9]+$"        // Only numeric IDs allowed
+    //       required: true
+    //     }
+    //   ]
+    // }
 `)
 	} else {
 		// Parse the build command into array form
@@ -417,6 +445,7 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
 		sb.WriteString(`    {
       id: "build"
       name: "Build"
+      description: "Build the project"
       command: `)
 		sb.WriteString(cmdJSON)
 		sb.WriteString(`
@@ -431,8 +460,33 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
     // {
     //   id: "test"
     //   name: "Test"
+    //   description: "Run the test suite"
     //   command: ["make", "test"]
     //   output_parser: "go_test_json"
+    // }
+    //
+    // Example workflow with validated inputs (for CLI/automation):
+    // {
+    //   id: "db-fetch"
+    //   name: "Fetch DB Record"
+    //   description: "Fetch a database record by table and ID"
+    //   command: ["ssh", "prod-server", "dbfetch", "{{ .Inputs.table }}", "{{ .Inputs.id }}"]
+    //   inputs: [
+    //     {
+    //       name: "table"
+    //       type: "text"
+    //       description: "Database table name"
+    //       allowed_values: ["users", "groups", "messages"]  // Only these tables allowed
+    //       required: true
+    //     }
+    //     {
+    //       name: "id"
+    //       type: "text"
+    //       description: "Record ID"
+    //       pattern: "^[0-9]+$"        // Only numeric IDs allowed
+    //       required: true
+    //     }
+    //   ]
     // }
 `)
 	}

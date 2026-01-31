@@ -113,13 +113,51 @@ trellis-ctl logs <service> -stats
 # List workflows
 trellis-ctl workflow list
 
+# Describe a workflow (show inputs and validation)
+trellis-ctl workflow describe <workflow-id>
+
 # Run a workflow (waits for completion)
 trellis-ctl workflow run <workflow-id>
+
+# Run a workflow with inputs
+trellis-ctl workflow run <workflow-id> --input1=value1 --input2=value2
 
 # Check status of a running workflow (uses run ID, not workflow ID)
 # The run ID is returned by "workflow run" when using -json
 trellis-ctl workflow status <run-id>
 ```
+
+**Example: Discovering and running a workflow with inputs**
+
+```bash
+# See available workflows
+$ trellis-ctl workflow list
+ID              NAME              DESCRIPTION
+find-email      Find Email        Search for an email by message ID or database ID
+db-fetch        DB Fetch          Fetch a database row by table and ID
+
+# Get details about a workflow's inputs
+$ trellis-ctl workflow describe find-email
+Workflow: find-email
+Name: Find Email
+Description: Search for an email by message ID or database ID
+
+Inputs:
+  --msgid    Email message ID (optional)
+             Pattern: ^[a-zA-Z0-9._@<>-]+$
+
+  --id       Database ID (optional)
+             Pattern: ^[0-9]+$
+
+  --date     Date to search (required)
+             Type: date (YYYY-MM-DD)
+
+# Run with validated inputs
+$ trellis-ctl workflow run find-email --date=2024-01-15 --id=12345
+{"email": "...", ...}
+```
+
+**Input validation:** When `pattern` or `allowed_values` are configured for an input, the server validates inputs before execution. Invalid inputs return an error without running the workflow.
 
 ### Worktree Commands
 

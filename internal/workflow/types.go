@@ -10,21 +10,25 @@ import (
 
 // WorkflowInput defines a parameter that prompts the user before execution.
 type WorkflowInput struct {
-	Name        string   // Variable name for templates
-	Type        string   // "text", "select", "checkbox"
-	Label       string   // Display label
-	Placeholder string   // Placeholder for text inputs
-	Options     []string // Options for select type
-	Default     any      // Default value
-	Required    bool     // Whether required
+	Name          string   // Variable name for templates
+	Type          string   // "text", "select", "checkbox", "datepicker"
+	Label         string   // Display label
+	Description   string   // Description for CLI help
+	Placeholder   string   // Placeholder for text inputs
+	Options       []string // Options for select type
+	AllowedValues []string // Whitelist of allowed values (for validation)
+	Pattern       string   // Regex pattern for validation
+	Default       any      // Default value
+	Required      bool     // Whether required
 }
 
 // WorkflowConfig defines a workflow from configuration.
 type WorkflowConfig struct {
 	ID              string
 	Name            string
-	Command         []string   // Single command (backwards compat)
-	Commands        [][]string // Multiple commands to run in sequence
+	Description     string         // Description for CLI help
+	Command         []string       // Single command (backwards compat)
+	Commands        [][]string     // Multiple commands to run in sequence
 	Timeout         time.Duration
 	OutputParser    string
 	Confirm         bool

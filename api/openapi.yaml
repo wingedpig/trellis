@@ -482,6 +482,17 @@ paths:
           description: Worktree to run workflow in
           schema:
             type: string
+      requestBody:
+        description: Workflow inputs
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inputs:
+                  type: object
+                  additionalProperties: true
+                  description: Input values keyed by input name
       responses:
         '200':
           description: Workflow execution result
@@ -1451,6 +1462,9 @@ components:
           type: string
         Name:
           type: string
+        Description:
+          type: string
+          description: Description for CLI help and discoverability
         Command:
           type: array
           items:
@@ -1475,6 +1489,50 @@ components:
             type: string
         RestartServices:
           type: boolean
+        Inputs:
+          type: array
+          description: Input parameters for this workflow
+          items:
+            $ref: '#/components/schemas/WorkflowInput'
+
+    WorkflowInput:
+      type: object
+      description: Defines a parameter that can be passed when running a workflow
+      properties:
+        Name:
+          type: string
+          description: Variable name used in command templates
+        Type:
+          type: string
+          enum: [text, select, checkbox, datepicker]
+          description: Input type
+        Label:
+          type: string
+          description: Human-readable display label
+        Description:
+          type: string
+          description: Description for CLI help
+        Placeholder:
+          type: string
+          description: Placeholder text for text inputs
+        Options:
+          type: array
+          items:
+            type: string
+          description: Available choices for select inputs
+        AllowedValues:
+          type: array
+          items:
+            type: string
+          description: Whitelist of allowed values for validation
+        Pattern:
+          type: string
+          description: Regex pattern for validation
+        Default:
+          description: Default value
+        Required:
+          type: boolean
+          description: Whether this input must be provided
 
     WorkflowStatus:
       type: object

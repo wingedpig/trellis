@@ -294,6 +294,7 @@ func (app *App) Initialize(ctx context.Context) error {
 		workflowConfigs = append(workflowConfigs, workflow.WorkflowConfig{
 			ID:              wf.ID,
 			Name:            wf.Name,
+			Description:     wf.Description,
 			Command:         getCommandAsStrings(wf.Command),
 			Commands:        getCommandsAsArray(wf.Commands),
 			Timeout:         config.ParseDuration(wf.Timeout, 0),
@@ -529,6 +530,7 @@ func (app *App) Initialize(ctx context.Context) error {
 				workflowConfigs = append(workflowConfigs, workflow.WorkflowConfig{
 					ID:              wf.ID,
 					Name:            wf.Name,
+					Description:     wf.Description,
 					Command:         getCommandAsStrings(wf.Command),
 					Commands:        getCommandsAsArray(wf.Commands),
 					Timeout:         config.ParseDuration(wf.Timeout, 0),
@@ -892,13 +894,16 @@ func convertWorkflowInputs(inputs []config.WorkflowInput) []workflow.WorkflowInp
 	result := make([]workflow.WorkflowInput, len(inputs))
 	for i, input := range inputs {
 		result[i] = workflow.WorkflowInput{
-			Name:        input.Name,
-			Type:        input.Type,
-			Label:       input.Label,
-			Placeholder: input.Placeholder,
-			Options:     input.Options,
-			Default:     input.Default,
-			Required:    input.Required,
+			Name:          input.Name,
+			Type:          input.Type,
+			Label:         input.Label,
+			Description:   input.Description,
+			Placeholder:   input.Placeholder,
+			Options:       input.Options,
+			AllowedValues: input.AllowedValues,
+			Pattern:       input.Pattern,
+			Default:       input.Default,
+			Required:      input.Required,
 		}
 	}
 	return result

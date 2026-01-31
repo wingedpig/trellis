@@ -395,6 +395,7 @@ workflows: [
     // Required
     id: "workflow-id"
     name: "Workflow Name"
+    description: "Description for CLI help"  // Shown in trellis-ctl workflow list/describe
     command: ["make", "build"]    // Single command
 
     // Or multiple commands (run sequentially)
@@ -417,6 +418,7 @@ workflows: [
         name: "environment"       // Variable name for templates
         type: "select"            // "text", "select", "checkbox", or "datepicker"
         label: "Target Environment"
+        description: "Target deployment environment"
         options: ["staging", "production"]
         default: "staging"
         required: true
@@ -425,18 +427,22 @@ workflows: [
         name: "version"
         type: "text"
         label: "Version Tag"
+        description: "Semantic version tag"
         placeholder: "e.g., v1.2.3"
+        pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"  // Validation pattern
       }
       {
         name: "deploy_date"
         type: "datepicker"
         label: "Deploy Date"
+        description: "Scheduled deployment date"
         // default: "2024-01-15"  // Optional, defaults to today
       }
       {
         name: "dry_run"
         type: "checkbox"
         label: "Dry run (don't actually deploy)"
+        description: "Preview changes without applying"
         default: false
       }
     ]
@@ -450,10 +456,18 @@ Workflows can define input parameters that prompt the user with a dialog before 
 
 | Input Type | Description | Fields |
 |------------|-------------|--------|
-| `text` | Free-form text input | `placeholder`, `default`, `required` |
-| `select` | Dropdown with predefined options | `options` (array), `default`, `required` |
-| `checkbox` | Boolean toggle | `default` (bool) |
-| `datepicker` | Date selector | `default` (YYYY-MM-DD string), `required` |
+| `text` | Free-form text input | `placeholder`, `default`, `required`, `description`, `pattern`, `allowed_values` |
+| `select` | Dropdown with predefined options | `options` (array), `default`, `required`, `description` |
+| `checkbox` | Boolean toggle | `default` (bool), `description` |
+| `datepicker` | Date selector | `default` (YYYY-MM-DD string), `required`, `description` |
+
+**Validation fields** (for CLI/automation safety):
+
+| Field | Description |
+|-------|-------------|
+| `description` | Description shown in `trellis-ctl workflow describe` output |
+| `pattern` | Regex pattern that values must match |
+| `allowed_values` | Whitelist of allowed values (rejects anything else) |
 
 Input values are available in command and confirm_message templates via `{{ .Inputs.name }}`:
 

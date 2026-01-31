@@ -765,6 +765,76 @@ func TestRunner_Run_WithInputs_Conditional(t *testing.T) {
 	assert.NotContains(t, finalStatus2.Output, "dry run")
 }
 
+func TestRunner_Run_WithInputValidation(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	// Create workflow with validation constraints
+	workflows := []WorkflowConfig{
+		{
+			ID:       "fetch",
+			Name:     "Fetch Data",
+			Commands: [][]string{{"echo", "Fetching {{ .Inputs.table }} {{ .Inputs.id }}"}},
+			Inputs: []WorkflowInput{
+				{Name: "table", Type: "text", AllowedValues: []string{"users", "groups", "messages"}},
+				{Name: "id", Type: "text", Pattern: `^[0-9]+$`, Required: true},
+			},
+		},
+	}
+
+	runner := NewRunner(workflows, bus, nil, "")
+
+	// Valid inputs should work
+	opts := RunOptions{
+		Inputs: map[string]any{
+			"table": "users",
+			"id":    "12345",
+		},
+	}
+
+	status, err := runner.RunWithOptions(context.Background(), "fetch", opts)
+	require.NoError(t, err)
+	assert.Equal(t, "Fetch Data", status.Name)
+
+	time.Sleep(100 * time.Millisecond)
+	finalStatus, ok := runner.Status(status.ID)
+	require.True(t, ok)
+	assert.Equal(t, StateSuccess, finalStatus.State)
+	assert.Contains(t, finalStatus.Output, "Fetching users 12345")
+
+	// Invalid table should fail
+	opts2 := RunOptions{
+		Inputs: map[string]any{
+			"table": "secrets",
+			"id":    "12345",
+		},
+	}
+	_, err = runner.RunWithOptions(context.Background(), "fetch", opts2)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not allowed")
+
+	// Invalid ID pattern should fail
+	opts3 := RunOptions{
+		Inputs: map[string]any{
+			"table": "users",
+			"id":    "abc; rm -rf /",
+		},
+	}
+	_, err = runner.RunWithOptions(context.Background(), "fetch", opts3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not match pattern")
+
+	// Missing required ID should fail
+	opts4 := RunOptions{
+		Inputs: map[string]any{
+			"table": "users",
+		},
+	}
+	_, err = runner.RunWithOptions(context.Background(), "fetch", opts4)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "required")
+}
+
 func TestExpandCommandsWithInputs(t *testing.T) {
 	tests := []struct {
 		name     string

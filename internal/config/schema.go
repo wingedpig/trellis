@@ -128,21 +128,25 @@ type ServiceLoggingConfig struct {
 
 // WorkflowInput defines a parameter that prompts the user before execution.
 type WorkflowInput struct {
-	Name        string   `json:"name"`        // Variable name for templates
-	Type        string   `json:"type"`        // "text", "select", "checkbox"
-	Label       string   `json:"label"`       // Display label
-	Placeholder string   `json:"placeholder"` // Placeholder for text inputs
-	Options     []string `json:"options"`     // Options for select type
-	Default     any      `json:"default"`     // Default value
-	Required    bool     `json:"required"`    // Whether required
+	Name          string   `json:"name"`           // Variable name for templates
+	Type          string   `json:"type"`           // "text", "select", "checkbox", "datepicker"
+	Label         string   `json:"label"`          // Display label
+	Description   string   `json:"description"`    // Description for CLI help
+	Placeholder   string   `json:"placeholder"`    // Placeholder for text inputs
+	Options       []string `json:"options"`        // Options for select type
+	AllowedValues []string `json:"allowed_values"` // Whitelist of allowed values (for validation)
+	Pattern       string   `json:"pattern"`        // Regex pattern for validation
+	Default       any      `json:"default"`        // Default value
+	Required      bool     `json:"required"`       // Whether required
 }
 
 // WorkflowConfig defines a workflow action.
 type WorkflowConfig struct {
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
-	Command         interface{}     `json:"command"`  // string or []string (single command, for backwards compat)
-	Commands        interface{}     `json:"commands"` // array of commands to run in sequence
+	Description     string          `json:"description"` // Description for CLI help
+	Command         interface{}     `json:"command"`     // string or []string (single command, for backwards compat)
+	Commands        interface{}     `json:"commands"`    // array of commands to run in sequence
 	Timeout         string          `json:"timeout"`
 	OutputParser    string          `json:"output_parser"`
 	Confirm         bool            `json:"confirm"`
