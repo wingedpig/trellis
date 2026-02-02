@@ -2960,8 +2960,12 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 wfSelect.showPicker?.() || wfSelect.click();
             }
         }
-        // Cmd/Ctrl+E to toggle code/terminal
+        // Cmd/Ctrl+E to toggle code/terminal (not available for remote windows)
         if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+            // Skip for remote windows - VS Code can't edit remote files via Trellis
+            if (window.location.pathname.startsWith('/terminal/remote/')) {
+                return;
+            }
             e.preventDefault();
             if (document.getElementById('code-wrapper').style.display === 'none') {
                 showCode();
@@ -5408,36 +5412,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4853
+//line views/terminal.qtpl:4857
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4853
+//line views/terminal.qtpl:4857
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 }
 
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 }
 
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 	return qs422016
-//line views/terminal.qtpl:4854
+//line views/terminal.qtpl:4858
 }

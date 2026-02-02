@@ -2475,8 +2475,12 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 wfSelect.showPicker?.() || wfSelect.click();
             }
         }
-        // Cmd/Ctrl+E to toggle code/terminal
+        // Cmd/Ctrl+E to toggle code/terminal (not available for remote windows)
         if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+            // Skip for remote windows - VS Code can't edit remote files via Trellis
+            if (window.location.pathname.startsWith('/terminal/remote/')) {
+                return;
+            }
             e.preventDefault();
             if (document.getElementById('code-wrapper').style.display === 'none') {
                 showCode();
