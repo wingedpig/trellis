@@ -284,6 +284,13 @@ server: {
 }
 ```
 
+| Field | Default | Description |
+|-------|---------|-------------|
+| `host` | `"127.0.0.1"` | Bind address. Use `"0.0.0.0"` to allow remote access. |
+| `port` | `1234` | HTTP server port |
+| `tls_cert` | (none) | Path to TLS certificate for HTTPS |
+| `tls_key` | (none) | Path to TLS private key |
+
 ### worktree
 
 ```hjson
@@ -307,13 +314,24 @@ worktree: {
 }
 ```
 
+| Field | Default | Description |
+|-------|---------|-------------|
+| `repo_dir` | `"."` (current directory) | Root directory for git worktree discovery |
+| `create_dir` | `".."` (parent directory) | Directory where new worktrees are created |
+| `discovery.mode` | `"git"` | Discovery mode. Currently only `"git"` is supported. |
+| `binaries.path` | `"{{.Worktree.Root}}/bin"` | Path to compiled binaries |
+
 ### watch
 
 ```hjson
 watch: {
-  debounce: "100ms"       // Wait for rapid file changes to settle (default)
+  debounce: "100ms"       // Wait for rapid file changes to settle
 }
 ```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `debounce` | `"100ms"` | Time to wait for rapid file changes to settle before triggering a restart |
 
 ### logging
 
@@ -586,6 +604,18 @@ log_viewers: [
 log_viewer_settings: {
   idle_timeout: "5m"              // Stop idle viewers after this duration
 }
+```
+
+**Log viewer defaults:**
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `source.follow` | `true` | Follow log output in real-time |
+| `source.since` | `"1h"` | How far back to start reading when connecting |
+| `buffer.max_entries` | `10000` | Maximum entries to keep in memory |
+| `log_viewer_settings.idle_timeout` | `"5m"` | Stop idle viewers after this duration |
+
+```hjson
 ```
 
 ### trace

@@ -52,6 +52,16 @@ Define services in your `trellis.hjson`:
 }
 ```
 
+## When Services Start
+
+Services start automatically when Trellis launches, unless disabled. Here's the startup sequence:
+
+1. **On Trellis launch:** All enabled services (`enabled: true`, the default) start immediately
+2. **On worktree activation:** When you switch worktrees, all services stop and restart in the new worktree's context
+3. **On binary change:** When a watched binary changes, only that service restarts
+
+Services with `enabled: false` or `disabled: true` won't start automatically but can be started manually via the UI or `trellis-ctl start <name>`.
+
 ## Service Lifecycle
 
 ### States
@@ -72,17 +82,55 @@ stopped → starting → running → stopping → stopped
            crashed     crashed
 ```
 
-## Binary Watching
+## Binary and File Watching
 
-When you configure `watch_binary`, Trellis monitors that file for changes:
+Trellis can automatically restart services when files change. There are three related settings:
 
-1. You recompile: `go build -o ./bin/backend ./cmd/backend`
-2. Trellis detects the binary changed
-3. The service is gracefully stopped (SIGTERM)
-4. After a short delay, the service restarts
-5. A `binary.changed` event is emitted
+### watch_binary
 
-**Configuration:**
+The primary mechanism for auto-restart. When the specified binary file changes, the service restarts:
+
+```hjson
+{
+  name: "backend"
+  command: "./bin/backend"
+  watch_binary: "./bin/backend"  // Restart when this file changes
+}
+```
+
+### watch_files
+
+Additional files to watch beyond the binary. Useful for config files:
+
+```hjson
+{
+  name: "backend"
+  command: "./bin/backend"
+  watch_binary: "./bin/backend"
+  watch_files: ["config.yaml", "secrets.env"]  // Also restart on these
+}
+```
+
+Both `watch_binary` and `watch_files` trigger restarts independently—a change to any watched file restarts the service.
+
+### watching: false
+
+Excludes a service from the binary watching system entirely. Use this for external services (databases, third-party tools) that you don't build:
+
+```hjson
+{
+  name: "redis"
+  command: ["redis-server"]
+  watching: false  // Never auto-restart, even if watch_binary is set
+}
+```
+
+When `watching: false`, the service won't restart when binaries change, even if `watch_binary` is configured. The service still starts on Trellis launch and can be controlled manually.
+
+### Debounce
+
+File watchers use debouncing to avoid rapid restarts during builds:
+
 ```hjson
 {
   watch: {
@@ -90,6 +138,14 @@ When you configure `watch_binary`, Trellis monitors that file for changes:
   }
 }
 ```
+
+The restart sequence:
+1. You recompile: `go build -o ./bin/backend ./cmd/backend`
+2. Trellis detects the binary changed
+3. Debounce timer starts (waits for additional changes)
+4. After debounce period, the service is gracefully stopped (SIGTERM)
+5. The service restarts
+6. A `binary.changed` event is emitted
 
 ## Restart Policies
 

@@ -32,7 +32,7 @@ Press **Cmd+Backspace** to open the history picker, which shows your recently vi
 
 Local terminals connect to tmux windows in your project's tmux session. Each worktree has its own tmux session.
 
-**Configuration:** Define default terminal windows in [`terminal.default_windows`](/docs/reference/config/#terminal). Configure tmux settings (session prefix, socket path) in [`terminal.tmux`](/docs/reference/config/#terminal).
+**Configuration:** Define default terminal windows in [`terminal.default_windows`](/docs/reference/config/#terminal). Configure tmux settings (history limit, default shell) in [`terminal.tmux`](/docs/reference/config/#terminal).
 
 **Features:**
 - Full terminal emulation via xterm.js

@@ -150,7 +150,7 @@ Inputs:
              Pattern: ^[0-9]+$
 
   --date     Date to search (required)
-             Type: date (YYYY-MM-DD)
+             Type: datepicker (YYYY-MM-DD format)
 
 # Run with validated inputs
 $ trellis-ctl workflow run find-email --date=2024-01-15 --id=12345

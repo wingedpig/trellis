@@ -62,3 +62,18 @@ A global picker lets you quickly jump between worktrees, terminals, running proc
 ### Keyboard Shortcuts
 
 Common actions—switching context, opening terminals, running commands—are bound to shortcuts so you rarely need to touch the mouse.
+
+---
+
+## Glossary
+
+| Term | Description |
+|------|-------------|
+| **Service** | A long-running process that Trellis manages (starts, stops, restarts). Services are your app's components—APIs, workers, daemons. In the picker, services appear as `#name`. |
+| **Service Log** | The stdout/stderr output from a managed service. Stored in an in-memory ring buffer and displayed in the web UI. |
+| **Log Viewer** | A configured source for streaming logs—SSH connections, local files, Docker containers, or custom commands. Unlike service logs, log viewers pull from external sources. In the picker, log viewers appear as `~name`. |
+| **Worktree** | A git worktree—a separate checkout of your repository on a different branch. Trellis treats each worktree as an isolated environment with its own services, terminals, and logs. |
+| **Workflow** | A predefined command or sequence of commands you run frequently—builds, tests, deployments. Workflows can have input parameters and run from the UI or CLI. |
+| **Trace Group** | A named collection of log viewers that are searched together during distributed tracing. Allows correlating events across multiple systems by trace ID. |
+| **Remote Window** | An SSH terminal to a remote server, displayed in the same UI as local terminals. In the picker, remote windows appear as `!name`. |
+| **Picker** | The fuzzy-search popup (`Cmd+P`) for quickly navigating to any terminal, service, log viewer, or page. |
