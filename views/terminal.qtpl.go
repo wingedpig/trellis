@@ -2967,10 +2967,14 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 wfSelect.showPicker?.() || wfSelect.click();
             }
         }
-        // Cmd/Ctrl+E to toggle code/terminal (not available for remote windows)
+        // Cmd/Ctrl+E to toggle code/terminal (not available for remote windows or log viewers)
         if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
             // Skip for remote windows - VS Code can't edit remote files via Trellis
             if (window.location.pathname.startsWith('/terminal/remote/')) {
+                return;
+            }
+            // Skip for log viewers - no code view available
+            if (currentLogViewerName) {
                 return;
             }
             e.preventDefault();
@@ -5419,36 +5423,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4864
+//line views/terminal.qtpl:4868
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4864
+//line views/terminal.qtpl:4868
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 }
 
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 }
 
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 	return qs422016
-//line views/terminal.qtpl:4865
+//line views/terminal.qtpl:4869
 }
