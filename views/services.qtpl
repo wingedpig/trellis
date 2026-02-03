@@ -120,8 +120,13 @@ setInterval(function() {
     fetch('/api/v1/services/{%s p.ServiceName %}/logs')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.data && data.data.logs) {
-                document.querySelector('pre code').textContent = data.data.logs.join('\n');
+            if (data.data && data.data.lines) {
+                // Raw log lines (no parser configured)
+                document.querySelector('pre code').textContent = data.data.lines.join('\n');
+            } else if (data.data && data.data.entries) {
+                // Parsed log entries - extract raw lines or format them
+                var lines = data.data.entries.map(function(e) { return e.raw || e.message || ''; });
+                document.querySelector('pre code').textContent = lines.join('\n');
             }
         });
 }, 2000);

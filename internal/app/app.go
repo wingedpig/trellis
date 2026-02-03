@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -97,9 +98,43 @@ func New(opts Options) (*App, error) {
 	return app, nil
 }
 
+// cleanupStalePipes removes leftover terminal pipe files from previous sessions.
+// These can accumulate if Trellis is killed (SIGKILL) or crashes without cleanup.
+func cleanupStalePipes() {
+	// Match pattern: /tmp/trellis-pipe-*-*-<timestamp>.fifo
+	// The timestamp is a UnixNano value (18-19 digits)
+	pattern := regexp.MustCompile(`^trellis-pipe-.*-\d{18,19}\.fifo$`)
+
+	entries, err := os.ReadDir("/tmp")
+	if err != nil {
+		return // Can't read /tmp, nothing to clean
+	}
+
+	var removed int
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if pattern.MatchString(name) {
+			path := filepath.Join("/tmp", name)
+			if err := os.Remove(path); err == nil {
+				removed++
+			}
+		}
+	}
+
+	if removed > 0 {
+		log.Printf("Cleaned up %d stale terminal pipe files", removed)
+	}
+}
+
 // Initialize sets up all components.
 func (app *App) Initialize(ctx context.Context) error {
 	cfg := app.config
+
+	// Clean up stale pipe files from previous sessions
+	cleanupStalePipes()
 
 	// Determine repo directory for worktree discovery
 	repoDir := cfg.Worktree.RepoDir

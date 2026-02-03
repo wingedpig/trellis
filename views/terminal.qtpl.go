@@ -2440,7 +2440,11 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
 
     // Switch to a terminal (hide/show, don't navigate)
+    var isSwitchingTerminal = false; // Guard against re-entrancy from Select2 events
     function switchTerminal(terminalKey, isRemote) {
+        // Prevent recursive calls (Select2's change.select2 can trigger select2:select)
+        if (isSwitchingTerminal) return;
+
         // Stop service log polling if active
         if (serviceLogPollTimer) {
             clearInterval(serviceLogPollTimer);
@@ -2572,7 +2576,10 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         history.pushState({ type: isRemote ? 'remote' : 'local', worktree, window: windowName }, '', newUrl);
 
         // Update terminal picker to match (use URL, not terminal key)
+        // Set guard to prevent Select2 from triggering another switchTerminal call
+        isSwitchingTerminal = true;
         $('#navSelect').val(newUrl).trigger('change.select2');
+        isSwitchingTerminal = false;
 
         // Update workflow selector visibility
         const workflowSelect = document.getElementById('workflowSelect');
@@ -5412,36 +5419,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4857
+//line views/terminal.qtpl:4864
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4857
+//line views/terminal.qtpl:4864
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 }
 
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 }
 
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 	return qs422016
-//line views/terminal.qtpl:4858
+//line views/terminal.qtpl:4865
 }

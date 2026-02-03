@@ -17,14 +17,15 @@ import (
 
 // Manager manages all log viewers.
 type Manager struct {
-	mu             sync.RWMutex
-	viewers        map[string]*Viewer
-	bus            events.EventBus
-	monitorCancel  map[string]context.CancelFunc // cancel functions for monitor goroutines
-	monitorWg      sync.WaitGroup                // wait group for monitor goroutines
-	ctx            context.Context               // parent context for starting viewers
-	idleTimeout    time.Duration                 // duration after which idle viewers are stopped
-	cleanupCancel  context.CancelFunc            // cancel function for cleanup goroutine
+	mu               sync.RWMutex
+	viewers          map[string]*Viewer
+	bus              events.EventBus
+	monitorCancel    map[string]context.CancelFunc // cancel functions for monitor goroutines
+	configMonitorWg  sync.WaitGroup                // wait group for config-based viewer monitor goroutines
+	serviceMonitorWg sync.WaitGroup                // wait group for service viewer monitor goroutines
+	ctx              context.Context               // parent context for starting viewers
+	idleTimeout      time.Duration                 // duration after which idle viewers are stopped
+	cleanupCancel    context.CancelFunc            // cancel function for cleanup goroutine
 }
 
 // NewManager creates a new log viewer manager.
@@ -175,8 +176,16 @@ func (m *Manager) EnsureStarted(name string) error {
 	// Create a per-viewer context for the monitor goroutine
 	monitorCtx, cancel := context.WithCancel(m.ctx)
 	m.monitorCancel[name] = cancel
-	m.monitorWg.Add(1)
-	go m.monitorErrors(monitorCtx, name, viewer)
+
+	// Use separate wait groups for service vs config-based viewers
+	// so UpdateConfigs can wait only for config-based viewers
+	if strings.HasPrefix(name, "svc:") {
+		m.serviceMonitorWg.Add(1)
+		go m.monitorErrorsService(monitorCtx, name, viewer)
+	} else {
+		m.configMonitorWg.Add(1)
+		go m.monitorErrorsConfig(monitorCtx, name, viewer)
+	}
 
 	return nil
 }
@@ -207,7 +216,8 @@ func (m *Manager) Stop() {
 	m.mu.Unlock()
 
 	// Wait for all monitor goroutines to exit (outside lock to avoid deadlock)
-	m.monitorWg.Wait()
+	m.configMonitorWg.Wait()
+	m.serviceMonitorWg.Wait()
 }
 
 // UpdateConfigs stops explicit (non-service) viewers and reinitializes with new configs.
@@ -235,8 +245,9 @@ func (m *Manager) UpdateConfigs(configs []config.LogViewerConfig) error {
 
 	m.mu.Unlock()
 
-	// Wait for all monitor goroutines to exit (outside lock to avoid deadlock)
-	m.monitorWg.Wait()
+	// Wait only for config-based monitor goroutines to exit (outside lock to avoid deadlock)
+	// Service viewers are preserved, so we don't wait for their goroutines
+	m.configMonitorWg.Wait()
 
 	// Now reinitialize with new configs
 	m.mu.Lock()
@@ -331,9 +342,20 @@ func (m *Manager) Unsubscribe(name string, ch chan<- LogEntry) error {
 	return nil
 }
 
-// monitorErrors monitors viewer errors and emits events.
-func (m *Manager) monitorErrors(ctx context.Context, name string, viewer *Viewer) {
-	defer m.monitorWg.Done()
+// monitorErrorsConfig monitors config-based viewer errors and emits events.
+func (m *Manager) monitorErrorsConfig(ctx context.Context, name string, viewer *Viewer) {
+	defer m.configMonitorWg.Done()
+	m.monitorErrorsImpl(ctx, name, viewer)
+}
+
+// monitorErrorsService monitors service viewer errors and emits events.
+func (m *Manager) monitorErrorsService(ctx context.Context, name string, viewer *Viewer) {
+	defer m.serviceMonitorWg.Done()
+	m.monitorErrorsImpl(ctx, name, viewer)
+}
+
+// monitorErrorsImpl is the shared implementation for monitoring viewer errors.
+func (m *Manager) monitorErrorsImpl(ctx context.Context, name string, viewer *Viewer) {
 	wasConnected := true // Assume connected on start
 
 	for {

@@ -238,44 +238,49 @@ setInterval(function() {
 	qw422016.N().S(`/logs')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.data && data.data.logs) {
-                document.querySelector('pre code').textContent = data.data.logs.join('\n');
+            if (data.data && data.data.lines) {
+                // Raw log lines (no parser configured)
+                document.querySelector('pre code').textContent = data.data.lines.join('\n');
+            } else if (data.data && data.data.entries) {
+                // Parsed log entries - extract raw lines or format them
+                var lines = data.data.entries.map(function(e) { return e.raw || e.message || ''; });
+                document.querySelector('pre code').textContent = lines.join('\n');
             }
         });
 }, 2000);
 </script>
 
 `)
-//line views/services.qtpl:130
+//line views/services.qtpl:135
 	p.StreamFooter(qw422016)
-//line views/services.qtpl:130
+//line views/services.qtpl:135
 	qw422016.N().S(`
 `)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 }
 
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 func (p *ServiceDetailPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	p.StreamRender(qw422016)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	qt422016.ReleaseWriter(qw422016)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 }
 
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 func (p *ServiceDetailPage) Render() string {
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	p.WriteRender(qb422016)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	qs422016 := string(qb422016.B)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 	return qs422016
-//line views/services.qtpl:131
+//line views/services.qtpl:136
 }

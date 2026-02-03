@@ -799,18 +799,24 @@ func convertClientLogEntries(entries []client.LogEntry) []logs.LogEntry {
 	return result
 }
 
-// dedupeLogEntries removes duplicate entries based on source and raw log line.
-// Using the raw log line as the key ensures that repeated identical log lines
-// are preserved (they would have different positions/content), while true duplicates
-// (same entry appearing in both history and buffer) are removed.
+// dedupeLogEntries removes duplicate entries based on source, timestamp, and content.
+// This handles both raw logs (where Raw is populated) and structured logs (where
+// Raw may be empty but Timestamp and Message are available).
 func dedupeLogEntries(entries []logs.LogEntry) []logs.LogEntry {
 	seen := make(map[string]bool)
 	var result []logs.LogEntry
 
 	for _, e := range entries {
-		// Create a key from source + raw line
-		// Raw is the original log line which is unique per entry
-		key := e.Source + "|" + e.Raw
+		// Build a key that uniquely identifies an entry
+		// For raw logs, Raw is the unique content
+		// For structured logs, use timestamp + source + message
+		var key string
+		if e.Raw != "" {
+			key = e.Source + "|" + e.Raw
+		} else {
+			// Structured log entry - use timestamp + source + message
+			key = e.Source + "|" + e.Timestamp.Format(time.RFC3339Nano) + "|" + e.Message
+		}
 		if !seen[key] {
 			seen[key] = true
 			result = append(result, e)

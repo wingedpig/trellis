@@ -42,6 +42,7 @@ type RealRunner struct {
 	currentRuns map[string]*runState
 	cancelFuncs map[string]context.CancelFunc
 	done        chan struct{} // signals shutdown to background goroutines
+	closeOnce   sync.Once     // ensures Close() is only executed once
 }
 
 type runState struct {
@@ -104,16 +105,18 @@ func (r *RealRunner) cleanupExpiredRuns() {
 
 // Close shuts down the runner, cancelling all running workflows and stopping background goroutines.
 func (r *RealRunner) Close() error {
-	// Signal cleanup goroutine to stop
-	close(r.done)
+	r.closeOnce.Do(func() {
+		// Signal cleanup goroutine to stop
+		close(r.done)
 
-	// Cancel all running workflows
-	r.mu.Lock()
-	for runID, cancel := range r.cancelFuncs {
-		cancel()
-		delete(r.cancelFuncs, runID)
-	}
-	r.mu.Unlock()
+		// Cancel all running workflows
+		r.mu.Lock()
+		for runID, cancel := range r.cancelFuncs {
+			cancel()
+			delete(r.cancelFuncs, runID)
+		}
+		r.mu.Unlock()
+	})
 
 	return nil
 }

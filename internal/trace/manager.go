@@ -20,6 +20,7 @@ import (
 
 // Manager coordinates distributed trace execution across log viewers.
 type Manager struct {
+	mu              sync.RWMutex
 	logManager      *logs.Manager
 	traceGroups     []config.TraceGroupConfig
 	logViewerConfig map[string]config.LogViewerConfig // Map of viewer name to config (for ID field access)
@@ -106,6 +107,9 @@ func (m *Manager) Close() error {
 // UpdateConfigs updates the trace configuration when switching worktrees.
 // This updates the log viewer config map (used for ID field access) and trace groups.
 func (m *Manager) UpdateConfigs(cfg *config.Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	// Update trace groups
 	m.traceGroups = cfg.TraceGroups
 
@@ -135,11 +139,16 @@ func (m *Manager) UpdateConfigs(cfg *config.Config) {
 // Execute starts a distributed trace search across all log viewers in a group.
 // The search runs asynchronously and updates the report when complete.
 func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult, error) {
-	// Find the trace group
-	group, err := m.findGroup(req.Group)
+	// Find the trace group and get storage reference while holding lock
+	m.mu.RLock()
+	group, err := m.findGroupLocked(req.Group)
 	if err != nil {
+		m.mu.RUnlock()
 		return nil, err
 	}
+	viewerNames := group.LogViewers // copy before releasing lock
+	storage := m.storage
+	m.mu.RUnlock()
 
 	// Generate report name if not provided
 	reportName := req.Name
@@ -171,7 +180,7 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 	}
 
 	// Save the initial report
-	if _, err := m.storage.Save(report); err != nil {
+	if _, err := storage.Save(report); err != nil {
 		return nil, fmt.Errorf("saving initial report: %w", err)
 	}
 
@@ -180,11 +189,11 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 		"name":        reportName,
 		"trace_id":    req.TraceID,
 		"group":       req.Group,
-		"log_viewers": group.LogViewers,
+		"log_viewers": viewerNames,
 	})
 
 	// Run the search asynchronously, passing the original creation time
-	go m.executeAsync(reportName, req, group.LogViewers, createdAt)
+	go m.executeAsync(reportName, req, viewerNames, createdAt)
 
 	return &ExecuteResult{
 		Name:   reportName,
@@ -277,7 +286,10 @@ func (m *Manager) executeAsync(reportName string, req TraceRequest, viewerNames 
 	}
 
 	// Save the completed report
-	reportPath, err := m.storage.Save(report)
+	m.mu.RLock()
+	storage := m.storage
+	m.mu.RUnlock()
+	reportPath, err := storage.Save(report)
 	if err != nil {
 		log.Printf("Trace: failed to save completed report %s: %v", reportName, err)
 		m.emitEvent("trace.failed", map[string]any{
@@ -325,7 +337,10 @@ func (m *Manager) updateReportFailed(reportName string, req TraceRequest, create
 		Error:   err.Error(),
 	}
 
-	if _, saveErr := m.storage.Save(report); saveErr != nil {
+	m.mu.RLock()
+	storage := m.storage
+	m.mu.RUnlock()
+	if _, saveErr := storage.Save(report); saveErr != nil {
 		log.Printf("Trace: failed to save failed report %s: %v", reportName, saveErr)
 	}
 
@@ -424,11 +439,16 @@ func (m *Manager) buildSummary(entries []TraceEntry, duration time.Duration) Tra
 
 // extractIDs extracts unique ID values from trace entries using each log viewer's configured ID field.
 func (m *Manager) extractIDs(entries []TraceEntry) []string {
+	// Take a snapshot of logViewerConfig under lock
+	m.mu.RLock()
+	logViewerConfig := m.logViewerConfig
+	m.mu.RUnlock()
+
 	idSet := make(map[string]struct{})
 
 	for _, entry := range entries {
 		// Get the log viewer config for this entry's source
-		cfg, ok := m.logViewerConfig[entry.Source]
+		cfg, ok := logViewerConfig[entry.Source]
 		if !ok || cfg.Parser.ID == "" {
 			continue // No ID field configured for this viewer
 		}
@@ -521,21 +541,32 @@ func (m *Manager) deduplicateEntries(entries []TraceEntry) []TraceEntry {
 
 // GetReport retrieves a saved trace report by name.
 func (m *Manager) GetReport(name string) (*TraceReport, error) {
-	return m.storage.Load(name)
+	m.mu.RLock()
+	storage := m.storage
+	m.mu.RUnlock()
+	return storage.Load(name)
 }
 
 // ListReports returns summaries of all saved reports.
 func (m *Manager) ListReports() ([]ReportSummary, error) {
-	return m.storage.List()
+	m.mu.RLock()
+	storage := m.storage
+	m.mu.RUnlock()
+	return storage.List()
 }
 
 // DeleteReport removes a saved report.
 func (m *Manager) DeleteReport(name string) error {
-	return m.storage.Delete(name)
+	m.mu.RLock()
+	storage := m.storage
+	m.mu.RUnlock()
+	return storage.Delete(name)
 }
 
 // GetGroups returns all configured trace groups.
 func (m *Manager) GetGroups() []TraceGroup {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	groups := make([]TraceGroup, len(m.traceGroups))
 	for i, cfg := range m.traceGroups {
 		groups[i] = TraceGroup{
@@ -548,12 +579,24 @@ func (m *Manager) GetGroups() []TraceGroup {
 
 // CleanupOldReports removes reports older than the retention period.
 func (m *Manager) CleanupOldReports() error {
-	cutoff := time.Now().Add(-m.retention)
-	return m.storage.DeleteOlderThan(cutoff)
+	m.mu.RLock()
+	storage := m.storage
+	retention := m.retention
+	m.mu.RUnlock()
+	cutoff := time.Now().Add(-retention)
+	return storage.DeleteOlderThan(cutoff)
 }
 
 // findGroup looks up a trace group by name.
 func (m *Manager) findGroup(name string) (*config.TraceGroupConfig, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.findGroupLocked(name)
+}
+
+// findGroupLocked looks up a trace group by name.
+// Caller must hold m.mu.RLock() or m.mu.Lock().
+func (m *Manager) findGroupLocked(name string) (*config.TraceGroupConfig, error) {
 	for i := range m.traceGroups {
 		if m.traceGroups[i].Name == name {
 			return &m.traceGroups[i], nil

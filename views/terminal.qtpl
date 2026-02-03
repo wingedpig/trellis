@@ -1955,7 +1955,11 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     }
 
     // Switch to a terminal (hide/show, don't navigate)
+    var isSwitchingTerminal = false; // Guard against re-entrancy from Select2 events
     function switchTerminal(terminalKey, isRemote) {
+        // Prevent recursive calls (Select2's change.select2 can trigger select2:select)
+        if (isSwitchingTerminal) return;
+
         // Stop service log polling if active
         if (serviceLogPollTimer) {
             clearInterval(serviceLogPollTimer);
@@ -2087,7 +2091,10 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         history.pushState({ type: isRemote ? 'remote' : 'local', worktree, window: windowName }, '', newUrl);
 
         // Update terminal picker to match (use URL, not terminal key)
+        // Set guard to prevent Select2 from triggering another switchTerminal call
+        isSwitchingTerminal = true;
         $('#navSelect').val(newUrl).trigger('change.select2');
+        isSwitchingTerminal = false;
 
         // Update workflow selector visibility
         const workflowSelect = document.getElementById('workflowSelect');
