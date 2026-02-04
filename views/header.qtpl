@@ -221,7 +221,20 @@ window.TrellisNav = (function() {
                 opt.value = key;
                 opt.dataset.isPage = 'true';
                 // Generate display name from URL path
-                if (key.startsWith('/trace/report/')) {
+                if (key.startsWith('/terminal/local/')) {
+                    const parts = key.substring('/terminal/local/'.length).split('/');
+                    opt.textContent = '@' + decodeURIComponent(parts[0]) + ' - ' + decodeURIComponent(parts[1] || '');
+                } else if (key.startsWith('/terminal/remote/')) {
+                    opt.textContent = '!' + decodeURIComponent(key.substring('/terminal/remote/'.length));
+                } else if (key.startsWith('/terminal/output/')) {
+                    opt.textContent = '@' + decodeURIComponent(key.substring('/terminal/output/'.length)) + ' - output';
+                } else if (key.startsWith('/terminal/editor/')) {
+                    opt.textContent = '@' + decodeURIComponent(key.substring('/terminal/editor/'.length)) + ' - editor';
+                } else if (key.startsWith('/terminal/service/')) {
+                    opt.textContent = '#' + decodeURIComponent(key.substring('/terminal/service/'.length)) + ' - service';
+                } else if (key.startsWith('/terminal/logviewer/')) {
+                    opt.textContent = '~' + decodeURIComponent(key.substring('/terminal/logviewer/'.length)) + ' - logs';
+                } else if (key.startsWith('/trace/report/')) {
                     opt.textContent = '/Trace: ' + key.substring('/trace/report/'.length);
                 } else {
                     opt.textContent = key;
