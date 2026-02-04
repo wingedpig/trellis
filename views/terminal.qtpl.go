@@ -3208,6 +3208,20 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 return;
             }
 
+            // If previous view was a log viewer, go back to it
+            if (restoredKey.startsWith('~')) {
+                const logViewerName = restoredKey.substring(1);
+                showLogViewer(logViewerName);
+                return;
+            }
+
+            // If previous view was a service, go back to it
+            if (restoredKey.startsWith('#')) {
+                const serviceName = restoredKey.substring(1);
+                showService(serviceName);
+                return;
+            }
+
             currentTerminalKey = restoredKey;
         }
 
@@ -3240,6 +3254,14 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             history.pushState({ type: isRemote ? 'remote' : 'local', worktree, window: windowName }, '', newUrl);
             // Update picker to show current terminal
             $('#navSelect').val(newUrl).trigger('change.select2');
+        }
+
+        // Restore page title from current terminal
+        if (currentTerminalKey && !currentTerminalKey.startsWith('output:') && !currentTerminalKey.startsWith('editor:')) {
+            const parts = currentTerminalKey.split('/');
+            const windowName = (parts[1] || '').split('?')[0];
+            const isRemote = currentTerminalKey.includes('?remote=1');
+            document.title = (isRemote ? 'Remote: ' : 'Terminal: ') + windowName;
         }
 
         setTimeout(() => {
@@ -3288,6 +3310,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
         if (document.getElementById('service-wrapper')) {
             document.getElementById('service-wrapper').style.display = 'none';
+        }
+        if (document.getElementById('logviewer-wrapper')) {
+            document.getElementById('logviewer-wrapper').style.display = 'none';
         }
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');
@@ -3761,6 +3786,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         output.innerHTML = 'Running...<br><br>';
         let outputLines = [];
 
+        // Store initial state so navigating away and back shows output
+        const worktreeForOutput = currentWorktree;
+        workflowOutputs[worktreeForOutput] = {
+            title: workflowId + ' - Running...',
+            html: 'Running...<br><br>'
+        };
+
         const ws = new WebSocket(wsUrl);
         currentWorkflowWs = ws;
 
@@ -3776,7 +3808,14 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     // Append new line of output
                     const escapedLine = (msg.line || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
                     outputLines.push(escapedLine);
-                    output.innerHTML = 'Running...<br><br>' + outputLines.join('');
+                    const currentHtml = 'Running...<br><br>' + outputLines.join('');
+                    output.innerHTML = currentHtml;
+
+                    // Store output so navigating away and back shows progress
+                    workflowOutputs[worktreeForOutput] = {
+                        title: workflowId + ' - Running...',
+                        html: currentHtml
+                    };
 
                     // Auto-scroll output
                     const wrapper = document.getElementById('workflow-output');
@@ -5423,36 +5462,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4868
+//line views/terminal.qtpl:4907
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4868
+//line views/terminal.qtpl:4907
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 }
 
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 }
 
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 	return qs422016
-//line views/terminal.qtpl:4869
+//line views/terminal.qtpl:4908
 }
