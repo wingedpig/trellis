@@ -148,6 +148,28 @@ window.TrellisNav = (function() {
         { value: '/events', text: '/Events', icon: 'clock-rotate-left' }
     ];
 
+    // Convert a terminal URL path to a human-readable display name.
+    // Returns null if the path is not a recognized terminal URL.
+    function formatTerminalUrl(url) {
+        if (url.startsWith('/terminal/local/')) {
+            const parts = url.substring('/terminal/local/'.length).split('/');
+            return '@' + decodeURIComponent(parts[0]) + ' - ' + decodeURIComponent(parts[1] || '');
+        } else if (url.startsWith('/terminal/remote/')) {
+            return '!' + decodeURIComponent(url.substring('/terminal/remote/'.length));
+        } else if (url.startsWith('/terminal/output/')) {
+            return '@' + decodeURIComponent(url.substring('/terminal/output/'.length)) + ' - output';
+        } else if (url.startsWith('/terminal/editor/')) {
+            return '@' + decodeURIComponent(url.substring('/terminal/editor/'.length)) + ' - editor';
+        } else if (url.startsWith('/terminal/service/')) {
+            return '#' + decodeURIComponent(url.substring('/terminal/service/'.length)) + ' - service';
+        } else if (url.startsWith('/terminal/logviewer/')) {
+            return '~' + decodeURIComponent(url.substring('/terminal/logviewer/'.length)) + ' - logs';
+        } else if (url.startsWith('/trace/report/')) {
+            return '/Trace: ' + url.substring('/trace/report/'.length);
+        }
+        return null;
+    }
+
     function normalizeHistoryKey(key) {
         if (!key) return key;
         try {
@@ -263,25 +285,7 @@ window.TrellisNav = (function() {
                 // Unknown page URL - create a synthetic option
                 opt.value = key;
                 opt.dataset.isPage = 'true';
-                // Generate display name from URL path
-                if (key.startsWith('/terminal/local/')) {
-                    const parts = key.substring('/terminal/local/'.length).split('/');
-                    opt.textContent = '@' + decodeURIComponent(parts[0]) + ' - ' + decodeURIComponent(parts[1] || '');
-                } else if (key.startsWith('/terminal/remote/')) {
-                    opt.textContent = '!' + decodeURIComponent(key.substring('/terminal/remote/'.length));
-                } else if (key.startsWith('/terminal/output/')) {
-                    opt.textContent = '@' + decodeURIComponent(key.substring('/terminal/output/'.length)) + ' - output';
-                } else if (key.startsWith('/terminal/editor/')) {
-                    opt.textContent = '@' + decodeURIComponent(key.substring('/terminal/editor/'.length)) + ' - editor';
-                } else if (key.startsWith('/terminal/service/')) {
-                    opt.textContent = '#' + decodeURIComponent(key.substring('/terminal/service/'.length)) + ' - service';
-                } else if (key.startsWith('/terminal/logviewer/')) {
-                    opt.textContent = '~' + decodeURIComponent(key.substring('/terminal/logviewer/'.length)) + ' - logs';
-                } else if (key.startsWith('/trace/report/')) {
-                    opt.textContent = '/Trace: ' + key.substring('/trace/report/'.length);
-                } else {
-                    opt.textContent = key;
-                }
+                opt.textContent = formatTerminalUrl(key) || key;
             } else {
                 // Unknown non-page item, skip
                 continue;
@@ -737,38 +741,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 }
 
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 }
 
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 	return qs422016
-//line views/header.qtpl:696
+//line views/header.qtpl:700
 }
 
-//line views/header.qtpl:698
+//line views/header.qtpl:702
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:698
+//line views/header.qtpl:702
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -776,9 +780,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:704
+//line views/header.qtpl:708
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:704
+//line views/header.qtpl:708
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -842,25 +846,25 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:766
+//line views/header.qtpl:770
 	if p.Worktree != nil {
-//line views/header.qtpl:766
+//line views/header.qtpl:770
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:768
+//line views/header.qtpl:772
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:768
+//line views/header.qtpl:772
 		qw422016.N().S(` (`)
-//line views/header.qtpl:768
+//line views/header.qtpl:772
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:768
+//line views/header.qtpl:772
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:770
+//line views/header.qtpl:774
 	}
-//line views/header.qtpl:770
+//line views/header.qtpl:774
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -917,74 +921,74 @@ function showShortcutHelp() {
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="/static/js/logviewer.js"></script>
 `)
-//line views/header.qtpl:825
+//line views/header.qtpl:829
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:825
+//line views/header.qtpl:829
 	qw422016.N().S(`
 `)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 }
 
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 }
 
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 func (p *BasePage) Header() string {
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 	return qs422016
-//line views/header.qtpl:826
+//line views/header.qtpl:830
 }
 
-//line views/header.qtpl:828
+//line views/header.qtpl:832
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:828
+//line views/header.qtpl:832
 	qw422016.N().S(`
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 `)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 }
 
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 }
 
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 	return qs422016
-//line views/header.qtpl:833
+//line views/header.qtpl:837
 }

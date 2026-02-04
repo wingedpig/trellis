@@ -105,6 +105,28 @@ window.TrellisNav = (function() {
         { value: '/events', text: '/Events', icon: 'clock-rotate-left' }
     ];
 
+    // Convert a terminal URL path to a human-readable display name.
+    // Returns null if the path is not a recognized terminal URL.
+    function formatTerminalUrl(url) {
+        if (url.startsWith('/terminal/local/')) {
+            const parts = url.substring('/terminal/local/'.length).split('/');
+            return '@' + decodeURIComponent(parts[0]) + ' - ' + decodeURIComponent(parts[1] || '');
+        } else if (url.startsWith('/terminal/remote/')) {
+            return '!' + decodeURIComponent(url.substring('/terminal/remote/'.length));
+        } else if (url.startsWith('/terminal/output/')) {
+            return '@' + decodeURIComponent(url.substring('/terminal/output/'.length)) + ' - output';
+        } else if (url.startsWith('/terminal/editor/')) {
+            return '@' + decodeURIComponent(url.substring('/terminal/editor/'.length)) + ' - editor';
+        } else if (url.startsWith('/terminal/service/')) {
+            return '#' + decodeURIComponent(url.substring('/terminal/service/'.length)) + ' - service';
+        } else if (url.startsWith('/terminal/logviewer/')) {
+            return '~' + decodeURIComponent(url.substring('/terminal/logviewer/'.length)) + ' - logs';
+        } else if (url.startsWith('/trace/report/')) {
+            return '/Trace: ' + url.substring('/trace/report/'.length);
+        }
+        return null;
+    }
+
     function normalizeHistoryKey(key) {
         if (!key) return key;
         try {
@@ -220,25 +242,7 @@ window.TrellisNav = (function() {
                 // Unknown page URL - create a synthetic option
                 opt.value = key;
                 opt.dataset.isPage = 'true';
-                // Generate display name from URL path
-                if (key.startsWith('/terminal/local/')) {
-                    const parts = key.substring('/terminal/local/'.length).split('/');
-                    opt.textContent = '@' + decodeURIComponent(parts[0]) + ' - ' + decodeURIComponent(parts[1] || '');
-                } else if (key.startsWith('/terminal/remote/')) {
-                    opt.textContent = '!' + decodeURIComponent(key.substring('/terminal/remote/'.length));
-                } else if (key.startsWith('/terminal/output/')) {
-                    opt.textContent = '@' + decodeURIComponent(key.substring('/terminal/output/'.length)) + ' - output';
-                } else if (key.startsWith('/terminal/editor/')) {
-                    opt.textContent = '@' + decodeURIComponent(key.substring('/terminal/editor/'.length)) + ' - editor';
-                } else if (key.startsWith('/terminal/service/')) {
-                    opt.textContent = '#' + decodeURIComponent(key.substring('/terminal/service/'.length)) + ' - service';
-                } else if (key.startsWith('/terminal/logviewer/')) {
-                    opt.textContent = '~' + decodeURIComponent(key.substring('/terminal/logviewer/'.length)) + ' - logs';
-                } else if (key.startsWith('/trace/report/')) {
-                    opt.textContent = '/Trace: ' + key.substring('/trace/report/'.length);
-                } else {
-                    opt.textContent = key;
-                }
+                opt.textContent = formatTerminalUrl(key) || key;
             } else {
                 // Unknown non-page item, skip
                 continue;
