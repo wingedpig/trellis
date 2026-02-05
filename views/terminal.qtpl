@@ -1618,9 +1618,8 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         if (newStatus) {
             // Update the picker option
             const select = document.getElementById('navSelect');
-            const optionValue = '#' + serviceName;
             for (const opt of select.options) {
-                if (opt.value === optionValue) {
+                if (opt.dataset.serviceName === serviceName) {
                     opt.dataset.serviceStatus = newStatus;
                     break;
                 }

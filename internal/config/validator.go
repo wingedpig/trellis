@@ -151,7 +151,7 @@ func (v *Validator) validateWorkflows(cfg *Config, errs *ValidationError) {
 			errs.Add(prefix+".name", "is required")
 		}
 
-		// Either command or commands must be set (command must be array, not string)
+		// Either command or commands must be set
 		hasCommand := false
 		if wf.Command != nil {
 			switch cmd := wf.Command.(type) {
@@ -160,8 +160,7 @@ func (v *Validator) validateWorkflows(cfg *Config, errs *ValidationError) {
 			case []string:
 				hasCommand = len(cmd) > 0
 			case string:
-				// String commands are not supported for workflows
-				errs.Add(prefix+".command", "must be an array, not a string")
+				hasCommand = cmd != ""
 			}
 		}
 		hasCommands := false
@@ -341,11 +340,22 @@ func (v *Validator) validateTraceGroups(cfg *Config, errs *ValidationError) {
 
 	// Validate trace max_age duration if specified
 	if cfg.Trace.MaxAge != "" {
-		d, err := time.ParseDuration(cfg.Trace.MaxAge)
+		d, err := parseDurationWithDays(cfg.Trace.MaxAge)
 		if err != nil {
 			errs.Add("trace.max_age", fmt.Sprintf("invalid duration format: %s", err))
 		} else if d < 0 {
 			errs.Add("trace.max_age", "must be positive")
 		}
 	}
+}
+
+// parseDurationWithDays parses a duration string that may include days (e.g., "7d").
+func parseDurationWithDays(s string) (time.Duration, error) {
+	if len(s) > 1 && s[len(s)-1] == 'd' {
+		var days int
+		if _, err := fmt.Sscanf(s, "%dd", &days); err == nil {
+			return time.Duration(days) * 24 * time.Hour, nil
+		}
+	}
+	return time.ParseDuration(s)
 }

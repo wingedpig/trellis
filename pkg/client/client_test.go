@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -403,7 +404,7 @@ func TestWorktreeClient_List(t *testing.T) {
 		},
 	}
 
-	server := mockServer(t, apiHandler(worktrees, http.StatusOK))
+	server := mockServer(t, apiHandler(map[string]interface{}{"worktrees": worktrees}, http.StatusOK))
 	defer server.Close()
 
 	c := New(server.URL)
@@ -438,7 +439,7 @@ func TestWorktreeClient_Get(t *testing.T) {
 		if r.URL.Path != "/api/v1/worktrees/feature" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		apiHandler(worktree, http.StatusOK)(w, r)
+		apiHandler(map[string]interface{}{"worktree": worktree}, http.StatusOK)(w, r)
 	})
 	defer server.Close()
 
@@ -455,13 +456,15 @@ func TestWorktreeClient_Get(t *testing.T) {
 }
 
 func TestWorktreeClient_Activate(t *testing.T) {
-	activateResult := ActivateResult{
-		Worktree: Worktree{
+	// Match the real handler response shape
+	activateData := map[string]interface{}{
+		"worktree": Worktree{
 			Path:   "/home/user/project-feature",
 			Branch: "feature",
 			Active: true,
 		},
-		Duration: "2.5s",
+		"duration":     "2.5s",
+		"hook_results": nil,
 	}
 
 	server := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -471,7 +474,7 @@ func TestWorktreeClient_Activate(t *testing.T) {
 		if r.URL.Path != "/api/v1/worktrees/feature/activate" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		apiHandler(activateResult, http.StatusOK)(w, r)
+		apiHandler(activateData, http.StatusOK)(w, r)
 	})
 	defer server.Close()
 
@@ -839,22 +842,34 @@ func TestLogClient_GetHistoryEntries(t *testing.T) {
 }
 
 func TestLogClient_GetHistory(t *testing.T) {
+	entries := []LogEntry{
+		{Message: "test entry", Level: "info"},
+	}
+
 	server := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/logs/nginx/history" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		if r.URL.Query().Get("lines") != "100" {
-			t.Errorf("lines = %q, want %q", r.URL.Query().Get("lines"), "100")
+		if r.URL.Query().Get("start") == "" {
+			t.Error("expected start query parameter")
 		}
-		apiHandler("log data here", http.StatusOK)(w, r)
+		if r.URL.Query().Get("end") == "" {
+			t.Error("expected end query parameter")
+		}
+		apiHandler(map[string]interface{}{"entries": entries, "count": 1}, http.StatusOK)(w, r)
 	})
 	defer server.Close()
 
 	c := New(server.URL)
-	_, err := c.Logs.GetHistory(context.Background(), "nginx", 100)
+	start := time.Now().Add(-1 * time.Hour)
+	end := time.Now()
+	result, err := c.Logs.GetHistory(context.Background(), "nginx", start, end)
 
 	if err != nil {
 		t.Fatalf("GetHistory() error = %v", err)
+	}
+	if len(result) != 1 {
+		t.Errorf("GetHistory() returned %d entries, want 1", len(result))
 	}
 }
 
@@ -903,7 +918,7 @@ func TestTraceClient_ListReports(t *testing.T) {
 		},
 	}
 
-	server := mockServer(t, apiHandler(reports, http.StatusOK))
+	server := mockServer(t, apiHandler(map[string]interface{}{"reports": reports}, http.StatusOK))
 	defer server.Close()
 
 	c := New(server.URL)
@@ -1216,11 +1231,15 @@ func TestLogClient_GetEntriesWithAllOptions(t *testing.T) {
 		if query.Get("limit") != "100" {
 			t.Errorf("expected limit=100, got %s", query.Get("limit"))
 		}
-		if query.Get("level") != "error" {
-			t.Errorf("expected level=error, got %s", query.Get("level"))
+		filterVal := query.Get("filter")
+		if filterVal == "" {
+			t.Error("expected filter parameter")
 		}
-		if query.Get("grep") != "pattern" {
-			t.Errorf("expected grep=pattern, got %s", query.Get("grep"))
+		if !strings.Contains(filterVal, "level:error") {
+			t.Errorf("expected filter to contain level:error, got %s", filterVal)
+		}
+		if !strings.Contains(filterVal, "\"pattern\"") {
+			t.Errorf("expected filter to contain quoted pattern, got %s", filterVal)
 		}
 		if query.Get("after") == "" {
 			t.Error("expected after parameter")

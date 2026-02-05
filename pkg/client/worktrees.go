@@ -32,12 +32,14 @@ func (w *WorktreeClient) List(ctx context.Context) ([]Worktree, error) {
 		return nil, err
 	}
 
-	var worktrees []Worktree
-	if err := json.Unmarshal(data, &worktrees); err != nil {
+	var resp struct {
+		Worktrees []Worktree `json:"worktrees"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("failed to parse worktrees: %w", err)
 	}
 
-	return worktrees, nil
+	return resp.Worktrees, nil
 }
 
 // Get returns a specific worktree by name.
@@ -50,12 +52,14 @@ func (w *WorktreeClient) Get(ctx context.Context, name string) (*Worktree, error
 		return nil, err
 	}
 
-	var wt Worktree
-	if err := json.Unmarshal(data, &wt); err != nil {
+	var resp struct {
+		Worktree Worktree `json:"worktree"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("failed to parse worktree: %w", err)
 	}
 
-	return &wt, nil
+	return &resp.Worktree, nil
 }
 
 // Activate switches to the specified worktree.

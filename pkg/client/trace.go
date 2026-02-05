@@ -55,12 +55,14 @@ func (t *TraceClient) ListReports(ctx context.Context) ([]TraceReportSummary, er
 		return nil, err
 	}
 
-	var reports []TraceReportSummary
-	if err := json.Unmarshal(data, &reports); err != nil {
+	var resp struct {
+		Reports []TraceReportSummary `json:"reports"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("failed to parse trace reports: %w", err)
 	}
 
-	return reports, nil
+	return resp.Reports, nil
 }
 
 // GetReport returns a complete trace report by name.

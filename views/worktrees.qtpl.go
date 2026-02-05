@@ -487,34 +487,40 @@ function switchWorktree(name) {
 
     fetch('/api/v1/worktrees/' + encodeURIComponent(name) + '/activate', { method: 'POST' })
         .then(function(r) { return r.json(); })
-        .then(function(data) {
+        .then(function(resp) {
             // Hide progress, show results
             document.getElementById('activationProgress').style.display = 'none';
             document.getElementById('activationResults').style.display = 'block';
             document.getElementById('activationFooter').style.display = 'flex';
             document.getElementById('activationSpinner').style.display = 'none';
 
-            var isError = !!data.error;
+            // Unwrap API envelope: {data: {...}, error: {...}, meta: {...}}
+            var isError = !!resp.error;
+            var data = resp.data || {};
+            var errorDetails = (resp.error && resp.error.details) || {};
+
             var statusAlert = document.getElementById('activationStatusAlert');
             statusAlert.className = 'alert ' + (isError ? 'alert-danger' : 'alert-success');
 
             if (isError) {
                 document.getElementById('activationTitle').textContent = 'Activation Failed';
-                document.getElementById('activationStatus').textContent = data.error;
+                document.getElementById('activationStatus').textContent = resp.error.message;
             } else {
                 document.getElementById('activationTitle').textContent = 'Worktree Activated';
                 document.getElementById('activationStatus').textContent = 'Successfully switched to ' + name;
             }
 
-            if (data.duration) {
-                document.getElementById('activationDuration').textContent = '(' + data.duration + ')';
+            var duration = data.duration || errorDetails.duration;
+            if (duration) {
+                document.getElementById('activationDuration').textContent = '(' + duration + ')';
             }
 
             // Display hook results
             var container = document.getElementById('hookResultsContainer');
             container.innerHTML = '';
 
-            if (data.hook_results && data.hook_results.length > 0) {
+            var hook_results = data.hook_results || errorDetails.hook_results;
+            if (hook_results && hook_results.length > 0) {
                 var heading = document.createElement('h6');
                 heading.textContent = 'Hook Results:';
                 container.appendChild(heading);
@@ -718,36 +724,36 @@ document.getElementById('branchName').addEventListener('input', function(e) {
 </script>
 
 `)
-//line views/worktrees.qtpl:523
+//line views/worktrees.qtpl:529
 	p.StreamFooter(qw422016)
-//line views/worktrees.qtpl:523
+//line views/worktrees.qtpl:529
 	qw422016.N().S(`
 `)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 }
 
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 func (p *WorktreesPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	p.StreamRender(qw422016)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 }
 
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 func (p *WorktreesPage) Render() string {
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	p.WriteRender(qb422016)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	qs422016 := string(qb422016.B)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 	return qs422016
-//line views/worktrees.qtpl:524
+//line views/worktrees.qtpl:530
 }

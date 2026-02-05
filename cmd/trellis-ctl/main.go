@@ -388,7 +388,7 @@ func cmdLogs(args []string) error {
 		if isViewer {
 			fmt.Printf("%s/terminal/logviewer/%s\n", apiURL, name)
 		} else {
-			fmt.Printf("%s/terminal/#%s\n", apiURL, name)
+			fmt.Printf("%s/terminal/service/%s\n", apiURL, name)
 		}
 		return nil
 	}
@@ -399,7 +399,7 @@ func cmdLogs(args []string) error {
 		if isViewer {
 			url = fmt.Sprintf("%s/terminal/logviewer/%s", apiURL, name)
 		} else {
-			url = fmt.Sprintf("%s/terminal/#%s", apiURL, name)
+			url = fmt.Sprintf("%s/terminal/service/%s", apiURL, name)
 		}
 		return openBrowser(url)
 	}
@@ -653,15 +653,20 @@ func streamSSE(endpoint, name string, isViewer bool, filter *logs.Filter, format
 					continue // Skip malformed entries
 				}
 			} else {
-				// Service logs send {line, sequence} objects
+				// Service logs send {line, sequence, entry?} objects
 				var logLine struct {
-					Line     string `json:"line"`
-					Sequence int64  `json:"sequence"`
+					Line     string         `json:"line"`
+					Sequence int64          `json:"sequence"`
+					Entry    *logs.LogEntry `json:"entry"`
 				}
 				if err := json.Unmarshal([]byte(data), &logLine); err != nil {
 					continue // Skip malformed entries
 				}
-				entry = logs.ParseLogLine(logLine.Line, parserCfg, name)
+				if logLine.Entry != nil {
+					entry = *logLine.Entry
+				} else {
+					entry = logs.ParseLogLine(logLine.Line, parserCfg, name)
+				}
 			}
 
 			if filter.Match(&entry) {
@@ -686,14 +691,20 @@ func fetchServiceLogs(name string, lines int) ([]logs.LogEntry, error) {
 	}
 
 	var result struct {
-		Service string   `json:"service"`
-		Lines   []string `json:"lines"`
+		Service string          `json:"service"`
+		Lines   []string        `json:"lines"`
+		Entries []logs.LogEntry `json:"entries"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse logs: %w", err)
 	}
 
-	// Parse log lines using the parser config
+	// If server returned parsed entries, use them directly
+	if len(result.Entries) > 0 {
+		return result.Entries, nil
+	}
+
+	// Otherwise parse raw log lines using the parser config
 	entries := make([]logs.LogEntry, 0, len(result.Lines))
 	for _, line := range result.Lines {
 		if line == "" {

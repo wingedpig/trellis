@@ -29,6 +29,7 @@ type Manager struct {
 	bus             events.EventBus
 	storage         *Storage
 	done            chan struct{} // signals shutdown to background goroutines
+	closeOnce       sync.Once
 }
 
 // NewManager creates a new trace manager.
@@ -100,7 +101,9 @@ func (m *Manager) cleanupLoop() {
 
 // Close shuts down the manager and stops background goroutines.
 func (m *Manager) Close() error {
-	close(m.done)
+	m.closeOnce.Do(func() {
+		close(m.done)
+	})
 	return nil
 }
 

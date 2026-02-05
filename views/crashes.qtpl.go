@@ -205,7 +205,7 @@ function deleteCrash(id) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.error) {
-                alert('Error: ' + data.error.message);
+                alert('Error: ' + (typeof data.error === 'string' ? data.error : data.error.message));
             } else {
                 location.reload();
             }
@@ -224,7 +224,7 @@ function clearAllCrashes() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.error) {
-                alert('Error: ' + data.error.message);
+                alert('Error: ' + (typeof data.error === 'string' ? data.error : data.error.message));
             } else {
                 location.reload();
             }

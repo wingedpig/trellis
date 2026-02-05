@@ -2103,9 +2103,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         if (newStatus) {
             // Update the picker option
             const select = document.getElementById('navSelect');
-            const optionValue = '#' + serviceName;
             for (const opt of select.options) {
-                if (opt.value === optionValue) {
+                if (opt.dataset.serviceName === serviceName) {
                     opt.dataset.serviceStatus = newStatus;
                     break;
                 }
@@ -5462,36 +5461,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:4907
+//line views/terminal.qtpl:4906
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:4907
+//line views/terminal.qtpl:4906
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 }
 
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 }
 
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 	return qs422016
-//line views/terminal.qtpl:4908
+//line views/terminal.qtpl:4907
 }

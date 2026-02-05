@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -60,11 +61,16 @@ func (l *LogClient) GetEntries(ctx context.Context, name string, opts *LogEntrie
 		if !opts.Until.IsZero() {
 			params.Set("before", opts.Until.Format(time.RFC3339))
 		}
+		// Build filter string from Level and Grep options
+		var filterParts []string
 		if opts.Level != "" {
-			params.Set("level", opts.Level)
+			filterParts = append(filterParts, "level:"+opts.Level)
 		}
 		if opts.Grep != "" {
-			params.Set("grep", opts.Grep)
+			filterParts = append(filterParts, fmt.Sprintf("%q", opts.Grep))
+		}
+		if len(filterParts) > 0 {
+			params.Set("filter", strings.Join(filterParts, " "))
 		}
 		if len(params) > 0 {
 			path += "?" + params.Encode()
@@ -137,12 +143,30 @@ func (l *LogClient) GetHistoryEntries(ctx context.Context, name string, opts *Lo
 	return result.Entries, nil
 }
 
-// GetHistory returns raw log lines from a log viewer's history files.
+// GetHistory returns historical log entries from a log viewer's history files.
 //
-// Unlike [LogClient.GetHistoryEntries] which returns parsed entries, this method
-// returns the raw log data as bytes. Use this when you need the original
-// unprocessed log content.
-func (l *LogClient) GetHistory(ctx context.Context, name string, lines int) ([]byte, error) {
-	path := fmt.Sprintf("/api/v1/logs/%s/history?lines=%d", name, lines)
-	return l.c.get(ctx, path)
+// Unlike [LogClient.GetHistoryEntries] which returns parsed entries via options,
+// this method provides a simpler interface that returns entries for a time range
+// ending at the current time.
+//
+// The start and end parameters specify the time range (RFC3339 format).
+func (l *LogClient) GetHistory(ctx context.Context, name string, start, end time.Time) ([]LogEntry, error) {
+	params := url.Values{}
+	params.Set("start", start.Format(time.RFC3339))
+	params.Set("end", end.Format(time.RFC3339))
+
+	path := "/api/v1/logs/" + name + "/history?" + params.Encode()
+	data, err := l.c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Entries []LogEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse historical entries: %w", err)
+	}
+
+	return result.Entries, nil
 }

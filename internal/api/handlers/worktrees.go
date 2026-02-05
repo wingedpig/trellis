@@ -104,8 +104,7 @@ func (h *WorktreeHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Even on error, return partial results if available
 		if result != nil {
-			WriteJSON(w, http.StatusBadRequest, map[string]interface{}{
-				"error":        err.Error(),
+			WriteErrorWithDetails(w, http.StatusBadRequest, ErrWorktreeError, err.Error(), map[string]interface{}{
 				"worktree":     toWorktreeResponse(result.Worktree, false),
 				"hook_results": result.HookResults,
 				"duration":     result.Duration,
