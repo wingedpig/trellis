@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/config"
@@ -70,6 +71,90 @@ const (
 	SourceTypeDocker     SourceType = "docker"
 	SourceTypeKubernetes SourceType = "kubernetes"
 )
+
+// sourceBase provides the common fields and status-tracking methods shared
+// by all LogSource implementations.
+type sourceBase struct {
+	cfg    config.LogSourceConfig
+	mu     sync.RWMutex
+	status SourceStatus
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// setConnected updates the status to connected.
+func (b *sourceBase) setConnected() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.status.Connected = true
+	b.status.LastConnect = time.Now()
+	b.status.Error = ""
+}
+
+// setError updates the status with an error.
+func (b *sourceBase) setError(err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.status.Connected = false
+	b.status.Error = err.Error()
+	b.status.LastError = time.Now()
+}
+
+// incrementLines increments the lines read counter.
+func (b *sourceBase) incrementLines() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.status.LinesRead++
+}
+
+// Status returns the current connection status.
+func (b *sourceBase) Status() SourceStatus {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.status
+}
+
+// Stop gracefully stops the source by cancelling the context and waiting.
+func (b *sourceBase) Stop() error {
+	if b.cancel != nil {
+		b.cancel()
+	}
+	b.wg.Wait()
+	return nil
+}
+
+// filterRelevantFiles filters rotated files based on time bounds.
+// Files must be sorted newest first by ModTime.
+// Returns the filtered list and the newest modification time seen.
+func filterRelevantFiles(files []RotatedFile, start, end time.Time) ([]RotatedFile, time.Time) {
+	var relevant []RotatedFile
+	var newestModTime time.Time
+
+	for i, file := range files {
+		if file.ModTime.After(newestModTime) {
+			newestModTime = file.ModTime
+		}
+
+		// Skip files that were last modified before our start time
+		// (all entries in this file are older than what we want)
+		if !start.IsZero() && file.ModTime.Before(start) {
+			continue
+		}
+
+		// Estimate when this file's entries started (previous file's ModTime)
+		// If this file started after our end time, skip it
+		if !end.IsZero() && i+1 < len(files) {
+			estimatedStart := files[i+1].ModTime
+			if estimatedStart.After(end) {
+				continue
+			}
+		}
+
+		relevant = append(relevant, file)
+	}
+
+	return relevant, newestModTime
+}
 
 // NewSource creates a new LogSource from configuration.
 func NewSource(cfg config.LogSourceConfig) (LogSource, error) {

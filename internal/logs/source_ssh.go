@@ -12,7 +12,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/config"
@@ -20,11 +19,7 @@ import (
 
 // SSHSource reads logs from a remote host via SSH.
 type SSHSource struct {
-	cfg    config.LogSourceConfig
-	mu     sync.RWMutex
-	status SourceStatus
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	sourceBase
 }
 
 // NewSSHSource creates a new SSH-based log source.
@@ -35,7 +30,7 @@ func NewSSHSource(cfg config.LogSourceConfig) (*SSHSource, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("ssh source requires path")
 	}
-	return &SSHSource{cfg: cfg}, nil
+	return &SSHSource{sourceBase: sourceBase{cfg: cfg}}, nil
 }
 
 // Name returns the source name.
@@ -133,21 +128,6 @@ func (s *SSHSource) tailRemote(ctx context.Context, lineCh chan<- string, errCh 
 	}
 }
 
-// Stop gracefully stops the source.
-func (s *SSHSource) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	s.wg.Wait()
-	return nil
-}
-
-// Status returns the current connection status.
-func (s *SSHSource) Status() SourceStatus {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.status
-}
 
 // ListRotatedFiles returns available rotated log files on the remote host.
 func (s *SSHSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error) {
@@ -248,40 +228,7 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 	timestampPattern := s.buildTimestampGrepPattern(start, end)
 	log.Printf("SSH ReadRange: timestamp pattern=%q, user grep=%q", timestampPattern, grep)
 
-	// Filter files based on time bounds to avoid scanning unnecessary files.
-	// Files are sorted newest first by ModTime.
-	// A file's ModTime is when it was last written (end of its entries).
-	// A file's start time can be estimated as the ModTime of the next older file.
-	//
-	// Skip files where:
-	// - ModTime < start (file's last entry is before our range started)
-	// - EstimatedStartTime > end (file's first entry is after our range ended)
-	var relevantFiles []RotatedFile
-	var newestRotatedModTime time.Time
-
-	for i, file := range files {
-		if file.ModTime.After(newestRotatedModTime) {
-			newestRotatedModTime = file.ModTime
-		}
-
-		// Skip files that were last modified before our start time
-		// (all entries in this file are older than what we want)
-		if !start.IsZero() && file.ModTime.Before(start) {
-			continue
-		}
-
-		// Estimate when this file's entries started (previous file's ModTime)
-		// If this file started after our end time, skip it
-		if !end.IsZero() && i+1 < len(files) {
-			estimatedStart := files[i+1].ModTime
-			if estimatedStart.After(end) {
-				// This file's entries all started after our end time
-				continue
-			}
-		}
-
-		relevantFiles = append(relevantFiles, file)
-	}
+	relevantFiles, newestRotatedModTime := filterRelevantFiles(files, start, end)
 
 	log.Printf("SSH ReadRange: %d relevant rotated files, newestRotatedModTime=%v", len(relevantFiles), newestRotatedModTime)
 	for _, f := range relevantFiles {
@@ -518,27 +465,3 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 	return waitErr
 }
 
-// setConnected updates the status to connected.
-func (s *SSHSource) setConnected() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = true
-	s.status.LastConnect = time.Now()
-	s.status.Error = ""
-}
-
-// setError updates the status with an error.
-func (s *SSHSource) setError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = false
-	s.status.Error = err.Error()
-	s.status.LastError = time.Now()
-}
-
-// incrementLines increments the lines read counter.
-func (s *SSHSource) incrementLines() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.LinesRead++
-}

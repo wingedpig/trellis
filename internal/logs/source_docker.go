@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/config"
@@ -17,11 +16,7 @@ import (
 
 // DockerSource reads logs from a Docker container.
 type DockerSource struct {
-	cfg       config.LogSourceConfig
-	mu        sync.RWMutex
-	status    SourceStatus
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	sourceBase
 	container string
 }
 
@@ -31,8 +26,8 @@ func NewDockerSource(cfg config.LogSourceConfig) (*DockerSource, error) {
 		return nil, fmt.Errorf("docker source requires container name")
 	}
 	return &DockerSource{
-		cfg:       cfg,
-		container: cfg.Container,
+		sourceBase: sourceBase{cfg: cfg},
+		container:  cfg.Container,
 	}, nil
 }
 
@@ -141,22 +136,6 @@ func (s *DockerSource) streamLogs(ctx context.Context, lineCh chan<- string, err
 	}
 }
 
-// Stop gracefully stops the source.
-func (s *DockerSource) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	s.wg.Wait()
-	return nil
-}
-
-// Status returns the current connection status.
-func (s *DockerSource) Status() SourceStatus {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.status
-}
-
 // ListRotatedFiles returns available rotated log files.
 // Docker sources don't support rotated files directly.
 func (s *DockerSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error) {
@@ -204,27 +183,3 @@ func (s *DockerSource) ReadRange(ctx context.Context, start, end time.Time, line
 	return cmd.Wait()
 }
 
-// setConnected updates the status to connected.
-func (s *DockerSource) setConnected() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = true
-	s.status.LastConnect = time.Now()
-	s.status.Error = ""
-}
-
-// setError updates the status with an error.
-func (s *DockerSource) setError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = false
-	s.status.Error = err.Error()
-	s.status.LastError = time.Now()
-}
-
-// incrementLines increments the lines read counter.
-func (s *DockerSource) incrementLines() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.LinesRead++
-}

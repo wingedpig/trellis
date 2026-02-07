@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/config"
@@ -17,11 +16,7 @@ import (
 
 // CommandSource reads logs from a command's stdout.
 type CommandSource struct {
-	cfg    config.LogSourceConfig
-	mu     sync.RWMutex
-	status SourceStatus
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	sourceBase
 }
 
 // NewCommandSource creates a new command-based log source.
@@ -29,7 +24,7 @@ func NewCommandSource(cfg config.LogSourceConfig) (*CommandSource, error) {
 	if len(cfg.Command) == 0 {
 		return nil, fmt.Errorf("command source requires command")
 	}
-	return &CommandSource{cfg: cfg}, nil
+	return &CommandSource{sourceBase: sourceBase{cfg: cfg}}, nil
 }
 
 // Name returns the source name.
@@ -119,22 +114,6 @@ func (s *CommandSource) runCommand(ctx context.Context, lineCh chan<- string, er
 	}
 }
 
-// Stop gracefully stops the source.
-func (s *CommandSource) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	s.wg.Wait()
-	return nil
-}
-
-// Status returns the current connection status.
-func (s *CommandSource) Status() SourceStatus {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.status
-}
-
 // ListRotatedFiles returns available rotated log files.
 // Command sources don't support rotated files.
 func (s *CommandSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error) {
@@ -147,27 +126,3 @@ func (s *CommandSource) ReadRange(ctx context.Context, start, end time.Time, lin
 	return fmt.Errorf("command source does not support historical access")
 }
 
-// setConnected updates the status to connected.
-func (s *CommandSource) setConnected() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = true
-	s.status.LastConnect = time.Now()
-	s.status.Error = ""
-}
-
-// setError updates the status with an error.
-func (s *CommandSource) setError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = false
-	s.status.Error = err.Error()
-	s.status.LastError = time.Now()
-}
-
-// incrementLines increments the lines read counter.
-func (s *CommandSource) incrementLines() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.LinesRead++
-}

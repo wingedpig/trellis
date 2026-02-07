@@ -4,12 +4,14 @@
 package logs
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wingedpig/trellis/internal/config"
+	serverlogs "github.com/wingedpig/trellis/internal/logs"
 )
 
 // ParseDuration parses a duration string like "1h", "30m", "2d", a clock time like "6:30am",
@@ -214,136 +216,42 @@ func GetLevelFromEntry(entry *LogEntry) LogLevel {
 
 // ParseLogLine parses a raw log line using the given parser config.
 // Returns a LogEntry with parsed fields populated.
+// Delegates to the server's log parsers for consistent behavior.
 func ParseLogLine(line string, cfg ParserConfig, source string) LogEntry {
-	entry := LogEntry{
-		Raw:    line,
-		Source: source,
-		Fields: make(map[string]interface{}),
+	// Build server parser config from CLI config
+	serverCfg := config.LogParserConfig{
+		Type:      cfg.Type,
+		Timestamp: cfg.TimestampField,
+		Level:     cfg.LevelField,
+		Message:   cfg.MessageField,
 	}
 
-	if cfg.Type == "" || cfg.Type == "none" {
-		// No parsing, just use raw line as message
-		entry.Message = line
-		entry.Timestamp = time.Now()
-		return entry
-	}
-
-	var parsed map[string]interface{}
-
-	switch cfg.Type {
-	case "json":
-		parsed = parseJSON(line)
-	case "logfmt":
-		parsed = parseLogfmt(line)
-	default:
-		entry.Message = line
-		entry.Timestamp = time.Now()
-		return entry
-	}
-
-	if parsed == nil {
-		// Parsing failed, use raw line
-		entry.Message = line
-		entry.Timestamp = time.Now()
-		return entry
-	}
-
-	// Copy all fields
-	entry.Fields = parsed
-
-	// Extract timestamp
-	if cfg.TimestampField != "" {
-		if ts, ok := parsed[cfg.TimestampField]; ok {
-			entry.Timestamp = parseTimestamp(ts)
-			delete(entry.Fields, cfg.TimestampField)
-		}
-	}
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = time.Now()
-	}
-
-	// Extract level
-	if cfg.LevelField != "" {
-		if lvl, ok := parsed[cfg.LevelField]; ok {
-			entry.Level = fmt.Sprintf("%v", lvl)
-			delete(entry.Fields, cfg.LevelField)
+	parser, err := serverlogs.NewParser(serverCfg)
+	if err != nil {
+		// Fallback: return raw line
+		return LogEntry{
+			Raw:       line,
+			Source:    source,
+			Message:   line,
+			Timestamp: time.Now(),
+			Fields:    make(map[string]interface{}),
 		}
 	}
 
-	// Extract message
-	if cfg.MessageField != "" {
-		if msg, ok := parsed[cfg.MessageField]; ok {
-			entry.Message = fmt.Sprintf("%v", msg)
-			delete(entry.Fields, cfg.MessageField)
-		}
-	}
-	if entry.Message == "" {
-		entry.Message = line
+	serverEntry := parser.Parse(line)
+
+	// Convert server LogEntry to CLI LogEntry
+	fields := make(map[string]interface{}, len(serverEntry.Fields))
+	for k, v := range serverEntry.Fields {
+		fields[k] = v
 	}
 
-	return entry
-}
-
-// parseJSON parses a JSON log line into a map.
-func parseJSON(line string) map[string]interface{} {
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(line), &result); err != nil {
-		return nil
+	return LogEntry{
+		Timestamp: serverEntry.Timestamp,
+		Level:     string(serverEntry.Level),
+		Message:   serverEntry.Message,
+		Raw:       serverEntry.Raw,
+		Source:    source,
+		Fields:    fields,
 	}
-	return result
-}
-
-// parseLogfmt parses a logfmt log line (key=value pairs) into a map.
-func parseLogfmt(line string) map[string]interface{} {
-	result := make(map[string]interface{})
-	re := regexp.MustCompile(`(\w+)=(?:"([^"]*)"|(\S+))`)
-	matches := re.FindAllStringSubmatch(line, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	for _, match := range matches {
-		key := match[1]
-		value := match[2]
-		if value == "" {
-			value = match[3]
-		}
-		result[key] = value
-	}
-	return result
-}
-
-// parseTimestamp attempts to parse a timestamp from various formats.
-func parseTimestamp(v interface{}) time.Time {
-	switch ts := v.(type) {
-	case string:
-		// Try common formats
-		formats := []string{
-			time.RFC3339,
-			time.RFC3339Nano,
-			"2006-01-02T15:04:05.000Z",
-			"2006-01-02T15:04:05",
-			"2006-01-02 15:04:05",
-		}
-		for _, format := range formats {
-			if t, err := time.Parse(format, ts); err == nil {
-				return t
-			}
-		}
-		// Try parsing with local timezone
-		if t, err := time.ParseInLocation("2006-01-02T15:04:05.999999999-07:00", ts, time.Local); err == nil {
-			return t
-		}
-	case float64:
-		// Unix timestamp (seconds or milliseconds)
-		if ts > 1e12 {
-			return time.UnixMilli(int64(ts))
-		}
-		return time.Unix(int64(ts), 0)
-	case int64:
-		if ts > 1e12 {
-			return time.UnixMilli(ts)
-		}
-		return time.Unix(ts, 0)
-	}
-	return time.Time{}
 }

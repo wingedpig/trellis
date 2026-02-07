@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/config"
@@ -21,11 +20,7 @@ import (
 
 // FileSource reads logs from a local file.
 type FileSource struct {
-	cfg    config.LogSourceConfig
-	mu     sync.RWMutex
-	status SourceStatus
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	sourceBase
 }
 
 // NewFileSource creates a new file-based log source.
@@ -33,7 +28,7 @@ func NewFileSource(cfg config.LogSourceConfig) (*FileSource, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("file source requires path")
 	}
-	return &FileSource{cfg: cfg}, nil
+	return &FileSource{sourceBase: sourceBase{cfg: cfg}}, nil
 }
 
 // Name returns the source name.
@@ -122,21 +117,6 @@ func (s *FileSource) tailFile(ctx context.Context, lineCh chan<- string, errCh c
 	cmd.Wait()
 }
 
-// Stop gracefully stops the source.
-func (s *FileSource) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	s.wg.Wait()
-	return nil
-}
-
-// Status returns the current connection status.
-func (s *FileSource) Status() SourceStatus {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.status
-}
 
 // ListRotatedFiles returns available rotated log files.
 func (s *FileSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error) {
@@ -192,40 +172,7 @@ func (s *FileSource) ReadRange(ctx context.Context, start, end time.Time, lineCh
 		return err
 	}
 
-	// Filter files based on time bounds to avoid scanning unnecessary files.
-	// Files are sorted newest first by ModTime.
-	// A file's ModTime is when it was last written (end of its entries).
-	// A file's start time can be estimated as the ModTime of the next older file.
-	//
-	// Skip files where:
-	// - ModTime < start (file's last entry is before our range started)
-	// - EstimatedStartTime > end (file's first entry is after our range ended)
-	var relevantFiles []RotatedFile
-	var newestRotatedModTime time.Time
-
-	for i, file := range files {
-		if file.ModTime.After(newestRotatedModTime) {
-			newestRotatedModTime = file.ModTime
-		}
-
-		// Skip files that were last modified before our start time
-		// (all entries in this file are older than what we want)
-		if !start.IsZero() && file.ModTime.Before(start) {
-			continue
-		}
-
-		// Estimate when this file's entries started (previous file's ModTime)
-		// If this file started after our end time, skip it
-		if !end.IsZero() && i+1 < len(files) {
-			estimatedStart := files[i+1].ModTime
-			if estimatedStart.After(end) {
-				// This file's entries all started after our end time
-				continue
-			}
-		}
-
-		relevantFiles = append(relevantFiles, file)
-	}
+	relevantFiles, newestRotatedModTime := filterRelevantFiles(files, start, end)
 
 	// Read files from oldest to newest for chronological output
 	for i := len(relevantFiles) - 1; i >= 0; i-- {
@@ -317,27 +264,3 @@ func (r *cmdReader) Close() error {
 	return r.cmd.Wait()
 }
 
-// setConnected updates the status to connected.
-func (s *FileSource) setConnected() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = true
-	s.status.LastConnect = time.Now()
-	s.status.Error = ""
-}
-
-// setError updates the status with an error.
-func (s *FileSource) setError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = false
-	s.status.Error = err.Error()
-	s.status.LastError = time.Now()
-}
-
-// incrementLines increments the lines read counter.
-func (s *FileSource) incrementLines() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.LinesRead++
-}

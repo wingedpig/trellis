@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/config"
@@ -17,11 +16,7 @@ import (
 
 // KubernetesSource reads logs from a Kubernetes pod.
 type KubernetesSource struct {
-	cfg       config.LogSourceConfig
-	mu        sync.RWMutex
-	status    SourceStatus
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	sourceBase
 	namespace string
 	pod       string
 	container string
@@ -39,10 +34,10 @@ func NewKubernetesSource(cfg config.LogSourceConfig) (*KubernetesSource, error) 
 	}
 
 	return &KubernetesSource{
-		cfg:       cfg,
-		namespace: namespace,
-		pod:       cfg.Pod,
-		container: cfg.Container,
+		sourceBase: sourceBase{cfg: cfg},
+		namespace:  namespace,
+		pod:        cfg.Pod,
+		container:  cfg.Container,
 	}, nil
 }
 
@@ -160,22 +155,6 @@ func (s *KubernetesSource) streamLogs(ctx context.Context, lineCh chan<- string,
 	}
 }
 
-// Stop gracefully stops the source.
-func (s *KubernetesSource) Stop() error {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	s.wg.Wait()
-	return nil
-}
-
-// Status returns the current connection status.
-func (s *KubernetesSource) Status() SourceStatus {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.status
-}
-
 // ListRotatedFiles returns available rotated log files.
 // Kubernetes sources don't support rotated files.
 func (s *KubernetesSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error) {
@@ -239,27 +218,3 @@ func (s *KubernetesSource) ReadRange(ctx context.Context, start, end time.Time, 
 	return cmd.Wait()
 }
 
-// setConnected updates the status to connected.
-func (s *KubernetesSource) setConnected() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = true
-	s.status.LastConnect = time.Now()
-	s.status.Error = ""
-}
-
-// setError updates the status with an error.
-func (s *KubernetesSource) setError(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.Connected = false
-	s.status.Error = err.Error()
-	s.status.LastError = time.Now()
-}
-
-// incrementLines increments the lines read counter.
-func (s *KubernetesSource) incrementLines() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status.LinesRead++
-}

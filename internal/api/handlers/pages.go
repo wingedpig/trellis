@@ -348,6 +348,34 @@ func (h *PageHandler) activeWorktreeName() string {
 	return worktreeDirName
 }
 
+// buildLogViewerList builds a sorted list of log viewer info from the log manager.
+func (h *PageHandler) buildLogViewerList() []views.LogViewerInfo {
+	if h.logManager == nil {
+		return nil
+	}
+
+	var logViewers []views.LogViewerInfo
+	for _, name := range h.logManager.List() {
+		info := views.LogViewerInfo{
+			Name: name,
+		}
+		if viewer, ok := h.logManager.Get(name); ok {
+			cfg := viewer.Config()
+			info.Columns = cfg.GetColumns()
+			info.ColumnWidths = cfg.GetColumnWidths()
+			info.Layout = convertLayout(cfg.Layout)
+			info.TimestampField = cfg.Parser.Timestamp
+			info.LevelField = cfg.Parser.Level
+			info.MessageField = cfg.Parser.Message
+		}
+		logViewers = append(logViewers, info)
+	}
+	sort.Slice(logViewers, func(i, j int) bool {
+		return logViewers[i].Name < logViewers[j].Name
+	})
+	return logViewers
+}
+
 // renderTerminalPage renders the terminal page with the given parameters.
 func (h *PageHandler) renderTerminalPage(w http.ResponseWriter, r *http.Request, viewType, session, window string, isRemote bool, serviceName, worktreeName string, logViewerName ...string) {
 	// Convert shortcuts to view format
@@ -432,29 +460,7 @@ func (h *PageHandler) renderTerminalPage(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Get log viewers for the picker
-	var logViewers []views.LogViewerInfo
-	if h.logManager != nil {
-		for _, name := range h.logManager.List() {
-			info := views.LogViewerInfo{
-				Name: name,
-			}
-			// Get layout and parser config from viewer if available
-			if viewer, ok := h.logManager.Get(name); ok {
-				cfg := viewer.Config()
-				info.Columns = cfg.GetColumns()
-				info.ColumnWidths = cfg.GetColumnWidths()
-				info.Layout = convertLayout(cfg.Layout)
-				info.TimestampField = cfg.Parser.Timestamp
-				info.LevelField = cfg.Parser.Level
-				info.MessageField = cfg.Parser.Message
-			}
-			logViewers = append(logViewers, info)
-		}
-		// Sort by name
-		sort.Slice(logViewers, func(i, j int) bool {
-			return logViewers[i].Name < logViewers[j].Name
-		})
-	}
+	logViewers := h.buildLogViewerList()
 
 	page := &views.TerminalWindowPage{
 		BasePage: views.BasePage{
@@ -644,24 +650,7 @@ func (h *PageHandler) TraceReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get log viewer configs for the sources in this trace
-	var logViewers []views.LogViewerInfo
-	if h.logManager != nil {
-		for _, name := range h.logManager.List() {
-			info := views.LogViewerInfo{
-				Name: name,
-			}
-			if viewer, ok := h.logManager.Get(name); ok {
-				cfg := viewer.Config()
-				info.Columns = cfg.GetColumns()
-				info.ColumnWidths = cfg.GetColumnWidths()
-				info.Layout = convertLayout(cfg.Layout)
-				info.TimestampField = cfg.Parser.Timestamp
-				info.LevelField = cfg.Parser.Level
-				info.MessageField = cfg.Parser.Message
-			}
-			logViewers = append(logViewers, info)
-		}
-	}
+	logViewers := h.buildLogViewerList()
 
 	page := &views.TraceReportPage{
 		BasePage: views.BasePage{

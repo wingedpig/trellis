@@ -50,18 +50,15 @@ func NewWorktreeHandler(mgr worktree.Manager) *WorktreeHandler {
 	return &WorktreeHandler{mgr: mgr}
 }
 
-// List returns all worktrees.
-func (h *WorktreeHandler) List(w http.ResponseWriter, r *http.Request) {
-	// Refresh worktree data to get current dirty/ahead/behind status
+// listWorktreeResponses refreshes worktree data and returns responses for all worktrees.
+func (h *WorktreeHandler) listWorktreeResponses() ([]WorktreeResponse, error) {
 	if err := h.mgr.Refresh(); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
-		return
+		return nil, err
 	}
 
 	worktrees, err := h.mgr.List()
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
-		return
+		return nil, err
 	}
 
 	active := h.mgr.Active()
@@ -69,6 +66,16 @@ func (h *WorktreeHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, wt := range worktrees {
 		isActive := active != nil && active.Path == wt.Path
 		responses[i] = toWorktreeResponse(wt, isActive)
+	}
+	return responses, nil
+}
+
+// List returns all worktrees.
+func (h *WorktreeHandler) List(w http.ResponseWriter, r *http.Request) {
+	responses, err := h.listWorktreeResponses()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
+		return
 	}
 
 	WriteJSON(w, http.StatusOK, map[string]interface{}{
@@ -195,23 +202,10 @@ func (h *WorktreeHandler) Remove(w http.ResponseWriter, r *http.Request) {
 
 // Info returns information about worktrees for the UI.
 func (h *WorktreeHandler) Info(w http.ResponseWriter, r *http.Request) {
-	// Refresh worktree data to get current dirty/ahead/behind status
-	if err := h.mgr.Refresh(); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
-		return
-	}
-
-	worktrees, err := h.mgr.List()
+	responses, err := h.listWorktreeResponses()
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, err.Error())
 		return
-	}
-
-	active := h.mgr.Active()
-	responses := make([]WorktreeResponse, len(worktrees))
-	for i, wt := range worktrees {
-		isActive := active != nil && active.Path == wt.Path
-		responses[i] = toWorktreeResponse(wt, isActive)
 	}
 
 	WriteJSON(w, http.StatusOK, map[string]interface{}{
