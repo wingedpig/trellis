@@ -419,6 +419,8 @@ func (m *ServiceManager) List() []ServiceInfo {
 			info.TimestampField = svc.config.Logging.Parser.Timestamp
 			info.LevelField = svc.config.Logging.Parser.Level
 			info.MessageField = svc.config.Logging.Parser.Message
+			info.FileField = svc.config.Logging.Parser.File
+			info.LineField = svc.config.Logging.Parser.Line
 		}
 		if len(svc.config.Logging.Layout) > 0 {
 			info.Layout = svc.config.Logging.Layout
@@ -681,6 +683,8 @@ func (m *ServiceManager) GetService(name string) (ServiceInfo, bool) {
 		info.TimestampField = svc.config.Logging.Parser.Timestamp
 		info.LevelField = svc.config.Logging.Parser.Level
 		info.MessageField = svc.config.Logging.Parser.Message
+		info.FileField = svc.config.Logging.Parser.File
+		info.LineField = svc.config.Logging.Parser.Line
 	}
 	if len(svc.config.Logging.Layout) > 0 {
 		info.Layout = svc.config.Logging.Layout

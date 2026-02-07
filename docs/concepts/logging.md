@@ -235,6 +235,8 @@ Configure parsing for service logs:
           level: "level"
           message: "msg"
           id: "request_id"
+          file: "source"      // Enables "Open in Editor" from log entries
+          line: "lineno"
         }
       }
     }
@@ -258,6 +260,8 @@ Set defaults for all services and log viewers:
       message: "msg"
       id: "request_id"
       stack: "stack"
+      file: "source"
+      line: "lineno"
     }
     derive: {
       short_time: { from: "timestamp", op: "timefmt", args: { format: "15:04:05" } }

@@ -502,6 +502,8 @@ type LogParserConfig struct {
 	Pattern         string `json:"pattern"`          // Regex pattern (for regex parser)
 	ID              string `json:"id,omitempty"`     // Field name containing entry ID for trace expansion
 	Stack           string `json:"stack,omitempty"`  // Field name containing stack trace for crash reports
+	File            string `json:"file,omitempty"`   // Field name containing source file path
+	Line            string `json:"line,omitempty"`   // Field name containing source line number
 }
 
 // DeriveConfig defines a derived field computed from parsed fields.
@@ -650,6 +652,15 @@ func mergeParserConfig(cfg, defaults LogParserConfig) LogParserConfig {
 	}
 	if cfg.ID == "" {
 		cfg.ID = defaults.ID
+	}
+	if cfg.Stack == "" {
+		cfg.Stack = defaults.Stack
+	}
+	if cfg.File == "" {
+		cfg.File = defaults.File
+	}
+	if cfg.Line == "" {
+		cfg.Line = defaults.Line
 	}
 	return cfg
 }

@@ -657,6 +657,8 @@ logging_defaults: {
     message: "msg"
     id: "request_id"
     stack: "stack"
+    file: "source"
+    line: "lineno"
   }
   // Derived fields computed from parsed fields
   derive: {

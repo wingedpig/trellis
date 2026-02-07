@@ -1236,6 +1236,8 @@ The `logging_defaults` section provides shared default configurations for `parse
       level: "level"
       id: "trace_id"      // Field for trace ID extraction (used by crashes and trace)
       stack: "stack"      // Field containing stack trace (included in crash reports)
+      file: "source"     // Field containing source file path (enables "Open in Editor")
+      line: "lineno"     // Field containing source line number
     }
 
     // Default derived fields
@@ -1386,6 +1388,10 @@ Log Viewers provide structured, searchable log viewing with support for remote s
         // When set, trace "Expand by ID" will extract IDs from this field
         // and search for related entries sharing the same ID
         id: "request_id"
+
+        // Optional: Field names for source location (enables "Open in Editor" button)
+        // file: "source"    // Field containing source file path
+        // line: "lineno"    // Field containing source line number
       }
 
       // Derived fields - computed from parsed fields

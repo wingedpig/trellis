@@ -195,7 +195,8 @@ function copyFieldValue(icon) {
 }
 
 // Expand an entry to show all fields
-// ctx: { expandedEl, contentEl, fieldNames, tbodySelector, filteredEntries, onSelect }
+// ctx: { expandedEl, contentEl, fieldNames, tbodySelector, filteredEntries, onSelect,
+//        fileField, lineField, worktreePicker, onOpenEditor }
 function expandEntry(entry, ctx) {
     ctx.onSelect(entry);
 
@@ -236,6 +237,22 @@ function expandEntry(entry, ctx) {
         }
     }
 
+    // Add "Open in Editor" button if file/line fields are configured and present in entry
+    const fileValue = ctx.fileField && entry.fields && entry.fields[ctx.fileField];
+    const lineValue = ctx.lineField && entry.fields && entry.fields[ctx.lineField];
+    if (fileValue && ctx.onOpenEditor) {
+        html += '<div class="logviewer-open-editor">';
+        if (ctx.worktreePicker) {
+            html += '<select class="logviewer-worktree-select" id="open-editor-worktree"></select>';
+        }
+        html += '<button class="logviewer-open-editor-btn" onclick="document._openEditorHandler()">Open in Editor</button>';
+        html += '</div>';
+        // Store the handler on document so the onclick can find it
+        document._openEditorHandler = function() {
+            ctx.onOpenEditor(String(fileValue), lineValue ? parseInt(lineValue, 10) : 1);
+        };
+    }
+
     // Add raw line
     const rawLine = entry.raw || entry._raw;
     if (rawLine) {
@@ -244,6 +261,11 @@ function expandEntry(entry, ctx) {
 
     ctx.contentEl.innerHTML = html;
     ctx.expandedEl.style.display = 'flex';
+
+    // Populate worktree picker if present
+    if (fileValue && ctx.onOpenEditor && ctx.worktreePicker && ctx.populateWorktreePicker) {
+        ctx.populateWorktreePicker();
+    }
 
     // Highlight selected row
     document.querySelectorAll(ctx.tbodySelector + ' .logviewer-entry.selected').forEach(el =>

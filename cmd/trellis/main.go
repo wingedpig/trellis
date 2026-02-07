@@ -574,6 +574,8 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
       message: "msg"        // or "message", "log"
       id: "request_id"      // for distributed tracing
       stack: "stack"        // for stack traces in crash reports
+      // file: "source"    // source file path (enables "Open in Editor")
+      // line: "lineno"    // source line number
     }
 
     // Derived fields computed from parsed fields
@@ -605,6 +607,8 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   //     message: "msg"
   //     id: "request_id"
   //     stack: "stack"
+  //     // file: "source"    // source file path (enables "Open in Editor")
+  //     // line: "lineno"    // source line number
   //   }
   // }
 

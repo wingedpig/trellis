@@ -189,3 +189,118 @@ func TestBuildServiceIDFields_NilDefaults(t *testing.T) {
 	// Only services with explicit ID should be in map
 	assert.Equal(t, "request_id", result["api"])
 }
+
+func TestServiceLoggingApplyDefaults(t *testing.T) {
+	defaults := &LoggingDefaultsConfig{
+		Parser: LogParserConfig{
+			Type:      "json",
+			Timestamp: "ts",
+			Level:     "level",
+			Message:   "msg",
+			ID:        "trace_id",
+			Stack:     "stack",
+			File:      "source",
+			Line:      "lineno",
+		},
+	}
+
+	t.Run("empty config inherits all defaults", func(t *testing.T) {
+		cfg := ServiceLoggingConfig{}
+		cfg.ApplyDefaults(defaults)
+
+		assert.Equal(t, "json", cfg.Parser.Type)
+		assert.Equal(t, "ts", cfg.Parser.Timestamp)
+		assert.Equal(t, "level", cfg.Parser.Level)
+		assert.Equal(t, "msg", cfg.Parser.Message)
+		assert.Equal(t, "trace_id", cfg.Parser.ID)
+		assert.Equal(t, "stack", cfg.Parser.Stack)
+		assert.Equal(t, "source", cfg.Parser.File)
+		assert.Equal(t, "lineno", cfg.Parser.Line)
+	})
+
+	t.Run("service overrides take precedence", func(t *testing.T) {
+		cfg := ServiceLoggingConfig{
+			Parser: LogParserConfig{
+				File: "file",
+				Line: "line",
+			},
+		}
+		cfg.ApplyDefaults(defaults)
+
+		// Overridden fields keep service values
+		assert.Equal(t, "file", cfg.Parser.File)
+		assert.Equal(t, "line", cfg.Parser.Line)
+		// Non-overridden fields inherit defaults
+		assert.Equal(t, "json", cfg.Parser.Type)
+		assert.Equal(t, "ts", cfg.Parser.Timestamp)
+		assert.Equal(t, "trace_id", cfg.Parser.ID)
+		assert.Equal(t, "stack", cfg.Parser.Stack)
+	})
+
+	t.Run("service with own parser type skips merge", func(t *testing.T) {
+		cfg := ServiceLoggingConfig{
+			Parser: LogParserConfig{
+				Type:      "logfmt",
+				Timestamp: "time",
+			},
+		}
+		cfg.ApplyDefaults(defaults)
+
+		// When parser type is set, no merge happens
+		assert.Equal(t, "logfmt", cfg.Parser.Type)
+		assert.Equal(t, "time", cfg.Parser.Timestamp)
+		assert.Equal(t, "", cfg.Parser.File)
+		assert.Equal(t, "", cfg.Parser.Line)
+	})
+
+	t.Run("nil defaults is safe", func(t *testing.T) {
+		cfg := ServiceLoggingConfig{}
+		cfg.ApplyDefaults(nil)
+		assert.Equal(t, "", cfg.Parser.Type)
+	})
+}
+
+func TestLogViewerApplyDefaults(t *testing.T) {
+	defaults := &LoggingDefaultsConfig{
+		Parser: LogParserConfig{
+			Type:  "json",
+			File:  "source",
+			Line:  "lineno",
+			Stack: "stacktrace",
+		},
+	}
+
+	t.Run("empty config inherits all defaults", func(t *testing.T) {
+		cfg := LogViewerConfig{}
+		cfg.ApplyDefaults(defaults)
+
+		assert.Equal(t, "json", cfg.Parser.Type)
+		assert.Equal(t, "source", cfg.Parser.File)
+		assert.Equal(t, "lineno", cfg.Parser.Line)
+		assert.Equal(t, "stacktrace", cfg.Parser.Stack)
+	})
+
+	t.Run("viewer overrides take precedence", func(t *testing.T) {
+		cfg := LogViewerConfig{
+			Parser: LogParserConfig{
+				File: "filepath",
+			},
+		}
+		cfg.ApplyDefaults(defaults)
+
+		assert.Equal(t, "filepath", cfg.Parser.File)
+		assert.Equal(t, "lineno", cfg.Parser.Line)
+	})
+
+	t.Run("viewer with own parser type skips merge", func(t *testing.T) {
+		cfg := LogViewerConfig{
+			Parser: LogParserConfig{
+				Type: "regex",
+			},
+		}
+		cfg.ApplyDefaults(defaults)
+
+		assert.Equal(t, "regex", cfg.Parser.Type)
+		assert.Equal(t, "", cfg.Parser.File)
+	})
+}

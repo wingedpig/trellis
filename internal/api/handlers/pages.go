@@ -367,6 +367,8 @@ func (h *PageHandler) buildLogViewerList() []views.LogViewerInfo {
 			info.TimestampField = cfg.Parser.Timestamp
 			info.LevelField = cfg.Parser.Level
 			info.MessageField = cfg.Parser.Message
+			info.FileField = cfg.Parser.File
+			info.LineField = cfg.Parser.Line
 		}
 		logViewers = append(logViewers, info)
 	}
@@ -409,6 +411,8 @@ func (h *PageHandler) renderTerminalPage(w http.ResponseWriter, r *http.Request,
 				info.TimestampField = svc.TimestampField
 				info.LevelField = svc.LevelField
 				info.MessageField = svc.MessageField
+				info.FileField = svc.FileField
+				info.LineField = svc.LineField
 			}
 			if len(svc.Layout) > 0 {
 				info.Layout = convertLayout(svc.Layout)

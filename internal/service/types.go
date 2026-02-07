@@ -68,6 +68,8 @@ type ServiceInfo struct {
 	TimestampField string
 	LevelField     string
 	MessageField   string
+	FileField      string
+	LineField      string
 }
 
 // RestartTrigger identifies what caused a restart.

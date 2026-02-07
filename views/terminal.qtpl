@@ -48,6 +48,8 @@ type ServiceInfo struct {
     TimestampField string         `json:"timestamp_field,omitempty"` // Parser's timestamp field name
     LevelField     string         `json:"level_field,omitempty"`     // Parser's level field name
     MessageField   string         `json:"message_field,omitempty"`   // Parser's message field name
+    FileField      string         `json:"file_field,omitempty"`      // Parser's file field name
+    LineField      string         `json:"line_field,omitempty"`      // Parser's line field name
 }
 
 // LinkInfo represents a link for the terminal picker.
@@ -78,6 +80,8 @@ type LogViewerInfo struct {
     TimestampField string         `json:"timestamp_field"` // Parser's timestamp field name
     LevelField     string         `json:"level_field"`     // Parser's level field name
     MessageField   string         `json:"message_field"`   // Parser's message field name
+    FileField      string         `json:"file_field,omitempty"`  // Parser's file field name
+    LineField      string         `json:"line_field,omitempty"`  // Parser's line field name
 }
 
 type TerminalWindowPage struct {
@@ -756,6 +760,34 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         white-space: pre-wrap;
         word-break: break-all;
     }
+    .logviewer-open-editor {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--trellis-input-border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .logviewer-open-editor-btn {
+        background: var(--trellis-input-bg);
+        border: 1px solid var(--trellis-input-border);
+        color: var(--bs-body-color);
+        padding: 4px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .logviewer-open-editor-btn:hover {
+        background: var(--trellis-input-border);
+    }
+    .logviewer-worktree-select {
+        background: var(--trellis-input-bg);
+        border: 1px solid var(--trellis-input-border);
+        color: var(--bs-body-color);
+        padding: 4px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
     /* Help modal styling */
     .shortcut-help-modal .modal-content {
         background: var(--trellis-card-bg);
@@ -1310,6 +1342,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     let logViewerOldestSeq = null;      // Oldest sequence number we have (for loading more)
     let logViewerLoadingMore = false;   // Prevent multiple load requests
     let logViewerNoMoreEntries = false; // True when buffer exhausted
+    let logViewerFileField = null;      // Parser's file field name for current log viewer
+    let logViewerLineField = null;      // Parser's line field name for current log viewer
+    let cachedWorktrees = null;         // Cached worktree list for log viewer "Open in Editor" picker
 
     // Browser notifications
     let notificationsEnabled = false;
@@ -1463,6 +1498,10 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         if (eventType === 'worktree.created' || eventType === 'worktree.activated') {
             // Refresh the terminal picker to show new sessions
             reloadTerminalPicker();
+        }
+        if (eventType === 'worktree.created' || eventType === 'worktree.deleted') {
+            // Invalidate cached worktree list so the "Open in Editor" dropdown refreshes
+            cachedWorktrees = null;
         }
     }
 
@@ -2832,7 +2871,14 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             document.getElementById('showTerminalBtn').classList.remove('active');
         }
         if (document.getElementById('showCodeBtn')) {
+            document.getElementById('showCodeBtn').style.display = 'inline-block';
             document.getElementById('showCodeBtn').classList.add('active');
+        }
+
+        // Restore workflow selector (may have been hidden by showService/showLogViewer)
+        const workflowSelect = document.getElementById('workflowSelect');
+        if (workflowSelect) {
+            workflowSelect.style.display = 'inline-block';
         }
 
         // Update picker to show editor URL
@@ -3963,13 +4009,20 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     }
 
     function expandServiceEntry(entry) {
+        const fileField = serviceLogConfig && serviceLogConfig.file_field;
+        const lineField = serviceLogConfig && serviceLogConfig.line_field;
         expandEntry(entry, {
             expandedEl: document.getElementById('service-expanded'),
             contentEl: document.getElementById('service-expanded-content'),
             fieldNames: serviceLogFieldNames,
             tbodySelector: '#service-log-table',
             filteredEntries: serviceLogFilteredEntries,
-            onSelect: (e) => { serviceLogSelectedEntry = e; }
+            onSelect: (e) => { serviceLogSelectedEntry = e; },
+            fileField: fileField,
+            lineField: lineField,
+            onOpenEditor: fileField ? function(file, line) {
+                openFileAtLine(file, line, 1);
+            } : null
         });
     }
 
@@ -4133,6 +4186,10 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 logViewerFieldNames.message = viewerConfig.message_field;
             }
         }
+
+        // Store file/line field names for "Open in Editor"
+        logViewerFileField = viewerConfig && viewerConfig.file_field || null;
+        logViewerLineField = viewerConfig && viewerConfig.line_field || null;
 
         // Reset log viewer state
         logViewerEntries = [];
@@ -4646,8 +4703,81 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             fieldNames: logViewerFieldNames,
             tbodySelector: '#logviewer-log',
             filteredEntries: logViewerFilteredEntries,
-            onSelect: (e) => { logViewerSelectedEntry = e; }
+            onSelect: (e) => { logViewerSelectedEntry = e; },
+            fileField: logViewerFileField,
+            lineField: logViewerLineField,
+            worktreePicker: !!logViewerFileField,
+            onOpenEditor: logViewerFileField ? function(file, line) {
+                openLogViewerFileAtLine(file, line);
+            } : null,
+            populateWorktreePicker: function() {
+                populateWorktreeSelect();
+            }
         });
+    }
+
+    function openLogViewerFileAtLine(file, line) {
+        const selectEl = document.getElementById('open-editor-worktree');
+        const worktree = (selectEl && selectEl.value) || currentWorktree;
+        const session = worktreeToSession(worktree);
+
+        const callOpenFile = () => {
+            fetch('/api/v1/vscode/open?session=' + encodeURIComponent(session) +
+                '&file=' + encodeURIComponent(file) +
+                '&line=' + (line || 1) + '&col=1', { method: 'POST' })
+                .then(r => r.json())
+                .catch(err => console.error('Error opening file:', err));
+        };
+
+        currentWorktree = worktree;
+        showCode();
+
+        if (codeServerReady) {
+            callOpenFile();
+        } else {
+            pendingCodeServerCallbacks.push(callOpenFile);
+        }
+    }
+
+    function populateWorktreeSelect() {
+        const selectEl = document.getElementById('open-editor-worktree');
+        if (!selectEl) return;
+
+        if (cachedWorktrees) {
+            renderWorktreeOptions(selectEl, cachedWorktrees);
+            return;
+        }
+
+        fetch('/api/v1/worktrees')
+            .then(r => r.json())
+            .then(data => {
+                if (data.data && data.data.worktrees) {
+                    cachedWorktrees = data.data.worktrees;
+                } else if (data.worktrees) {
+                    cachedWorktrees = data.worktrees;
+                } else {
+                    cachedWorktrees = [];
+                }
+                renderWorktreeOptions(selectEl, cachedWorktrees);
+            })
+            .catch(err => {
+                console.error('Error fetching worktrees:', err);
+            });
+    }
+
+    function renderWorktreeOptions(selectEl, worktrees) {
+        selectEl.innerHTML = '';
+        for (const wt of worktrees) {
+            const name = wt.Path ? wt.Path.split('/').pop() : '';
+            if (!name) continue;
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            if (name === currentWorktree) {
+                opt.selected = true;
+            }
+            selectEl.appendChild(opt);
+        }
     }
 
     function closeLogViewerExpanded() {
