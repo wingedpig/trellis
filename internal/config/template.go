@@ -139,7 +139,51 @@ func (e *TemplateExpander) ExpandConfig(cfg *Config, ctx *TemplateContext) (*Con
 	}
 	expanded.Workflows = expandedWorkflows
 
+	// Expand proxy configs
+	if len(cfg.Proxy) > 0 {
+		expandedProxy := make([]ProxyListenerConfig, len(cfg.Proxy))
+		for i, listener := range cfg.Proxy {
+			expandedListener, err := e.expandProxyListener(listener, ctx)
+			if err != nil {
+				return nil, err
+			}
+			expandedProxy[i] = expandedListener
+		}
+		expanded.Proxy = expandedProxy
+	}
+
 	return &expanded, nil
+}
+
+// expandProxyListener expands template variables in a proxy listener config.
+func (e *TemplateExpander) expandProxyListener(listener ProxyListenerConfig, ctx *TemplateContext) (ProxyListenerConfig, error) {
+	expanded := listener
+
+	if listener.Listen != "" {
+		v, err := e.Expand(listener.Listen, ctx)
+		if err != nil {
+			return expanded, err
+		}
+		expanded.Listen = v
+	}
+
+	if len(listener.Routes) > 0 {
+		expandedRoutes := make([]ProxyRouteConfig, len(listener.Routes))
+		for i, route := range listener.Routes {
+			expandedRoute := route
+			if route.Upstream != "" {
+				v, err := e.Expand(route.Upstream, ctx)
+				if err != nil {
+					return expanded, err
+				}
+				expandedRoute.Upstream = v
+			}
+			expandedRoutes[i] = expandedRoute
+		}
+		expanded.Routes = expandedRoutes
+	}
+
+	return expanded, nil
 }
 
 // expandService expands template variables in a service config.

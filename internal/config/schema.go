@@ -28,6 +28,7 @@ type Config struct {
 	Trace             TraceConfig           `json:"trace"`
 	TraceGroups       []TraceGroupConfig    `json:"trace_groups"`
 	Crashes           CrashesConfig         `json:"crashes"`
+	Proxy             []ProxyListenerConfig `json:"proxy"`
 }
 
 // LoggingDefaultsConfig provides default parser, derive, and layout settings
@@ -55,6 +56,21 @@ type ServerConfig struct {
 	Host    string `json:"host"`
 	TLSCert string `json:"tls_cert"` // Path to TLS certificate file (enables HTTPS if both cert and key set)
 	TLSKey  string `json:"tls_key"`  // Path to TLS private key file
+}
+
+// ProxyListenerConfig configures a reverse proxy listener.
+type ProxyListenerConfig struct {
+	Listen       string             `json:"listen"`        // Address to bind (e.g., ":443", "0.0.0.0:8080")
+	TLSCert      string             `json:"tls_cert"`      // Path to TLS certificate (supports ~ expansion)
+	TLSKey       string             `json:"tls_key"`       // Path to TLS private key (supports ~ expansion)
+	TLSTailscale bool               `json:"tls_tailscale"` // Use Tailscale daemon for automatic TLS certificates
+	Routes       []ProxyRouteConfig `json:"routes"`        // Ordered route rules (first match wins)
+}
+
+// ProxyRouteConfig configures a single proxy route rule.
+type ProxyRouteConfig struct {
+	PathRegexp string `json:"path_regexp"` // Regex to match request path (omit for catch-all)
+	Upstream   string `json:"upstream"`    // Target address (host:port)
 }
 
 // WorktreeConfig configures worktree management.

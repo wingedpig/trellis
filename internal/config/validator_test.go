@@ -444,6 +444,133 @@ func TestValidator_Validate_DurationFormats(t *testing.T) {
 	}
 }
 
+func TestValidator_Validate_ProxyConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		proxy       []ProxyListenerConfig
+		errContains string
+	}{
+		{
+			name: "missing listen",
+			proxy: []ProxyListenerConfig{
+				{Routes: []ProxyRouteConfig{{Upstream: "localhost:3000"}}},
+			},
+			errContains: "listen",
+		},
+		{
+			name: "missing routes",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443"},
+			},
+			errContains: "routes",
+		},
+		{
+			name: "missing upstream",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", Routes: []ProxyRouteConfig{{PathRegexp: "^/api"}}},
+			},
+			errContains: "upstream",
+		},
+		{
+			name: "invalid path_regexp",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", Routes: []ProxyRouteConfig{{PathRegexp: "[invalid", Upstream: "localhost:3000"}}},
+			},
+			errContains: "path_regexp",
+		},
+		{
+			name: "tls_cert without tls_key",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", TLSCert: "/path/cert.pem", Routes: []ProxyRouteConfig{{Upstream: "localhost:3000"}}},
+			},
+			errContains: "tls_cert and tls_key must be specified together",
+		},
+		{
+			name: "tls_tailscale with tls_cert",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", TLSTailscale: true, TLSCert: "/path/cert.pem", TLSKey: "/path/key.pem", Routes: []ProxyRouteConfig{{Upstream: "localhost:3000"}}},
+			},
+			errContains: "mutually exclusive",
+		},
+	}
+
+	validator := NewValidator()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Version: "1.0",
+				Project: ProjectConfig{Name: "test"},
+				Proxy:   tt.proxy,
+			}
+			err := validator.Validate(cfg)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errContains)
+		})
+	}
+}
+
+func TestValidator_Validate_ProxyConfig_Valid(t *testing.T) {
+	tests := []struct {
+		name  string
+		proxy []ProxyListenerConfig
+	}{
+		{
+			name: "basic proxy",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", Routes: []ProxyRouteConfig{{Upstream: "localhost:3000"}}},
+			},
+		},
+		{
+			name: "with path_regexp",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", Routes: []ProxyRouteConfig{
+					{PathRegexp: "^/api/.+", Upstream: "localhost:3001"},
+					{Upstream: "localhost:3000"},
+				}},
+			},
+		},
+		{
+			name: "with tls_tailscale",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", TLSTailscale: true, Routes: []ProxyRouteConfig{{Upstream: "localhost:3000"}}},
+			},
+		},
+		{
+			name: "with tls cert/key",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":443", TLSCert: "/path/cert.pem", TLSKey: "/path/key.pem", Routes: []ProxyRouteConfig{{Upstream: "localhost:3000"}}},
+			},
+		},
+		{
+			name: "multiple listeners",
+			proxy: []ProxyListenerConfig{
+				{Listen: ":1001", Routes: []ProxyRouteConfig{{Upstream: "localhost:1000"}}},
+				{Listen: ":443", TLSTailscale: true, Routes: []ProxyRouteConfig{
+					{PathRegexp: "^/api/.+", Upstream: "localhost:3001"},
+					{Upstream: "localhost:3000"},
+				}},
+			},
+		},
+		{
+			name:  "no proxy configured",
+			proxy: nil,
+		},
+	}
+
+	validator := NewValidator()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Version: "1.0",
+				Project: ProjectConfig{Name: "test"},
+				Proxy:   tt.proxy,
+			}
+			err := validator.Validate(cfg)
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestValidationError_Error(t *testing.T) {
 	err := &ValidationError{
 		Errors: []FieldError{

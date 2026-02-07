@@ -380,6 +380,76 @@ func TestLoader_FindConfig(t *testing.T) {
 	assert.Contains(t, path, "trellis.json")
 }
 
+func TestLoader_Load_ProxyConfig(t *testing.T) {
+	configContent := `{
+		version: "1.0"
+		project: { name: "test" }
+		proxy: [
+			{
+				listen: ":1001"
+				routes: [
+					{ upstream: "localhost:1000" }
+				]
+			}
+			{
+				listen: ":443"
+				tls_tailscale: true
+				routes: [
+					{ path_regexp: "askws", upstream: "localhost:3000" }
+					{ path_regexp: "^/api/.+", upstream: "localhost:3001" }
+					{ upstream: "localhost:3000" }
+				]
+			}
+		]
+	}`
+
+	cfg := loadFromString(t, configContent)
+
+	require.Len(t, cfg.Proxy, 2)
+
+	// First listener
+	assert.Equal(t, ":1001", cfg.Proxy[0].Listen)
+	assert.False(t, cfg.Proxy[0].TLSTailscale)
+	require.Len(t, cfg.Proxy[0].Routes, 1)
+	assert.Equal(t, "", cfg.Proxy[0].Routes[0].PathRegexp)
+	assert.Equal(t, "localhost:1000", cfg.Proxy[0].Routes[0].Upstream)
+
+	// Second listener
+	assert.Equal(t, ":443", cfg.Proxy[1].Listen)
+	assert.True(t, cfg.Proxy[1].TLSTailscale)
+	require.Len(t, cfg.Proxy[1].Routes, 3)
+	assert.Equal(t, "askws", cfg.Proxy[1].Routes[0].PathRegexp)
+	assert.Equal(t, "localhost:3000", cfg.Proxy[1].Routes[0].Upstream)
+	assert.Equal(t, "^/api/.+", cfg.Proxy[1].Routes[1].PathRegexp)
+	assert.Equal(t, "localhost:3001", cfg.Proxy[1].Routes[1].Upstream)
+	assert.Equal(t, "", cfg.Proxy[1].Routes[2].PathRegexp)
+	assert.Equal(t, "localhost:3000", cfg.Proxy[1].Routes[2].Upstream)
+}
+
+func TestLoader_Load_ProxyConfig_WithTLSCertKey(t *testing.T) {
+	configContent := `{
+		version: "1.0"
+		project: { name: "test" }
+		proxy: [
+			{
+				listen: ":443"
+				tls_cert: "~/.trellis/cert.pem"
+				tls_key: "~/.trellis/key.pem"
+				routes: [
+					{ upstream: "localhost:3000" }
+				]
+			}
+		]
+	}`
+
+	cfg := loadFromString(t, configContent)
+
+	require.Len(t, cfg.Proxy, 1)
+	assert.Equal(t, "~/.trellis/cert.pem", cfg.Proxy[0].TLSCert)
+	assert.Equal(t, "~/.trellis/key.pem", cfg.Proxy[0].TLSKey)
+	assert.False(t, cfg.Proxy[0].TLSTailscale)
+}
+
 func TestServiceConfig_IsWatching_Defaults(t *testing.T) {
 	tests := []struct {
 		name     string

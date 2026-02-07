@@ -30,6 +30,18 @@ Trellis searches for configuration in this order:
     host: "127.0.0.1"
   }
 
+  // Reverse proxy (mirrors production routing)
+  proxy: [
+    {
+      listen: ":443"
+      tls_tailscale: true
+      routes: [
+        { path_regexp: "^/api/.+", upstream: "localhost:3001" }
+        { upstream: "localhost:3000" }
+      ]
+    }
+  ]
+
   // Worktree configuration
   worktree: {
     discovery: {
@@ -290,6 +302,55 @@ server: {
 | `port` | `1234` | HTTP server port |
 | `tls_cert` | (none) | Path to TLS certificate for HTTPS |
 | `tls_key` | (none) | Path to TLS private key |
+
+### proxy
+
+Configures reverse proxy listeners for routing requests to backend services. Useful for mirroring production routing (e.g., Caddy/nginx) in development. WebSocket upgrades are handled automatically.
+
+```hjson
+proxy: [
+  {
+    listen: ":1001"
+    tls_tailscale: true
+    routes: [
+      { upstream: "localhost:1000" }
+    ]
+  }
+  {
+    listen: ":443"
+    tls_tailscale: true
+    routes: [
+      { path_regexp: "askws", upstream: "localhost:3000" }
+      { path_regexp: "^/g/.+/chatws", upstream: "localhost:3002" }
+      { path_regexp: "^/api/.+", upstream: "localhost:3001" }
+      { upstream: "localhost:3000" }
+    ]
+  }
+]
+```
+
+**Proxy listener fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `listen` | yes | Address to bind (e.g., `":443"`, `"0.0.0.0:8080"`, `":1001"`) |
+| `tls_tailscale` | no | Use Tailscale daemon for automatic TLS certificates. |
+| `tls_cert` | no | Path to TLS certificate. Supports `~` expansion. |
+| `tls_key` | no | Path to TLS private key. Supports `~` expansion. |
+| `routes` | yes | Ordered list of route rules. First match wins. |
+
+`tls_tailscale` and `tls_cert`/`tls_key` are mutually exclusive. When `tls_tailscale` is true, certificates are fetched automatically from the local Tailscale daemon — no cert files needed. This matches Caddy's built-in Tailscale TLS behavior.
+
+**Route fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `path_regexp` | no | Regex to match against request path. Omit for catch-all. |
+| `upstream` | yes | Target address (`host:port`). `http://` prefix is optional. |
+
+Routes are evaluated in order — the first matching route handles the request. A route without `path_regexp` matches all requests (catch-all). Place catch-all routes last.
+
+Template variables (`{{.Worktree.*}}`) are supported in `listen` and `upstream` values.
 
 ### worktree
 

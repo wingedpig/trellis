@@ -275,6 +275,32 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   }
 
   // ---------------------------------------------------------------------------
+  // Reverse Proxy
+  // ---------------------------------------------------------------------------
+  //
+  // Mirror your production reverse proxy (Caddy, nginx) routing in development.
+  // Each listener binds to an address and routes requests to backends by path.
+  // WebSocket upgrades are handled automatically.
+  //
+  // proxy: [
+  //   {
+  //     listen: ":443"
+  //
+  //     // TLS via Tailscale (automatic certs from local daemon):
+  //     // tls_tailscale: true
+  //
+  //     // Or TLS via certificate files:
+  //     // tls_cert: "~/.trellis/cert.pem"
+  //     // tls_key: "~/.trellis/key.pem"
+  //
+  //     routes: [
+  //       { path_regexp: "^/api/.+", upstream: "localhost:3001" }
+  //       { upstream: "localhost:3000" }  // Catch-all (no path_regexp)
+  //     ]
+  //   }
+  // ]
+
+  // ---------------------------------------------------------------------------
   // Worktree Configuration
   // ---------------------------------------------------------------------------
   //

@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -60,6 +61,7 @@ func (v *Validator) Validate(cfg *Config) error {
 	v.validateDurations(cfg, errs)
 	v.validateCrossReferences(cfg, errs)
 	v.validateTraceGroups(cfg, errs)
+	v.validateProxy(cfg, errs)
 
 	if errs.IsEmpty() {
 		return nil
@@ -345,6 +347,41 @@ func (v *Validator) validateTraceGroups(cfg *Config, errs *ValidationError) {
 			errs.Add("trace.max_age", fmt.Sprintf("invalid duration format: %s", err))
 		} else if d < 0 {
 			errs.Add("trace.max_age", "must be positive")
+		}
+	}
+}
+
+func (v *Validator) validateProxy(cfg *Config, errs *ValidationError) {
+	for i, listener := range cfg.Proxy {
+		prefix := fmt.Sprintf("proxy[%d]", i)
+
+		if listener.Listen == "" {
+			errs.Add(prefix+".listen", "is required")
+		}
+		if len(listener.Routes) == 0 {
+			errs.Add(prefix+".routes", "must have at least one route")
+		}
+
+		// Validate TLS: tls_tailscale and tls_cert/tls_key are mutually exclusive
+		hasCertKey := listener.TLSCert != "" || listener.TLSKey != ""
+		if listener.TLSTailscale && hasCertKey {
+			errs.Add(prefix, "tls_tailscale and tls_cert/tls_key are mutually exclusive")
+		}
+		// If using cert/key, both must be specified
+		if !listener.TLSTailscale && (listener.TLSCert == "") != (listener.TLSKey == "") {
+			errs.Add(prefix, "both tls_cert and tls_key must be specified together")
+		}
+
+		for j, route := range listener.Routes {
+			routePrefix := fmt.Sprintf("%s.routes[%d]", prefix, j)
+			if route.Upstream == "" {
+				errs.Add(routePrefix+".upstream", "is required")
+			}
+			if route.PathRegexp != "" {
+				if _, err := regexp.Compile(route.PathRegexp); err != nil {
+					errs.Add(routePrefix+".path_regexp", fmt.Sprintf("invalid regex: %s", err))
+				}
+			}
 		}
 	}
 }

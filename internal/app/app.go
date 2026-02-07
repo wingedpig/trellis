@@ -23,6 +23,7 @@ import (
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/logs"
+	"github.com/wingedpig/trellis/internal/proxy"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
 	"github.com/wingedpig/trellis/internal/trace"
@@ -49,6 +50,7 @@ type App struct {
 	crashManager     *crashes.Manager
 	binaryWatcher    *watcher.BinaryWatcher
 	vsCodeHandler    *handlers.VSCodeHandler
+	proxyManager     *proxy.Manager
 	apiServer        *api.Server
 
 	done     chan struct{}
@@ -635,6 +637,16 @@ func (app *App) Initialize(ctx context.Context) error {
 		}
 	}
 
+	// Initialize proxy manager if configured (use expanded config for template values)
+	if len(app.config.Proxy) > 0 {
+		pm, err := proxy.NewManager(app.config.Proxy)
+		if err != nil {
+			return fmt.Errorf("failed to initialize proxy: %w", err)
+		}
+		app.proxyManager = pm
+		log.Printf("Initialized %d proxy listeners", len(app.config.Proxy))
+	}
+
 	// Get the first default window name for /terminal redirect
 	var defaultWindow string
 	if len(cfg.Terminal.DefaultWindows) > 0 {
@@ -709,6 +721,13 @@ func (app *App) Start(ctx context.Context) error {
 		}
 	}
 
+	// Start proxy listeners
+	if app.proxyManager != nil {
+		if err := app.proxyManager.Start(ctx); err != nil {
+			log.Printf("Warning: failed to start proxy listeners: %v", err)
+		}
+	}
+
 	// Start API server in background
 	go func() {
 		log.Printf("Starting API server on %s:%d", app.config.Server.Host, app.config.Server.Port)
@@ -761,6 +780,13 @@ func (app *App) Shutdown(ctx context.Context) error {
 	if app.apiServer != nil {
 		if err := app.apiServer.Shutdown(shutdownCtx); err != nil {
 			log.Printf("Error shutting down API server: %v", err)
+		}
+	}
+
+	// Stop proxy listeners
+	if app.proxyManager != nil {
+		if err := app.proxyManager.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down proxy listeners: %v", err)
 		}
 	}
 

@@ -424,6 +424,78 @@ func TestQuote(t *testing.T) {
 	}
 }
 
+func TestTemplateExpander_ExpandConfig_ProxyConfig(t *testing.T) {
+	expander := NewTemplateExpander()
+	ctx := &TemplateContext{
+		Worktree: WorktreeTemplateData{
+			Root: "/home/user/project",
+			Name: "main",
+		},
+	}
+
+	cfg := &Config{
+		Proxy: []ProxyListenerConfig{
+			{
+				Listen: ":443",
+				Routes: []ProxyRouteConfig{
+					{PathRegexp: "^/api/.+", Upstream: "localhost:3001"},
+					{Upstream: "localhost:3000"},
+				},
+			},
+			{
+				Listen:       ":{{.Worktree.Name}}",
+				TLSTailscale: true,
+				Routes: []ProxyRouteConfig{
+					{Upstream: "{{.Worktree.Name}}.localhost:8080"},
+				},
+			},
+		},
+	}
+
+	expanded, err := expander.ExpandConfig(cfg, ctx)
+	require.NoError(t, err)
+
+	require.Len(t, expanded.Proxy, 2)
+
+	// First listener: no templates, should pass through
+	assert.Equal(t, ":443", expanded.Proxy[0].Listen)
+	assert.Equal(t, "localhost:3001", expanded.Proxy[0].Routes[0].Upstream)
+	assert.Equal(t, "localhost:3000", expanded.Proxy[0].Routes[1].Upstream)
+
+	// Second listener: templates expanded
+	assert.Equal(t, ":main", expanded.Proxy[1].Listen)
+	assert.True(t, expanded.Proxy[1].TLSTailscale)
+	assert.Equal(t, "main.localhost:8080", expanded.Proxy[1].Routes[0].Upstream)
+}
+
+func TestTemplateExpander_ExpandConfig_ProxyPreservesNonTemplates(t *testing.T) {
+	expander := NewTemplateExpander()
+	ctx := &TemplateContext{
+		Worktree: WorktreeTemplateData{Root: "/project"},
+	}
+
+	cfg := &Config{
+		Proxy: []ProxyListenerConfig{
+			{
+				Listen:  ":1001",
+				TLSCert: "~/.trellis/cert.pem",
+				TLSKey:  "~/.trellis/key.pem",
+				Routes: []ProxyRouteConfig{
+					{PathRegexp: "^/api", Upstream: "localhost:3000"},
+				},
+			},
+		},
+	}
+
+	expanded, err := expander.ExpandConfig(cfg, ctx)
+	require.NoError(t, err)
+
+	// TLS fields and path_regexp should be preserved as-is (not expanded)
+	assert.Equal(t, "~/.trellis/cert.pem", expanded.Proxy[0].TLSCert)
+	assert.Equal(t, "~/.trellis/key.pem", expanded.Proxy[0].TLSKey)
+	assert.Equal(t, "^/api", expanded.Proxy[0].Routes[0].PathRegexp)
+}
+
 func TestTemplateExpander_ExpandConfig_WorkflowCommands(t *testing.T) {
 	expander := NewTemplateExpander()
 	ctx := &TemplateContext{
