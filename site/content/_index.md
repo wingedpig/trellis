@@ -1,4 +1,4 @@
 ---
-title: "Trellis — Development control plane"
+title: "Trellis — AI-native development environment"
 ---
 

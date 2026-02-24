@@ -2,8 +2,8 @@
 <div class="hero">
   <div class="container">
     <img src="/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
-    <p class="lead">A web-based control plane for your development environment</p>
-    <p class="text-muted">Run services, stream logs, debug with Claude, and capture investigations—all scoped to the worktree you're working in. One keyboard-driven interface instead of a collection of disconnected tools.</p>
+    <p class="lead">An AI-native development environment</p>
+    <p class="text-muted">Claude sessions, service logs, distributed traces, and crash reports — all scoped to the worktree you're working in. Investigations become Cases, committed to git alongside the fix. One keyboard-driven interface instead of a collection of disconnected tools.</p>
     <div class="mt-4">
       <a href="/docs/" class="btn btn-primary btn-lg me-2">
         <i class="fa-solid fa-book"></i> Documentation
@@ -20,6 +20,19 @@
 
 <div class="py-5" style="background-color: var(--trellis-card-bg);">
   <div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <h2 class="text-center mb-5">How a Fix Happens</h2>
+
+      <p>Something breaks in production. You open a Claude session, and it can pull logs from your remote hosts, run distributed traces across services, and read crash reports directly—so the investigation starts from real data. You find the root cause, write the fix, and save the whole investigation as a Case—notes, the Claude transcript, the trace report—committed alongside the diff.</p>
+
+      <p>Or you're building a feature. Your local services are running, Trellis restarts them as you rebuild, and you're working through the implementation in a Claude session. When you're done, you capture the design notes and Claude transcript as a Case, so the reasoning lives in the repo with the code.</p>
+    </div>
+  </div>
+  </div>
+</div>
+
+<div class="container py-5">
     <h2 class="text-center mb-5">What Trellis Does</h2>
     <div class="row">
       <div class="col-lg-4 mb-4">
@@ -29,9 +42,9 @@
           <li><strong>VSCode integration</strong> — Open VSCode scoped to the worktree you're viewing with a single keystroke</li>
           <li><strong>Terminal &amp; tmux management</strong> — Trellis creates and manages tmux sessions for you</li>
           <li><strong>Service supervision</strong> — Run your app's components locally with automatic restart on rebuild</li>
-          <li><strong>Local log access</strong> — Tail and search logs from the Trellis UI</li>
           <li><strong>Claude sessions</strong> — AI chat scoped to each worktree, with access to your services, logs, crashes, and CLI tools</li>
           <li><strong>Cases</strong> — Capture work as a committed case directory (notes, evidence, Claude transcripts; traces when relevant)</li>
+          <li><strong>Local log access</strong> — Tail and search logs from the Trellis UI</li>
         </ul>
       </div>
       <div class="col-lg-4 mb-4">
@@ -54,19 +67,6 @@
       </div>
     </div>
     <p class="text-center mt-3"><a href="/docs/overview/" class="btn btn-outline-primary">Learn more about how Trellis works</a></p>
-  </div>
-</div>
-
-<div class="container py-5">
-  <div class="row justify-content-center">
-    <div class="col-lg-8">
-      <h2 class="text-center mb-5">How a Fix Happens</h2>
-
-      <p>Something breaks in production. You open a Claude session, and it can pull logs from your remote hosts, run distributed traces across services, and read crash reports directly—so the investigation starts from real data. You find the root cause, write the fix, and save the whole investigation as a Case—notes, the Claude transcript, the trace report—committed alongside the diff.</p>
-
-      <p>Or you're building a feature. Your local services are running, Trellis restarts them as you rebuild, and you're working through the implementation in a Claude session. When you're done, you capture the design notes and Claude transcript as a Case, so the reasoning lives in the repo with the code.</p>
-    </div>
-  </div>
 </div>
 
 <div class="py-5" style="background-color: var(--trellis-card-bg);">
@@ -100,6 +100,11 @@
         <h4 class="text-accent mb-4">Trellis is for:</h4>
 
         <div class="mb-4">
+          <h6><i class="fa-solid fa-check text-accent me-2"></i>AI-assisted development</h6>
+          <p class="text-muted ms-4">Trellis gives Claude Code a native interface with direct access to your services, logs, and traces. Investigations happen inside the same environment your code runs in—not in a separate chat window with copy-pasted context.</p>
+        </div>
+
+        <div class="mb-4">
           <h6><i class="fa-solid fa-check text-accent me-2"></i>Developers who also operate their systems</h6>
           <p class="text-muted ms-4">If you write code and are responsible for keeping it running, Trellis gives you one place to develop, debug, and inspect live systems without switching tools or losing context.</p>
         </div>
@@ -117,11 +122,6 @@
         <div class="mb-4">
           <h6><i class="fa-solid fa-check text-accent me-2"></i>Parallel development workflows</h6>
           <p class="text-muted ms-4">If you use git worktrees or juggle multiple branches at once, Trellis treats each as a first-class environment with isolated services, logs, and workflows.</p>
-        </div>
-
-        <div class="mb-4">
-          <h6><i class="fa-solid fa-check text-accent me-2"></i>AI-assisted development</h6>
-          <p class="text-muted ms-4">Trellis gives Claude Code a native interface with direct access to your services, logs, and traces. Investigations happen inside the same environment your code runs in—not in a separate chat window with copy-pasted context.</p>
         </div>
       </div>
 
@@ -146,7 +146,8 @@
     </div>
 </div>
 
-<div class="container py-5">
+<div class="py-5" style="background-color: var(--trellis-card-bg);">
+  <div class="container">
   <div class="row justify-content-center">
     <div class="col-lg-8">
       <h2 class="mb-4 text-center">Real examples</h2>
@@ -168,5 +169,6 @@
         </div>
       </div>
     </div>
+  </div>
 </div>
 {{ end }}
