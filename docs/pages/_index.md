@@ -9,15 +9,19 @@ Trellis provides a web interface for managing your development environment.
 
 ## [Terminal](/docs/pages/terminal/)
 
-The main view—access local terminals (@), service logs (#), log viewers (~), and remote windows (!) through the navigation picker.
+The main view—access local terminals (@), Claude sessions (@), service logs (#), log viewers (~), and remote windows (!) through the navigation picker.
+
+## [Claude](/docs/pages/claude/)
+
+AI-assisted development with Claude Code. Create per-worktree chat sessions, save transcripts to cases, and continue previous conversations.
 
 ## [Status](/docs/pages/status/)
 
 Monitor all configured services—see which are running or stopped, start/stop individual services, or control all services at once.
 
-## [Worktrees](/docs/pages/worktrees/)
+## [Worktrees](/docs/pages/worktrees/) (Home Page)
 
-Manage git worktrees—view status, create new worktrees, switch between them, and remove old ones.
+The home page (`/`). Manage git worktrees—view status, create new worktrees, switch between them, and remove old ones. Includes links to documentation, GitHub, and the mailing list.
 
 ## [Events](/docs/pages/events/)
 
@@ -26,6 +30,10 @@ View a timeline of system events including service starts, crashes, worktree swi
 ## [Crashes](/docs/pages/crashes/)
 
 Review crash reports when services exit unexpectedly. View stack traces, exit codes, and related trace IDs.
+
+## [Cases](/docs/pages/cases/)
+
+Track units of work (bugs, features, investigations) within a worktree. Attach evidence, notes, and Claude transcripts.
 
 ## [Trace](/docs/pages/trace/)
 

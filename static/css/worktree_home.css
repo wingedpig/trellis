@@ -1,0 +1,24 @@
+/* Worktree Home Page */
+.worktree-home {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.worktree-header h2 {
+    margin-bottom: 0.25rem;
+}
+
+.section .list-group-item {
+    transition: background-color 0.15s;
+}
+
+.section .list-group-item:hover {
+    background-color: var(--trellis-hover-bg, rgba(0,0,0,0.03));
+}
+
+.empty-state {
+    padding: 2rem;
+    text-align: center;
+    border: 1px dashed var(--trellis-input-border, #dee2e6);
+    border-radius: 0.5rem;
+}

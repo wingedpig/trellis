@@ -145,13 +145,16 @@ func TestBinaryWatcher_FileChange_Integration(t *testing.T) {
 	bus := newTestBus()
 	defer bus.Close()
 
-	var eventReceived atomic.Bool
-	var receivedService string
+	var receivedService atomic.Value
+	eventDone := make(chan struct{}, 1)
 
 	bus.Subscribe("binary.changed", func(ctx context.Context, e events.Event) error {
-		eventReceived.Store(true)
 		if svc, ok := e.Payload["service"].(string); ok {
-			receivedService = svc
+			receivedService.Store(svc)
+		}
+		select {
+		case eventDone <- struct{}{}:
+		default:
 		}
 		return nil
 	})
@@ -177,11 +180,14 @@ func TestBinaryWatcher_FileChange_Integration(t *testing.T) {
 	err = os.WriteFile(tmpFile, []byte("modified"), 0755)
 	require.NoError(t, err)
 
-	// Wait for event (debounce + processing)
-	time.Sleep(200 * time.Millisecond)
+	// Wait for event
+	select {
+	case <-eventDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for binary.changed event")
+	}
 
-	assert.True(t, eventReceived.Load(), "binary.changed event should be received")
-	assert.Equal(t, "test-service", receivedService)
+	assert.Equal(t, "test-service", receivedService.Load().(string))
 }
 
 func TestBinaryWatcher_MultipleServices_Integration(t *testing.T) {
@@ -381,13 +387,16 @@ func TestBinaryWatcher_MultipleFilesPerService_Integration(t *testing.T) {
 	bus := newTestBus()
 	defer bus.Close()
 
-	var eventReceived atomic.Bool
-	var changedPath string
+	var changedPath atomic.Value
+	eventDone := make(chan struct{}, 1)
 
 	bus.Subscribe("binary.changed", func(ctx context.Context, e events.Event) error {
-		eventReceived.Store(true)
 		if path, ok := e.Payload["path"].(string); ok {
-			changedPath = path
+			changedPath.Store(path)
+		}
+		select {
+		case eventDone <- struct{}{}:
+		default:
 		}
 		return nil
 	})
@@ -410,8 +419,12 @@ func TestBinaryWatcher_MultipleFilesPerService_Integration(t *testing.T) {
 	// Modify the config file (not the binary)
 	os.WriteFile(configFile, []byte("config: updated"), 0644)
 
-	time.Sleep(200 * time.Millisecond)
+	// Wait for event
+	select {
+	case <-eventDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for binary.changed event")
+	}
 
-	assert.True(t, eventReceived.Load(), "should detect config file change")
-	assert.Equal(t, configFile, changedPath, "changed path should be config file")
+	assert.Equal(t, configFile, changedPath.Load().(string), "changed path should be config file")
 }

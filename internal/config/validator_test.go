@@ -253,16 +253,6 @@ func TestValidator_Validate_TerminalConfig(t *testing.T) {
 			},
 			errContains: "backend",
 		},
-		{
-			name: "missing window name",
-			terminal: TerminalConfig{
-				Backend: "tmux",
-				DefaultWindows: []WindowConfig{
-					{Command: "/bin/zsh"},
-				},
-			},
-			errContains: "window",
-		},
 	}
 
 	validator := NewValidator()

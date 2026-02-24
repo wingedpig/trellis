@@ -1,0 +1,120 @@
+/* Case detail page styles */
+
+.case-detail {
+    padding: 1rem;
+    max-width: 900px;
+}
+
+.case-header h2 {
+    margin-bottom: 0;
+}
+
+.case-meta .badge {
+    font-size: 0.85em;
+}
+
+.case-actions .btn {
+    margin-left: 0.25rem;
+}
+
+/* Kind badges */
+.case-kind-bug { background-color: #dc3545; color: #fff; }
+.case-kind-feature { background-color: #0d6efd; color: #fff; }
+.case-kind-investigation { background-color: #6f42c1; color: #fff; }
+.case-kind-task { background-color: #6c757d; color: #fff; }
+
+/* Status badges */
+.case-status-open { background-color: #198754; color: #fff; }
+.case-status-resolved { background-color: #6c757d; color: #fff; }
+.case-status-wontfix { background-color: #ffc107; color: #212529; }
+
+.case-section h4 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.case-notes-content {
+    padding: 0.75rem;
+    background: var(--trellis-card-bg, var(--bs-tertiary-bg, #f8f9fa));
+    border-radius: 0.375rem;
+    line-height: 1.6;
+}
+
+.case-notes-textarea {
+    width: 100%;
+    min-height: 200px;
+    padding: 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+    border: 1px solid var(--trellis-input-border, var(--bs-border-color, #dee2e6));
+    border-radius: 0.375rem;
+    background: var(--trellis-input-bg, var(--bs-body-bg, #fff));
+    color: var(--bs-body-color, #212529);
+    resize: vertical;
+}
+
+.case-notes-textarea:focus {
+    border-color: var(--bs-primary);
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+.case-notes-content pre {
+    background: var(--trellis-pre-bg, var(--bs-body-bg, #fff));
+    border: 1px solid var(--trellis-pre-border, transparent);
+    padding: 0.75rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+}
+
+/* Link items */
+.case-link-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.25rem 0;
+}
+
+.case-link-delete {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.75em;
+    margin-left: 0.5rem;
+    opacity: 0.5;
+}
+
+.case-link-item:hover .case-link-delete {
+    opacity: 1;
+}
+
+.case-link-add-form {
+    padding: 0.75rem;
+    background: var(--trellis-card-bg, var(--bs-tertiary-bg, #f8f9fa));
+    border-radius: 0.375rem;
+}
+
+.case-link-add-form input {
+    background: var(--trellis-input-bg, var(--bs-body-bg, #fff));
+    border-color: var(--trellis-input-border, var(--bs-border-color, #dee2e6));
+    color: var(--bs-body-color, #212529);
+}
+
+/* Case list on worktree home */
+.case-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.case-list-item .case-info {
+    flex-grow: 1;
+}
+
+.case-list-item .case-date {
+    font-size: 0.85em;
+    color: var(--bs-secondary-color, #6c757d);
+    margin-left: 0.5rem;
+    white-space: nowrap;
+}

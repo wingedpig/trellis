@@ -198,6 +198,12 @@ func (p *ServiceDetailPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 <script>
+var SERVICE_NAME = '`)
+//line views/services.qtpl:95
+	qw422016.E().S(JSAttr(p.ServiceName))
+//line views/services.qtpl:95
+	qw422016.N().S(`';
+
 function showAlert(message, title) {
     document.getElementById('alertModalDetailTitle').textContent = title || 'Error';
     document.getElementById('alertModalDetailMessage').textContent = message;
@@ -209,33 +215,29 @@ function showAlert(message, title) {
 }
 
 function serviceAction(action) {
-    fetch('/api/v1/services/`)
-//line views/services.qtpl:106
-	qw422016.E().S(p.ServiceName)
-//line views/services.qtpl:106
-	qw422016.N().S(`/' + action, { method: 'POST' })
-        .then(function(r) { return r.json(); })
+    fetch('/api/v1/services/' + encodeURIComponent(SERVICE_NAME) + '/' + action, { method: 'POST' })
+        .then(function(r) {
+            if (!r.ok) return r.json().then(function(data) {
+                throw new Error(data.error ? data.error.message : 'Request failed');
+            });
+            return r.json();
+        })
         .then(function() { location.reload(); })
         .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
 }
 
 function clearLogs() {
-    fetch('/api/v1/services/`)
-//line views/services.qtpl:113
-	qw422016.E().S(p.ServiceName)
-//line views/services.qtpl:113
-	qw422016.N().S(`/logs', { method: 'DELETE' })
-        .then(function() { location.reload(); })
+    fetch('/api/v1/services/' + encodeURIComponent(SERVICE_NAME) + '/logs', { method: 'DELETE' })
+        .then(function(r) {
+            if (!r.ok) throw new Error('Clear failed');
+            location.reload();
+        })
         .catch(function(err) { showAlert('Error: ' + err, 'Error'); });
 }
 
 // Auto-refresh logs
 setInterval(function() {
-    fetch('/api/v1/services/`)
-//line views/services.qtpl:120
-	qw422016.E().S(p.ServiceName)
-//line views/services.qtpl:120
-	qw422016.N().S(`/logs')
+    fetch('/api/v1/services/' + encodeURIComponent(SERVICE_NAME) + '/logs')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.data && data.data.lines) {
@@ -251,36 +253,36 @@ setInterval(function() {
 </script>
 
 `)
-//line views/services.qtpl:135
+//line views/services.qtpl:145
 	p.StreamFooter(qw422016)
-//line views/services.qtpl:135
+//line views/services.qtpl:145
 	qw422016.N().S(`
 `)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 }
 
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 func (p *ServiceDetailPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	p.StreamRender(qw422016)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	qt422016.ReleaseWriter(qw422016)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 }
 
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 func (p *ServiceDetailPage) Render() string {
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	p.WriteRender(qb422016)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	qs422016 := string(qb422016.B)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 	return qs422016
-//line views/services.qtpl:136
+//line views/services.qtpl:146
 }

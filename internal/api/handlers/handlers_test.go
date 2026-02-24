@@ -421,6 +421,14 @@ func (m *mockTerminalManager) GetRemoteWindow(name string) *terminal.RemoteWindo
 	return nil
 }
 
+func (m *mockTerminalManager) SaveWindow(session, window string) {}
+
+func (m *mockTerminalManager) RemoveWindow(session, window string) {}
+
+func (m *mockTerminalManager) RenameWindowState(session, oldName, newName string) {}
+
+func (m *mockTerminalManager) LoadSavedWindows() terminal.WindowsData { return nil }
+
 // Tests
 
 func TestServiceHandler_List(t *testing.T) {
@@ -842,7 +850,7 @@ func TestEventHandler_History_WithFilters(t *testing.T) {
 }
 
 func TestTerminalHandler_ListSessions(t *testing.T) {
-	handler := NewTerminalHandler(newMockTerminalManager())
+	handler := NewTerminalHandler(newMockTerminalManager(), nil)
 
 	req := httptest.NewRequest("GET", "/api/v1/terminal/sessions", nil)
 	rec := httptest.NewRecorder()

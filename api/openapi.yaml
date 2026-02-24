@@ -56,6 +56,10 @@ tags:
     description: UI navigation options
   - name: Notify
     description: Notification events
+  - name: Cases
+    description: Case management for tracking units of work
+  - name: Claude
+    description: Claude Code session management and wrap-up
   - name: VSCode
     description: VS Code integration
 
@@ -1236,6 +1240,91 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /terminal/{worktree}/windows:
+    post:
+      tags: [Terminal]
+      summary: Create a terminal window
+      operationId: createTerminalWindow
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Window name (auto-generated if omitted)
+                command:
+                  type: string
+                  description: Command to execute in the window
+      responses:
+        '200':
+          description: Window created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  session:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /terminal/{worktree}/windows/{window}:
+    patch:
+      tags: [Terminal]
+      summary: Rename a terminal window
+      operationId: renameTerminalWindow
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - name: window
+          in: path
+          required: true
+          description: Window name
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: New window name
+      responses:
+        '204':
+          description: Window renamed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Terminal]
+      summary: Delete a terminal window
+      operationId: deleteTerminalWindow
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - name: window
+          in: path
+          required: true
+          description: Window name
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Window deleted
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ==================== NAVIGATION ====================
   /nav/options:
     get:
@@ -1254,6 +1343,726 @@ paths:
                     $ref: '#/components/schemas/NavOptions'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+
+  # ==================== CASES ====================
+  /cases/{worktree}:
+    get:
+      tags: [Cases]
+      summary: List open cases
+      operationId: listCases
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      responses:
+        '200':
+          description: List of open cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CaseInfo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Cases]
+      summary: Create a case
+      operationId: createCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  description: Case title
+                kind:
+                  type: string
+                  enum: [task, bug, feature, investigation]
+                  default: task
+                  description: Case kind
+      responses:
+        '201':
+          description: Case created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/archived:
+    get:
+      tags: [Cases]
+      summary: List archived cases
+      operationId: listArchivedCases
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      responses:
+        '200':
+          description: List of archived cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CaseInfo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}:
+    get:
+      tags: [Cases]
+      summary: Get case details
+      operationId: getCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Case details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Cases]
+      summary: Update a case
+      operationId: updateCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseUpdate'
+      responses:
+        '204':
+          description: Case updated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Cases]
+      summary: Delete a case
+      operationId: deleteCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '204':
+          description: Case deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/notes:
+    get:
+      tags: [Cases]
+      summary: Get case notes
+      operationId: getCaseNotes
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Case notes as markdown
+          content:
+            text/markdown:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/archive:
+    post:
+      tags: [Cases]
+      summary: Archive a case
+      operationId: archiveCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '204':
+          description: Case archived
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/reopen:
+    post:
+      tags: [Cases]
+      summary: Reopen an archived case
+      operationId: reopenCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '204':
+          description: Case reopened
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/evidence:
+    post:
+      tags: [Cases]
+      summary: Attach evidence file to a case
+      operationId: attachEvidence
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Evidence file to attach
+                title:
+                  type: string
+                  description: Title (defaults to filename)
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: Tags for the evidence
+      responses:
+        '201':
+          description: Evidence attached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceRef'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/transcript:
+    post:
+      tags: [Cases]
+      summary: Save a Claude transcript to a case
+      operationId: saveTranscript
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id:
+                  type: string
+                  description: Claude session UUID
+                title:
+                  type: string
+                  description: Transcript title (defaults to session display name)
+      responses:
+        '201':
+          description: Transcript saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claude_ref_id:
+                    type: string
+                    description: 8-character reference ID
+                  title:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Claude integration not configured
+
+  /cases/{worktree}/{id}/transcript/{claude_id}:
+    put:
+      tags: [Cases]
+      summary: Update a transcript with latest messages from its live session
+      operationId: updateTranscript
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+        - name: claude_id
+          in: path
+          required: true
+          description: Claude transcript reference ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transcript updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claude_ref_id:
+                    type: string
+                  message_count:
+                    type: integer
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Claude integration not configured
+
+  /cases/{worktree}/{id}/transcript/{claude_id}/continue:
+    post:
+      tags: [Cases]
+      summary: Continue a transcript in a new Claude session
+      operationId: continueTranscript
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+        - name: claude_id
+          in: path
+          required: true
+          description: Claude transcript reference ID
+          schema:
+            type: string
+      responses:
+        '201':
+          description: New session created from transcript
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Claude integration not configured
+
+  /cases/{worktree}/{id}/trace:
+    post:
+      tags: [Cases]
+      summary: Save a trace report to a case
+      operationId: saveCaseTrace
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [report_name]
+              properties:
+                report_name:
+                  type: string
+                  description: Name of trace report to save
+      responses:
+        '201':
+          description: Trace saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trace_ref_id:
+                    type: string
+                    description: 8-character reference ID
+                  report_name:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/trace/{trace_id}:
+    delete:
+      tags: [Cases]
+      summary: Delete a saved trace from a case
+      operationId: deleteCaseTrace
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+        - name: trace_id
+          in: path
+          required: true
+          description: Trace reference ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Trace deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== CLAUDE ====================
+  /claude/{worktree}/sessions:
+    get:
+      tags: [Claude]
+      summary: List Claude sessions for a worktree
+      operationId: listClaudeSessions
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClaudeSession'
+    post:
+      tags: [Claude]
+      summary: Create a new Claude session
+      operationId: createClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name:
+                  type: string
+                  description: Session display name (auto-generated if omitted)
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/{worktree}/sessions/import:
+    post:
+      tags: [Claude]
+      summary: Import a transcript into a new session
+      operationId: importClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeTranscript'
+      responses:
+        '201':
+          description: Session created from transcript
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/{worktree}/sessions/trash:
+    get:
+      tags: [Claude]
+      summary: List trashed sessions for a worktree
+      operationId: listTrashedClaudeSessions
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      responses:
+        '200':
+          description: List of trashed sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClaudeSession'
+
+  /claude/sessions/{session}:
+    patch:
+      tags: [Claude]
+      summary: Rename a Claude session
+      operationId: renameClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name]
+              properties:
+                display_name:
+                  type: string
+                  description: New display name
+      responses:
+        '204':
+          description: Session renamed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Claude]
+      summary: Trash a Claude session
+      operationId: trashClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      responses:
+        '204':
+          description: Session trashed
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/sessions/{session}/ws:
+    get:
+      tags: [Claude]
+      summary: Claude session WebSocket connection
+      operationId: claudeSessionWebSocket
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/sessions/{session}/export:
+    get:
+      tags: [Claude]
+      summary: Export a Claude session transcript
+      operationId: exportClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+        - name: level
+          in: query
+          description: Export detail level
+          schema:
+            type: string
+            enum: [full, summary]
+            default: full
+      responses:
+        '200':
+          description: Exported transcript
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeTranscript'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/sessions/{session}/restore:
+    post:
+      tags: [Claude]
+      summary: Restore a trashed session
+      operationId: restoreClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      responses:
+        '204':
+          description: Session restored
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/sessions/{session}/permanent:
+    delete:
+      tags: [Claude]
+      summary: Permanently delete a trashed session
+      operationId: permanentDeleteClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      responses:
+        '204':
+          description: Session permanently deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/{worktree}/ws:
+    get:
+      tags: [Claude]
+      summary: Claude WebSocket by worktree (backwards compatibility)
+      operationId: claudeWorktreeWebSocket
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      responses:
+        '101':
+          description: WebSocket upgrade
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/{worktree}/git-status:
+    get:
+      tags: [Claude]
+      summary: Get git status for a worktree
+      operationId: getClaudeGitStatus
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      responses:
+        '200':
+          description: Git status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      clean:
+                        type: boolean
+                      modified:
+                        type: array
+                        items:
+                          type: string
+                      added:
+                        type: array
+                        items:
+                          type: string
+                      deleted:
+                        type: array
+                        items:
+                          type: string
+                      renamed:
+                        type: array
+                        items:
+                          type: string
+                      untracked:
+                        type: array
+                        items:
+                          type: string
+                      branch:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/{worktree}/session-case:
+    get:
+      tags: [Claude]
+      summary: Check if a session is linked to an open case
+      operationId: getClaudeSessionCase
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - name: session_id
+          in: query
+          required: true
+          description: Claude session ID to look up
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session is linked to an open case
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      case_id:
+                        type: string
+                      title:
+                        type: string
+                      kind:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/{worktree}/wrap-up:
+    post:
+      tags: [Claude]
+      summary: Wrap up a session — create/archive case and commit
+      operationId: claudeWrapUp
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - commit_message
+              properties:
+                session_id:
+                  type: string
+                  description: Claude session ID (for new case creation)
+                case_id:
+                  type: string
+                  description: Existing case ID (mutually exclusive with title/kind)
+                title:
+                  type: string
+                  description: New case title (required when case_id is not provided)
+                kind:
+                  type: string
+                  description: New case kind (default task)
+                  enum: [task, bug, feature, investigation]
+                commit_message:
+                  type: string
+                  description: Git commit message (used as-is)
+                files:
+                  type: array
+                  items:
+                    type: string
+                  description: Files to git add (relative to worktree root)
+                links:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      title:
+                        type: string
+                      url:
+                        type: string
+                  description: Links to merge into the case
+      responses:
+        '200':
+          description: Wrap-up completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      case_id:
+                        type: string
+                      commit_hash:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   # ==================== VSCODE ====================
   /vscode/open:
@@ -1327,6 +2136,30 @@ components:
       in: path
       required: true
       description: Log viewer name
+      schema:
+        type: string
+
+    WorktreeParam:
+      name: worktree
+      in: path
+      required: true
+      description: Worktree name
+      schema:
+        type: string
+
+    CaseId:
+      name: id
+      in: path
+      required: true
+      description: "Case ID (e.g., 2026-02-19__fix-login-crash)"
+      schema:
+        type: string
+
+    ClaudeSessionId:
+      name: session
+      in: path
+      required: true
+      description: Claude session UUID
       schema:
         type: string
 
@@ -1895,3 +2728,237 @@ components:
               type: boolean
             sound:
               type: boolean
+
+    CaseInfo:
+      type: object
+      description: Lightweight case summary for list views
+      properties:
+        id:
+          type: string
+          description: "Case ID (e.g., 2026-02-19__fix-login-crash)"
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [task, bug, feature, investigation]
+        status:
+          type: string
+          enum: [open, resolved, wontfix]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        worktree:
+          type: string
+
+    Case:
+      type: object
+      description: Full case record
+      properties:
+        schema:
+          type: string
+          example: trellis.case.v1
+        id:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [task, bug, feature, investigation]
+        status:
+          type: string
+          enum: [open, resolved, wontfix]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        worktree:
+          type: object
+          properties:
+            name:
+              type: string
+            branch:
+              type: string
+            base_commit:
+              type: string
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseLink'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceRef'
+        claude:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeRef'
+
+    CaseUpdate:
+      type: object
+      description: Fields to update on a case (all optional)
+      properties:
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [task, bug, feature, investigation]
+        status:
+          type: string
+          enum: [open, resolved, wontfix]
+        links:
+          type: array
+          description: Full array replaces existing links
+          items:
+            $ref: '#/components/schemas/CaseLink'
+        notes:
+          type: string
+          description: Overwrites notes.md content
+
+    CaseLink:
+      type: object
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+
+    EvidenceRef:
+      type: object
+      properties:
+        title:
+          type: string
+        filename:
+          type: string
+        format:
+          type: string
+          description: File extension without dot
+        tags:
+          type: array
+          items:
+            type: string
+        added_at:
+          type: string
+          format: date-time
+
+    ClaudeRef:
+      type: object
+      description: Reference to a Claude transcript saved in a case
+      properties:
+        id:
+          type: string
+          description: 8-character reference ID
+        title:
+          type: string
+        filename:
+          type: string
+        exported_at:
+          type: string
+          format: date-time
+        message_count:
+          type: integer
+        preview:
+          type: string
+          description: First 200 characters of first user message
+        source_session_id:
+          type: string
+          description: Original session UUID if linked to a live session
+
+    ClaudeSession:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Session UUID
+        worktree_name:
+          type: string
+        display_name:
+          type: string
+        last_user_input:
+          type: string
+          format: date-time
+          description: Time of last user message (null if none)
+        created_at:
+          type: string
+          format: date-time
+        trashed_at:
+          type: string
+          format: date-time
+          description: Null if not trashed
+
+    ClaudeTranscript:
+      type: object
+      description: Exported Claude session transcript
+      properties:
+        schema:
+          type: string
+        exported_at:
+          type: string
+          format: date-time
+        source:
+          type: object
+          properties:
+            trellis_session_id:
+              type: string
+            claude_session_id:
+              type: string
+            worktree:
+              type: string
+            branch:
+              type: string
+            display_name:
+              type: string
+            project_path:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeMessage'
+        stats:
+          type: object
+          properties:
+            message_count:
+              type: integer
+            user_turns:
+              type: integer
+            assistant_turns:
+              type: integer
+            tool_uses:
+              type: integer
+
+    ClaudeMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [text, tool_use, tool_result, image, image_diff]
+              text:
+                type: string
+              id:
+                type: string
+              name:
+                type: string
+              input:
+                type: object
+              tool_use_id:
+                type: string
+              content:
+                type: string
+        timestamp:
+          type: string
+          format: date-time

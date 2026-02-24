@@ -298,8 +298,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     <option value="{%s p.Session %}/{%s p.Window %}" selected>@{%s p.SessionDisplayName() %} - {%s p.Window %}</option>
                 </select>
 
-                {% if p.ViewType == "local" %}
-                <div class="btn-group" role="group">
+                <div class="btn-group" role="group"{% if p.ViewType != "local" %} style="display:none"{% endif %}>
                     <button id="showTerminalBtn" class="btn btn-sm btn-terminal active" onclick="showTerminal()">
                         <i class="fa-solid fa-terminal"></i>
                     </button>
@@ -308,10 +307,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     </button>
                 </div>
 
-                <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;">
+                <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;{% if p.ViewType != "local" && p.ViewType != "output" %} display:none;{% endif %}">
                     <option value="">Workflow...</option>
                 </select>
-                {% endif %}
             </div>
 
             <div class="d-flex align-items-center gap-3 ms-auto">
@@ -920,7 +918,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             <button class="btn btn-sm btn-outline-secondary" onclick="clearLogViewerLog()" title="Clear log">
                 <i class="fa-solid fa-trash"></i>
             </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="showTerminal()" title="Back to terminal">
+            <button class="btn btn-sm btn-outline-secondary" id="logviewer-back-btn" onclick="showTerminal()" title="Back to terminal">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
@@ -1308,6 +1306,8 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     // Service log state
     let currentServiceName = null;
     let serviceLogPollTimer = null;
+    let serviceLogFetching = false;   // Guard against overlapping log fetches
+    let serviceStatusFetching = false; // Guard against overlapping status fetches
     let lastLogLength = 0;
     // Structured service log state (when parser is configured)
     let serviceLogConfig = null;        // Current service's logging config
@@ -1505,6 +1505,94 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         }
     }
 
+    // Fetch worktree home pages and Claude sessions from nav API and add to picker.
+    // Inserts them grouped with their worktree's terminals:
+    //   @worktree (home), @worktree - shell, @worktree - Claude Session, @worktree - output, ...
+    function fetchNavExtras(select) {
+        fetch('/api/v1/nav/options')
+            .then(r => r.json())
+            .then(navData => {
+                if (!navData.data) return;
+                const currentVal = $('#navSelect').val();
+                const worktrees = navData.data.worktrees || [];
+                const claudeSessions = navData.data.claudeSessions || [];
+                if (worktrees.length === 0 && claudeSessions.length === 0) return;
+
+                for (const wt of worktrees) {
+                    if (select.querySelector('option[value="' + CSS.escape(wt.url) + '"]')) continue;
+                    // Find the first option belonging to this worktree to insert before it
+                    const firstForWt = select.querySelector('option[data-worktree="' + CSS.escape(wt.name) + '"]');
+                    const opt = document.createElement('option');
+                    opt.value = wt.url;
+                    opt.dataset.isPage = 'true';
+                    opt.dataset.isWorktree = 'true';
+                    opt.textContent = '@' + wt.display + ' - Home';
+                    if (firstForWt) {
+                        select.insertBefore(opt, firstForWt);
+                    } else {
+                        // No terminals for this worktree yet; insert before nav pages
+                        const navPage = select.querySelector('option[data-is-page="true"]');
+                        if (navPage) {
+                            select.insertBefore(opt, navPage);
+                        } else {
+                            select.appendChild(opt);
+                        }
+                    }
+                }
+
+                for (const sess of claudeSessions) {
+                    if (select.querySelector('option[value="' + CSS.escape(sess.url) + '"]')) continue;
+                    // Insert after the last terminal (but before output/editor) for this worktree
+                    // Find all terminal options for this worktree
+                    const wtOpts = select.querySelectorAll('option[data-worktree="' + CSS.escape(sess.worktree) + '"][data-is-terminal="true"]');
+                    const opt = document.createElement('option');
+                    opt.value = sess.url;
+                    opt.dataset.isPage = 'true';
+                    opt.dataset.isClaude = 'true';
+                    opt.textContent = sess.display;
+                    if (wtOpts.length > 0) {
+                        // Insert after the last terminal for this worktree
+                        const lastTerminal = wtOpts[wtOpts.length - 1];
+                        lastTerminal.after(opt);
+                    } else {
+                        // Insert after worktree home if present
+                        const wtHome = select.querySelector('option[value="' + CSS.escape('/worktree/' + sess.worktree) + '"]');
+                        if (wtHome) {
+                            wtHome.after(opt);
+                        } else {
+                            const navPage = select.querySelector('option[data-is-page="true"]');
+                            if (navPage) {
+                                select.insertBefore(opt, navPage);
+                            } else {
+                                select.appendChild(opt);
+                            }
+                        }
+                    }
+                }
+
+                // Rebuild originalNavOptions and re-init Select2
+                originalNavOptions = Array.from(select.options).map(opt => ({
+                    value: opt.value,
+                    textContent: opt.textContent,
+                    dataset: { ...opt.dataset }
+                }));
+                TrellisNav.setOriginalOptions(originalNavOptions);
+
+                refreshingPicker = true;
+                $('#navSelect').select2('destroy').select2({
+                    placeholder: 'Select terminal...',
+                    width: '300px',
+                    templateResult: formatPickerOption,
+                    templateSelection: formatPickerOption
+                }).on('select2:select', handleNormalSelection);
+                if (currentVal) {
+                    $('#navSelect').val(currentVal).trigger('change.select2');
+                }
+                refreshingPicker = false;
+            })
+            .catch(() => {});
+    }
+
     // Reload terminal picker from API (full refresh)
     function reloadTerminalPicker() {
         fetch('/api/v1/terminal/sessions')
@@ -1635,6 +1723,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     }
                 }
                 refreshingPicker = false;
+
+                // Fetch worktree home pages and Claude sessions from nav API and merge into picker
+                fetchNavExtras(select);
             });
     }
 
@@ -2134,14 +2225,14 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         $('#navSelect').val(newUrl).trigger('change.select2');
         isSwitchingTerminal = false;
 
-        // Update workflow selector visibility
+        // Update workflow selector and code toggle visibility
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
-            workflowSelect.style.display = isRemote ? 'none' : 'inline-block';
+            workflowSelect.style.display = isRemote ? 'none' : '';
         }
-        const showCodeBtn = document.getElementById('showCodeBtn');
-        if (showCodeBtn) {
-            showCodeBtn.style.display = isRemote ? 'none' : 'inline-block';
+        const showTerminalBtn = document.getElementById('showTerminalBtn');
+        if (showTerminalBtn) {
+            showTerminalBtn.parentElement.style.display = isRemote ? 'none' : '';
         }
     }
 
@@ -2335,6 +2426,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 templateSelection: formatPickerOption
             }).on('select2:select', handleNormalSelection);
 
+            // Fetch worktree home pages and Claude sessions from nav API and merge into picker
+            fetchNavExtras(select);
+
             // Wait for select2 to fully render before initializing terminal
             // This ensures navbar has final height for correct terminal sizing
             requestAnimationFrame(() => {
@@ -2343,6 +2437,8 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     if (initialViewType === 'service' && initialServiceName) {
                         showService(initialServiceName);
                     } else if (initialViewType === 'logviewer' && initialLogViewerName) {
+                        var backBtn = document.getElementById('logviewer-back-btn');
+                        if (backBtn) backBtn.style.display = 'none';
                         showLogViewer(initialLogViewerName);
                     } else if (initialViewType === 'editor') {
                         showCode();
@@ -2481,6 +2577,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
 
         // Escape to close various panels
         if (e.key === 'Escape') {
+            // If Select2 picker is open, let it handle Escape
+            var s2 = $('#navSelect').data('select2');
+            if (s2 && s2.isOpen()) return;
             // Close log viewer expanded detail panel
             const logViewerExpanded = document.getElementById('logviewer-expanded');
             if (logViewerExpanded && logViewerExpanded.style.display !== 'none') {
@@ -2869,16 +2968,17 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         }
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');
+            // Show the parent btn-group (may have been hidden by showService/showLogViewer)
+            document.getElementById('showTerminalBtn').parentElement.style.display = '';
         }
         if (document.getElementById('showCodeBtn')) {
-            document.getElementById('showCodeBtn').style.display = 'inline-block';
             document.getElementById('showCodeBtn').classList.add('active');
         }
 
         // Restore workflow selector (may have been hidden by showService/showLogViewer)
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
-            workflowSelect.style.display = 'inline-block';
+            workflowSelect.style.display = '';
         }
 
         // Update picker to show editor URL
@@ -3002,7 +3102,19 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         const outputData = workflowOutputs[worktree];
         const titleEl = document.getElementById('workflow-title');
         const outputEl = document.querySelector('#workflow-output code');
-        if (outputData) {
+
+        // Check for run/workflow query params (from workflow picker on other pages)
+        const urlParams = new URLSearchParams(window.location.search);
+        const runParam = urlParams.get('run');
+        const workflowParam = urlParams.get('workflow');
+        if (runParam) {
+            // Clear query params from URL without reloading
+            history.replaceState(null, '', window.location.pathname);
+            titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Running: ' + (workflowParam || runParam);
+            outputEl.textContent = 'Starting workflow...\n';
+            // Start streaming this run
+            streamWorkflowOutput(runParam, workflowParam || runParam, outputEl);
+        } else if (outputData) {
             titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> ' + outputData.title;
             if (outputData.html) {
                 outputEl.innerHTML = outputData.html;
@@ -3508,18 +3620,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         }
         document.getElementById('service-wrapper').style.display = 'flex';
 
-        // Hide workflow selector (not applicable for service logs)
+        // Hide workflow selector and terminal/code toggle (not applicable for service logs)
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
             workflowSelect.style.display = 'none';
         }
-        const showCodeBtn = document.getElementById('showCodeBtn');
-        if (showCodeBtn) {
-            showCodeBtn.style.display = 'none';
-        }
-
         if (document.getElementById('showTerminalBtn')) {
+            document.getElementById('showTerminalBtn').parentElement.style.display = 'none';
             document.getElementById('showTerminalBtn').classList.remove('active');
+        }
+        if (document.getElementById('showCodeBtn')) {
             document.getElementById('showCodeBtn').classList.remove('active');
         }
 
@@ -3625,7 +3735,8 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     }
 
     function updateServiceStatus() {
-        if (!currentServiceName) return;
+        if (!currentServiceName || serviceStatusFetching) return;
+        serviceStatusFetching = true;
 
         fetch('/api/v1/services/' + encodeURIComponent(currentServiceName))
             .then(r => r.json())
@@ -3652,11 +3763,13 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     }
                 }
             })
-            .catch(err => console.error('Error fetching service status:', err));
+            .catch(err => console.error('Error fetching service status:', err))
+            .finally(() => { serviceStatusFetching = false; });
     }
 
     function fetchServiceLogs() {
-        if (!currentServiceName) return;
+        if (!currentServiceName || serviceLogFetching) return;
+        serviceLogFetching = true;
 
         fetch('/api/v1/services/' + encodeURIComponent(currentServiceName) + '/logs?lines=1000')
             .then(r => r.json())
@@ -3770,7 +3883,8 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 } else {
                     document.getElementById('service-log').textContent = 'Error loading logs: ' + err;
                 }
-            });
+            })
+            .finally(() => { serviceLogFetching = false; });
     }
 
     function parseServiceLogLine(line) {
@@ -4125,18 +4239,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         document.getElementById('service-wrapper').style.display = 'none';
         document.getElementById('logviewer-wrapper').style.display = 'flex';
 
-        // Hide workflow selector (not applicable for log viewers)
+        // Hide workflow selector and terminal/code toggle (not applicable for log viewers)
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
             workflowSelect.style.display = 'none';
         }
-        const showCodeBtn = document.getElementById('showCodeBtn');
-        if (showCodeBtn) {
-            showCodeBtn.style.display = 'none';
-        }
-
         if (document.getElementById('showTerminalBtn')) {
+            document.getElementById('showTerminalBtn').parentElement.style.display = 'none';
             document.getElementById('showTerminalBtn').classList.remove('active');
+        }
+        if (document.getElementById('showCodeBtn')) {
             document.getElementById('showCodeBtn').classList.remove('active');
         }
 
@@ -4377,7 +4489,6 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         if (!entries || entries.length === 0) return;
 
         const logEl = document.getElementById('logviewer-log');
-        const tbody = document.getElementById('logviewer-log');
 
         // Save current scroll position and height
         const scrollHeightBefore = logEl.scrollHeight;
@@ -4398,20 +4509,35 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         // Prepend to filtered entries if they match filter
         const matchingEntries = entries.filter(e => !logViewerFilter || matchesLogViewerFilter(e, logViewerFilter));
         if (matchingEntries.length > 0) {
-            logViewerFilteredEntries = matchingEntries.concat(logViewerFilteredEntries);
-
-            // Create document fragment for efficient DOM manipulation
-            const fragment = document.createDocumentFragment();
-            for (const entry of matchingEntries) {
-                const row = createLogViewerRow(entry);
-                fragment.appendChild(row);
+            // Adjust entry indices for existing rows (shift by number of new entries)
+            const existingRows = logEl.querySelectorAll('.logviewer-entry');
+            for (const row of existingRows) {
+                const idx = parseInt(row.dataset.entryIndex, 10);
+                if (!isNaN(idx)) {
+                    row.dataset.entryIndex = idx + matchingEntries.length;
+                }
             }
 
-            // Insert at beginning of tbody
-            if (tbody.firstChild) {
-                tbody.insertBefore(fragment, tbody.firstChild);
+            logViewerFilteredEntries = matchingEntries.concat(logViewerFilteredEntries);
+
+            // Render into a document fragment using the shared renderLogEntry()
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < matchingEntries.length; i++) {
+                renderLogEntry(matchingEntries[i], {
+                    container: fragment,
+                    layout: logViewerLayout,
+                    fieldMap: logViewerFieldMap,
+                    formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
+                    onExpand: expandLogViewerEntry,
+                    entryIndex: i
+                });
+            }
+
+            // Insert at beginning
+            if (logEl.firstChild) {
+                logEl.insertBefore(fragment, logEl.firstChild);
             } else {
-                tbody.appendChild(fragment);
+                logEl.appendChild(fragment);
             }
 
             // Restore scroll position (adjust for new content height)
@@ -4419,49 +4545,6 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             const heightDiff = scrollHeightAfter - scrollHeightBefore;
             logEl.scrollTop = scrollTopBefore + heightDiff;
         }
-    }
-
-    function createLogViewerRow(entry) {
-        const row = document.createElement('tr');
-        row.className = 'log-entry';
-        if (entry.level) {
-            row.classList.add('level-' + entry.level.toLowerCase());
-        }
-
-        // Use layout if available
-        const layout = (logViewerLayout && logViewerLayout.length > 0)
-            ? logViewerLayout
-            : [{field: 'timestamp', timestamp: true}, {field: 'level'}, {field: 'message'}];
-
-        for (const col of layout) {
-            const td = document.createElement('td');
-            if (col.width) td.style.width = col.width;
-
-            if (col.kvpairs) {
-                // Render key-value pairs
-                td.innerHTML = renderKvPairs(entry, logViewerFieldMap);
-            } else if (col.timestamp) {
-                const ts = entry.timestamp || entry[logViewerFieldNames.timestamp];
-                td.className = 'log-timestamp';
-                td.setAttribute('data-timestamp', ts || '');
-                td.textContent = formatTimestamp(ts, logViewerTimestampAbsolute);
-            } else {
-                const fieldName = col.field;
-                const mappedField = logViewerFieldMap[fieldName] || fieldName;
-                let value = entry[mappedField] !== undefined ? entry[mappedField] : entry[fieldName];
-                if (value === undefined) value = '';
-                td.textContent = String(value);
-                if (mappedField === 'level' || fieldName === 'level') {
-                    td.className = 'log-level';
-                }
-            }
-            row.appendChild(td);
-        }
-
-        // Click handler for expansion
-        row.onclick = function() { expandLogViewerEntry(entry, row); };
-
-        return row;
     }
 
     function matchesLogViewerFilter(entry, filter) {

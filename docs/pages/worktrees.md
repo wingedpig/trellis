@@ -5,9 +5,17 @@ weight: 1
 
 # Worktrees Page
 
-**URL:** `/worktrees`
+**URL:** `/` (also available at `/worktrees`)
 
-The Worktrees page lets you manage git worktrees for your project. Each worktree provides an isolated working directory with its own branch, allowing you to work on multiple features or fixes simultaneously.
+The Worktrees page is the home page. It lets you manage git worktrees for your project. Each worktree provides an isolated working directory with its own branch, allowing you to work on multiple features or fixes simultaneously.
+
+## Page Header
+
+The page header shows the Trellis logo, a brief description of the project, the version number, and links to:
+
+- **Documentation** — Opens the Trellis documentation site
+- **GitHub** — Opens the Trellis GitHub repository
+- **Email Group** — Opens the Trellis mailing list on Groups.io
 
 ## Worktree List
 
@@ -21,6 +29,8 @@ The page displays all worktrees with the following information:
   - **Detached** — The worktree is in detached HEAD state
 - **Current** — Indicates which worktree Trellis is currently using
 
+Status indicators (dirty, ahead/behind) load asynchronously after the page renders. The page displays immediately using cached worktree data, then fetches fresh status from the API (`GET /api/v1/worktrees`) and updates the badges in place.
+
 ## Switching Worktrees
 
 Click the **Switch** button on any worktree to activate it. When you switch worktrees:
@@ -28,7 +38,7 @@ Click the **Switch** button on any worktree to activate it. When you switch work
 1. All running services are stopped
 2. Trellis reconfigures for the new worktree's directory
 3. Services are restarted in the new worktree
-4. Any configured `pre_activate` or `post_activate` hooks run
+4. Any configured `pre_activate` hooks run
 
 Switching worktrees changes where Trellis looks for binaries, logs, and other paths that use the `{{.Worktree}}` template variable.
 

@@ -74,6 +74,20 @@ func (p *TraceReportPage) LogViewersJSON() string {
     </div>
 </div>
 
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="/trace" class="btn btn-secondary">
+        <i class="fa-solid fa-arrow-left"></i> Back to Traces
+    </a>
+    <div>
+        <button class="btn btn-outline-primary me-2" onclick="showSaveToCase()">
+            <i class="fa-solid fa-briefcase"></i> Save to Case
+        </button>
+        <button class="btn btn-outline-danger" onclick="deleteAndGoBack()">
+            <i class="fa-solid fa-trash"></i> Delete Report
+        </button>
+    </div>
+</div>
+
 <!-- Log Entries -->
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -108,15 +122,6 @@ func (p *TraceReportPage) LogViewersJSON() string {
         </div>
         {% endif %}
     </div>
-</div>
-
-<div class="mt-3">
-    <a href="/trace" class="btn btn-secondary">
-        <i class="fa-solid fa-arrow-left"></i> Back to Traces
-    </a>
-    <button class="btn btn-outline-danger float-end" onclick="deleteAndGoBack()">
-        <i class="fa-solid fa-trash"></i> Delete Report
-    </button>
 </div>
 
 <script>
@@ -280,6 +285,154 @@ function formatTimeRange(startISO, endISO) {
         }
     });
 })();
+</script>
+
+<!-- Save to Case Modal -->
+<div class="modal fade" id="saveToCaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-briefcase"></i> Save Trace to Case</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="traceCaseWorktree" class="form-label">Worktree</label>
+                    <select class="form-select" id="traceCaseWorktree" onchange="onTraceCaseWorktreeChange()"></select>
+                </div>
+                <div class="mb-3">
+                    <label for="traceCaseSelect" class="form-label">Case</label>
+                    <select class="form-select" id="traceCaseSelect" onchange="onTraceCaseSelectChange()" disabled></select>
+                </div>
+                <div id="traceCaseNewFields" style="display:none;">
+                    <div class="mb-3">
+                        <label for="traceCaseNewTitle" class="form-label">New Case Title</label>
+                        <input type="text" class="form-control" id="traceCaseNewTitle" placeholder="Bug investigation">
+                    </div>
+                    <div class="mb-3">
+                        <label for="traceCaseNewKind" class="form-label">Kind</label>
+                        <select class="form-select" id="traceCaseNewKind">
+                            <option value="task">Task</option>
+                            <option value="bug">Bug</option>
+                            <option value="feature">Feature</option>
+                            <option value="investigation" selected>Investigation</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveToCaseConfirm()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var TRACE_REPORT_NAME = '{%s JSAttr(p.Report.Name) %}';
+
+function showSaveToCase() {
+    fetch('/api/v1/nav/options')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var opts = data.data || data;
+        var wts = opts.worktrees || [];
+        var select = document.getElementById('traceCaseWorktree');
+        select.innerHTML = '<option value="">-- Select a worktree --</option>';
+        for (var i = 0; i < wts.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = wts[i].name;
+            opt.textContent = wts[i].name;
+            select.appendChild(opt);
+        }
+        document.getElementById('traceCaseSelect').innerHTML = '';
+        document.getElementById('traceCaseSelect').disabled = true;
+        document.getElementById('traceCaseNewFields').style.display = 'none';
+        var modal = new bootstrap.Modal(document.getElementById('saveToCaseModal'));
+        modal.show();
+    })
+    .catch(function(err) { alert('Failed to load worktrees: ' + err); });
+}
+
+function onTraceCaseWorktreeChange() {
+    var wt = document.getElementById('traceCaseWorktree').value;
+    var select = document.getElementById('traceCaseSelect');
+    if (!wt) {
+        select.innerHTML = '';
+        select.disabled = true;
+        return;
+    }
+    fetch('/api/v1/cases/' + encodeURIComponent(wt))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var cases = data.data || data || [];
+        select.innerHTML = '<option value="">-- Select a case --</option>';
+        for (var i = 0; i < cases.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = cases[i].id;
+            opt.textContent = '[' + cases[i].kind + '] ' + cases[i].title;
+            select.appendChild(opt);
+        }
+        select.innerHTML += '<option value="__new__">+ Create new case...</option>';
+        select.disabled = false;
+        document.getElementById('traceCaseNewFields').style.display = 'none';
+    })
+    .catch(function(err) { alert('Failed to load cases: ' + err); });
+}
+
+function onTraceCaseSelectChange() {
+    var val = document.getElementById('traceCaseSelect').value;
+    document.getElementById('traceCaseNewFields').style.display = (val === '__new__') ? 'block' : 'none';
+}
+
+function saveToCaseConfirm() {
+    var wt = document.getElementById('traceCaseWorktree').value;
+    var selectVal = document.getElementById('traceCaseSelect').value;
+    if (!wt) { alert('Please select a worktree'); return; }
+
+    if (selectVal === '__new__') {
+        var newTitle = document.getElementById('traceCaseNewTitle').value.trim();
+        var newKind = document.getElementById('traceCaseNewKind').value;
+        if (!newTitle) { alert('Title is required'); return; }
+        fetch('/api/v1/cases/' + encodeURIComponent(wt), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title: newTitle, kind: newKind})
+        })
+        .then(function(r) {
+            if (!r.ok) return r.json().then(function(d) { throw new Error(d.error && d.error.message || 'Create failed'); });
+            return r.json();
+        })
+        .then(function(data) {
+            var c = data.data || data;
+            return doLinkTrace(wt, c.id);
+        })
+        .catch(function(err) { alert('Failed: ' + err); });
+    } else if (selectVal) {
+        doLinkTrace(wt, selectVal);
+    } else {
+        alert('Please select a case');
+    }
+}
+
+function doLinkTrace(worktree, caseId) {
+    return fetch('/api/v1/cases/' + encodeURIComponent(worktree) + '/' + encodeURIComponent(caseId) + '/trace', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            report_name: TRACE_REPORT_NAME
+        })
+    })
+    .then(function(r) {
+        if (!r.ok) return r.json().then(function(d) { throw new Error(d.error && d.error.message || 'Link failed'); });
+        return r.json();
+    })
+    .then(function() {
+        bootstrap.Modal.getInstance(document.getElementById('saveToCaseModal')).hide();
+        alert('Trace report saved to case.');
+    })
+    .catch(function(err) { alert('Save failed: ' + err); });
+}
 </script>
 
 {%= p.Footer() %}

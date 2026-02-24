@@ -267,7 +267,7 @@ func FormatStats(w io.Writer, stats *LogStats, serviceName string) {
 
 	if stats.TotalEntries > 0 {
 		fmt.Fprintf(w, "  Error rate:       %.1f%% (%d errors)\n",
-			stats.ErrorRate, stats.LevelCounts["ERROR"]+stats.LevelCounts["FATAL"])
+			stats.ErrorRate, stats.LevelCounts["ERROR"]+stats.LevelCounts["ERR"]+stats.LevelCounts["FATAL"]+stats.LevelCounts["CRITICAL"])
 		fmt.Fprintf(w, "  Warn rate:        %.1f%% (%d warnings)\n",
 			stats.WarnRate, stats.LevelCounts["WARN"]+stats.LevelCounts["WARNING"])
 
@@ -277,7 +277,7 @@ func FormatStats(w io.Writer, stats *LogStats, serviceName string) {
 
 		fmt.Fprintln(w, "\n  Level distribution:")
 		// Sort levels for consistent output
-		levels := []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"}
+		levels := []string{"TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "ERR", "FATAL", "CRITICAL"}
 		for _, level := range levels {
 			if count, ok := stats.LevelCounts[level]; ok && count > 0 {
 				pct := float64(count) / float64(stats.TotalEntries) * 100

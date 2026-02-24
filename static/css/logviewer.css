@@ -12,8 +12,6 @@
     font-size: 12px;
     background: var(--trellis-pre-bg);
     border-radius: 4px;
-    max-height: 600px;
-    overflow-y: auto;
 }
 
 /* Entry row layout (flexbox) */
@@ -115,18 +113,20 @@
     white-space: pre;
 }
 
-/* Expanded details panel */
+/* Expanded details panel - floats fixed in viewport */
 .trace-expanded {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
+    position: fixed;
+    right: 20px;
+    top: 80px;
+    bottom: 20px;
     width: 400px;
     background: var(--trellis-card-bg);
-    border-left: 1px solid var(--trellis-input-border);
+    border: 1px solid var(--trellis-input-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
-    z-index: 10;
+    z-index: 100;
 }
 
 .trace-expanded-header {
@@ -135,6 +135,7 @@
     align-items: center;
     padding: 10px 15px;
     border-bottom: 1px solid var(--trellis-input-border);
+    border-radius: 8px 8px 0 0;
     font-weight: bold;
 }
 

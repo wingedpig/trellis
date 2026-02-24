@@ -19,6 +19,8 @@ import (
 
 	"github.com/wingedpig/trellis/internal/api"
 	"github.com/wingedpig/trellis/internal/api/handlers"
+	"github.com/wingedpig/trellis/internal/cases"
+	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
@@ -38,6 +40,7 @@ type App struct {
 
 	configPath       string // Path to config file (for determining repo directory)
 	worktreeOverride string // Worktree name/branch override from command line
+	version          string // Application version string
 	originalConfig   *config.Config // Original unexpanded config (for worktree switching)
 	config           *config.Config // Expanded config for current worktree
 	eventBus         events.EventBus
@@ -50,6 +53,8 @@ type App struct {
 	crashManager     *crashes.Manager
 	binaryWatcher    *watcher.BinaryWatcher
 	vsCodeHandler    *handlers.VSCodeHandler
+	claudeManager    *claude.Manager
+	caseManager      *cases.Manager
 	proxyManager     *proxy.Manager
 	apiServer        *api.Server
 
@@ -64,6 +69,7 @@ type Options struct {
 	Port       int
 	Worktree   string // Worktree name or branch to activate
 	Debug      bool
+	Version    string // Application version string
 }
 
 // New creates a new App instance.
@@ -71,6 +77,7 @@ func New(opts Options) (*App, error) {
 	app := &App{
 		configPath:       opts.ConfigPath,
 		worktreeOverride: opts.Worktree,
+		version:          opts.Version,
 		done:             make(chan struct{}),
 	}
 
@@ -276,6 +283,17 @@ func (app *App) Initialize(ctx context.Context) error {
 	}
 	app.config = expandedConfig
 
+	// Initialize Claude Code session manager
+	claudeStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "claude")
+	app.claudeManager = claude.NewManager(claudeStateDir)
+
+	// Initialize case manager
+	casesDir := cfg.Cases.Dir
+	if casesDir == "" {
+		casesDir = "trellis/cases"
+	}
+	app.caseManager = cases.NewManager(casesDir)
+
 	// Initialize terminal manager
 	tmuxExecutor := terminal.NewRealTmuxExecutor()
 	remoteWindows := make([]terminal.RemoteWindowConfig, 0, len(cfg.Terminal.RemoteWindows))
@@ -295,32 +313,14 @@ func (app *App) Initialize(ctx context.Context) error {
 	}
 	apiBaseURL := fmt.Sprintf("http://%s:%d", apiHost, cfg.Server.Port)
 
+	terminalStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "terminal")
 	app.terminalManager = terminal.NewManager(tmuxExecutor, terminal.TerminalConfig{
 		DefaultShell:  cfg.Terminal.Tmux.Shell,
 		RemoteWindows: remoteWindows,
 		ProjectName:   cfg.Project.Name,
 		APIBaseURL:    apiBaseURL,
+		StateDir:      terminalStateDir,
 	})
-
-	// Create terminal sessions for all worktrees (matches runner's approach)
-	windows := make([]terminal.WindowConfig, 0, len(cfg.Terminal.DefaultWindows))
-	for _, w := range cfg.Terminal.DefaultWindows {
-		windows = append(windows, terminal.WindowConfig{
-			Name:    w.Name,
-			Command: w.Command,
-		})
-	}
-
-	worktrees, wtErr := app.worktreeManager.List()
-	if wtErr != nil {
-		log.Printf("Warning: failed to list worktrees: %v", wtErr)
-	} else {
-		for _, wt := range worktrees {
-			if err := app.terminalManager.EnsureSession(ctx, wt.Name(), wt.Path, windows); err != nil {
-				log.Printf("Warning: failed to create terminal session for %s: %v", wt.Name(), err)
-			}
-		}
-	}
 
 	// Initialize service manager (use expanded config)
 	app.serviceManager = service.NewManager(app.config.Services, app.eventBus, nil)
@@ -452,20 +452,6 @@ func (app *App) Initialize(ctx context.Context) error {
 			path, _ := event.Payload["path"].(string)
 			log.Printf("File changed for service %s (%s), restarting...", serviceName, path)
 			return app.serviceManager.Restart(ctx, serviceName, service.RestartWatch)
-		}
-		return nil
-	})
-
-	// Subscribe to worktree creation events to create terminal sessions
-	app.eventBus.Subscribe("worktree.created", func(ctx context.Context, event events.Event) error {
-		worktreeName, _ := event.Payload["name"].(string)
-		worktreePath, _ := event.Payload["path"].(string)
-		if worktreeName == "" || worktreePath == "" {
-			return nil
-		}
-		log.Printf("Worktree created, ensuring terminal session: name=%s path=%s", worktreeName, worktreePath)
-		if err := app.terminalManager.EnsureSession(ctx, worktreeName, worktreePath, windows); err != nil {
-			log.Printf("Warning: failed to create terminal session for new worktree %s: %v", worktreeName, err)
 		}
 		return nil
 	})
@@ -647,12 +633,6 @@ func (app *App) Initialize(ctx context.Context) error {
 		log.Printf("Initialized %d proxy listeners", len(app.config.Proxy))
 	}
 
-	// Get the first default window name for /terminal redirect
-	var defaultWindow string
-	if len(cfg.Terminal.DefaultWindows) > 0 {
-		defaultWindow = cfg.Terminal.DefaultWindows[0].Name
-	}
-
 	// Convert config shortcuts to handler format
 	shortcuts := make([]handlers.ShortcutConfig, len(cfg.Terminal.Shortcuts))
 	for i, s := range cfg.Terminal.Shortcuts {
@@ -696,11 +676,13 @@ func (app *App) Initialize(ctx context.Context) error {
 			TraceManager:    app.traceManager,
 			CrashManager:    app.crashManager,
 			EventBus:        app.eventBus,
+			ClaudeManager:   app.claudeManager,
+			CaseManager:     app.caseManager,
 			VSCodeHandler:   app.vsCodeHandler,
-			DefaultWindow:   defaultWindow,
 			Shortcuts:       shortcuts,
 			Notifications:   notifications,
 			Links:           links,
+			Version:         app.version,
 		},
 	)
 
@@ -709,6 +691,40 @@ func (app *App) Initialize(ctx context.Context) error {
 
 // Start starts all components.
 func (app *App) Start(ctx context.Context) error {
+	// Restore terminal sessions from saved state
+	if saved := app.terminalManager.LoadSavedWindows(); len(saved) > 0 {
+		worktrees, _ := app.worktreeManager.List()
+		// Build map of session name → workdir from worktrees
+		sessionWorkdirs := make(map[string]string)
+		projectPrefix := terminal.ToTmuxSessionName(app.config.Project.Name)
+		for _, wt := range worktrees {
+			var sessionName string
+			if wt.Name() == app.config.Project.Name || terminal.ToTmuxSessionName(wt.Name()) == projectPrefix {
+				sessionName = projectPrefix
+			} else {
+				sessionName = projectPrefix + "-" + wt.Name()
+			}
+			sessionWorkdirs[sessionName] = wt.Path
+		}
+
+		for session, windowNames := range saved {
+			workdir := sessionWorkdirs[session]
+			if workdir == "" {
+				log.Printf("Terminal restore: no workdir found for session %s, skipping", session)
+				continue
+			}
+			windows := make([]terminal.WindowConfig, len(windowNames))
+			for i, name := range windowNames {
+				windows[i] = terminal.WindowConfig{Name: name}
+			}
+			if err := app.terminalManager.EnsureSession(ctx, session, workdir, windows); err != nil {
+				log.Printf("Warning: failed to restore terminal session %s: %v", session, err)
+			} else {
+				log.Printf("Restored terminal session %s with %d windows", session, len(windows))
+			}
+		}
+	}
+
 	// Start services
 	if err := app.serviceManager.StartAll(ctx); err != nil {
 		log.Printf("Warning: failed to start some services: %v", err)
@@ -808,6 +824,11 @@ func (app *App) Shutdown(ctx context.Context) error {
 	// Stop log viewers
 	if app.logManager != nil {
 		app.logManager.Stop()
+	}
+
+	// Stop Claude sessions
+	if app.claudeManager != nil {
+		app.claudeManager.Shutdown()
 	}
 
 	// Stop all services

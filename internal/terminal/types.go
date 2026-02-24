@@ -53,13 +53,13 @@ type WindowInfo struct {
 
 // TerminalConfig holds terminal configuration.
 type TerminalConfig struct {
-	Backend        string
-	HistoryLimit   int
-	DefaultShell   string
-	DefaultWindows []WindowConfig
-	RemoteWindows  []RemoteWindowConfig
-	ProjectName    string // Project name used to filter sessions
-	APIBaseURL     string // Trellis API base URL for trellis-ctl
+	Backend       string
+	HistoryLimit  int
+	DefaultShell  string
+	RemoteWindows []RemoteWindowConfig
+	ProjectName   string // Project name used to filter sessions
+	APIBaseURL    string // Trellis API base URL for trellis-ctl
+	StateDir      string // Directory for persisting terminal state (e.g. .trellis/terminal)
 }
 
 // WindowConfig defines a window to create.
@@ -110,6 +110,14 @@ type Manager interface {
 	GetCursorPosition(ctx context.Context, session, window string) (x, y int, err error)
 	// GetRemoteWindow gets the remote window config by name.
 	GetRemoteWindow(name string) *RemoteWindowConfig
+	// SaveWindow persists a window name for a session.
+	SaveWindow(session, window string)
+	// RemoveWindow removes a persisted window name for a session.
+	RemoveWindow(session, window string)
+	// RenameWindowState renames a persisted window.
+	RenameWindowState(session, oldName, newName string)
+	// LoadSavedWindows returns all persisted session→window mappings.
+	LoadSavedWindows() WindowsData
 }
 
 // SessionInfo contains information about a terminal session.

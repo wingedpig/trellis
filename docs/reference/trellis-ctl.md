@@ -210,7 +210,7 @@ trellis-ctl crash clear
 trellis-ctl trace <id> <group> [options]
 
 # Options
--since <time>         # Start time (1h, 30m, 6:00am, 2025-01-10)
+-since <time>         # Start time (1h, 30m, 6:00am, 2026-01-10)
 -until <time>         # End time (default: now)
 -name <name>          # Report name
 -no-expand-by-id      # Disable ID expansion
@@ -218,7 +218,7 @@ trellis-ctl trace <id> <group> [options]
 # Examples
 trellis-ctl trace abc123 api-flow -since 1h
 trellis-ctl trace "user-456" auth-flow -since 6:00am -until 7:00am
-trellis-ctl trace abc123 api-flow -since 2025-01-10 -until 2025-01-10
+trellis-ctl trace abc123 api-flow -since 2026-01-10 -until 2026-01-10
 
 # Trace across dev service logs (auto-generated group)
 trellis-ctl trace "req-123" services -since 1h

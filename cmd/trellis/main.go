@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	version = "0.90"
+	version = "0.95"
 )
 
 func main() {
@@ -77,6 +77,7 @@ func main() {
 		Port:       port,
 		Worktree:   worktree,
 		Debug:      debug,
+		Version:    version,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create app: %v", err)
@@ -229,6 +230,13 @@ func prompt(reader *bufio.Reader, question, defaultVal string) string {
 	return input
 }
 
+// escapeHJSONValue escapes a string for safe inclusion in an HJSON double-quoted value.
+func escapeHJSONValue(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
 func generateConfig(projectName string, port int, services []serviceConfig, buildCommand string, jsonLogs bool) string {
 	var sb strings.Builder
 
@@ -253,7 +261,7 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   project: {
     // Display name for this project (shown in UI)
     name: "`)
-	sb.WriteString(projectName)
+	sb.WriteString(escapeHJSONValue(projectName))
 	sb.WriteString(`"
   }
 
@@ -375,15 +383,15 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
 		for i, svc := range services {
 			sb.WriteString(`    {
       name: "`)
-			sb.WriteString(svc.Name)
+			sb.WriteString(escapeHJSONValue(svc.Name))
 			sb.WriteString(`"
       command: "`)
-			sb.WriteString(svc.Command)
+			sb.WriteString(escapeHJSONValue(svc.Command))
 			sb.WriteString(`"
 `)
 			if svc.WatchBinary != "" {
 				sb.WriteString(`      watch_binary: "`)
-				sb.WriteString(svc.WatchBinary)
+				sb.WriteString(escapeHJSONValue(svc.WatchBinary))
 				sb.WriteString(`"
 `)
 			}
@@ -466,7 +474,11 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
 	} else {
 		// Parse the build command into array form
 		cmdParts := strings.Fields(buildCommand)
-		cmdJSON := `["` + strings.Join(cmdParts, `", "`) + `"]`
+		escapedParts := make([]string, len(cmdParts))
+		for i, p := range cmdParts {
+			escapedParts[i] = escapeHJSONValue(p)
+		}
+		cmdJSON := `["` + strings.Join(escapedParts, `", "`) + `"]`
 
 		sb.WriteString(`    {
       id: "build"
@@ -523,21 +535,14 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   // Terminal Settings
   // ---------------------------------------------------------------------------
   //
-  // Trellis uses tmux for terminal management. Each worktree gets its own
-  // tmux session with the configured windows.
+  // Trellis uses tmux for terminal management. Terminals are created on demand
+  // from the worktree home page.
   terminal: {
     // tmux configuration
     tmux: {
       history_limit: 50000
       // shell: "/bin/zsh"  // Override default shell
     }
-
-    // Windows created for each worktree
-    default_windows: [
-      { name: "shell" }
-      // { name: "claude", command: "claude" }
-      // { name: "logs", command: "tail -f logs/app.log" }
-    ]
 
     // Remote terminal connections (SSH to production, etc.)
     // remote_windows: [

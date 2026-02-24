@@ -7,6 +7,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -77,8 +78,10 @@ func newListener(cfg config.ProxyListenerConfig) (*Listener, error) {
 	handler := http.HandlerFunc(l.serveHTTP)
 
 	l.server = &http.Server{
-		Addr:    cfg.Listen,
-		Handler: handler,
+		Addr:              cfg.Listen,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Configure TLS
@@ -126,24 +129,69 @@ func newRoute(cfg config.ProxyRouteConfig) (route, error) {
 	}
 	r.upstream = u
 
-	// Create reverse proxy
+	// Create reverse proxy with a transport configured for proxying
 	proxy := httputil.NewSingleHostReverseProxy(u)
 	proxy.FlushInterval = -1 // Immediate flushing for streaming
+	proxy.Transport = &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 
-	// Custom director to set proper headers
+	// Custom director to preserve original Host and add forwarding headers
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		origHost := req.Host
 		originalDirector(req)
-		req.Host = u.Host
+		// Preserve the original client Host header (like Caddy/Nginx default behavior)
+		// The default director sets req.Host to the upstream, but backends typically
+		// need the original host for virtual hosting and request validation.
+		req.Host = origHost
+		// Standard forwarding headers
+		if req.Header.Get("X-Forwarded-Host") == "" {
+			req.Header.Set("X-Forwarded-Host", origHost)
+		}
+		if req.Header.Get("X-Forwarded-Proto") == "" {
+			if req.TLS != nil {
+				req.Header.Set("X-Forwarded-Proto", "https")
+			} else {
+				req.Header.Set("X-Forwarded-Proto", "http")
+			}
+		}
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
-		log.Printf("Proxy error [%s -> %s]: %v", req.URL.Path, u.Host, err)
+		// Client disconnected — not a proxy error, don't log or write a response
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		log.Printf("Proxy error [%s %s -> %s]: %v", req.Method, req.URL.Path, u.Host, err)
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 	}
 
 	r.proxy = proxy
 	return r, nil
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the status code.
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.statusCode = code
+	sr.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap lets http.ResponseWriter optional interfaces (Flusher, Hijacker) pass through.
+func (sr *statusRecorder) Unwrap() http.ResponseWriter {
+	return sr.ResponseWriter
 }
 
 // serveHTTP routes the request to the first matching route.
@@ -154,9 +202,16 @@ func (l *Listener) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
 	for _, route := range l.routes {
 		if route.pattern == nil || route.pattern.MatchString(r.URL.Path) {
-			route.proxy.ServeHTTP(w, r)
+			rec := &statusRecorder{ResponseWriter: w, statusCode: 200}
+			route.proxy.ServeHTTP(rec, r)
+			elapsed := time.Since(start)
+			// Log slow requests and server errors, but not client cancellations
+			if (elapsed >= 5*time.Second || rec.statusCode >= 500) && r.Context().Err() == nil {
+				log.Printf("Proxy: %s %s -> %s [%d] (%s)", r.Method, r.URL.Path, route.upstream.Host, rec.statusCode, elapsed.Round(time.Millisecond))
+			}
 			return
 		}
 	}
@@ -213,7 +268,8 @@ func (l *Listener) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bidirectional copy
+	// Bidirectional copy — when one direction closes, shut down the other
+	// so neither side hangs on a dead connection.
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -221,7 +277,12 @@ func (l *Listener) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		io.Copy(clientConn, upstreamConn)
-		clientConn.Close()
+		// Upstream closed or errored; signal client that no more data is coming
+		if tc, ok := clientConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		} else {
+			clientConn.Close()
+		}
 	}()
 
 	// client -> upstream (flush any buffered data first)
@@ -233,10 +294,17 @@ func (l *Listener) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 			upstreamConn.Write(buffered)
 		}
 		io.Copy(upstreamConn, clientConn)
-		upstreamConn.Close()
+		// Client closed or errored; signal upstream that no more data is coming
+		if tc, ok := upstreamConn.(*net.TCPConn); ok {
+			tc.CloseWrite()
+		} else {
+			upstreamConn.Close()
+		}
 	}()
 
 	wg.Wait()
+	clientConn.Close()
+	upstreamConn.Close()
 }
 
 // isWebSocket returns true if the request is a WebSocket upgrade request.

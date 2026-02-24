@@ -17,6 +17,8 @@ import (
 	"github.com/wingedpig/trellis/internal/api/handlers"
 	"github.com/wingedpig/trellis/internal/api/middleware"
 	"github.com/wingedpig/trellis/internal/api/version"
+	"github.com/wingedpig/trellis/internal/cases"
+	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/logs"
@@ -46,11 +48,13 @@ type Dependencies struct {
 	LogManager      *logs.Manager                // Log viewer manager
 	TraceManager    *trace.Manager               // Distributed trace manager
 	CrashManager    *crashes.Manager             // Crash history manager
+	ClaudeManager   *claude.Manager              // Claude Code session manager
+	CaseManager     *cases.Manager               // Case objects manager
 	VSCodeHandler   *handlers.VSCodeHandler
-	DefaultWindow   string                       // First default window name for /terminal redirect
 	Shortcuts       []handlers.ShortcutConfig    // Keyboard shortcuts for terminal windows
 	Notifications   handlers.NotificationConfig  // Browser notification settings
 	Links           []handlers.LinkConfig        // Links for terminal picker
+	Version         string                       // Application version string
 }
 
 // NewRouter creates a new API router.
@@ -74,7 +78,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 	}
 
 	// UI Page handlers
-	pageHandler := handlers.NewPageHandler(deps.ServiceManager, deps.WorktreeManager, deps.WorkflowRunner, deps.EventBus, deps.TerminalManager, deps.LogManager, deps.TraceManager, deps.CrashManager, deps.DefaultWindow, deps.Shortcuts, deps.Notifications, deps.Links)
+	pageHandler := handlers.NewPageHandler(deps.ServiceManager, deps.WorktreeManager, deps.WorkflowRunner, deps.EventBus, deps.TerminalManager, deps.LogManager, deps.TraceManager, deps.CrashManager, deps.ClaudeManager, deps.CaseManager, deps.Shortcuts, deps.Notifications, deps.Links, deps.Version)
 	registerPageRoutes(r, pageHandler)
 
 	// API v1 routes
@@ -154,7 +158,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 
 // registerPageRoutes registers all UI page routes on the given router.
 func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
-	r.HandleFunc("/", pageHandler.Terminal).Methods("GET")
+	r.HandleFunc("/", pageHandler.Home).Methods("GET")
 	r.HandleFunc("/services/{name}", pageHandler.ServiceDetail).Methods("GET")
 	// New terminal URL structure
 	r.HandleFunc("/terminal/local/{worktree}/{window}", pageHandler.TerminalLocal).Methods("GET")
@@ -174,6 +178,14 @@ func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
 	// Crash history pages
 	r.HandleFunc("/crashes", pageHandler.Crashes).Methods("GET")
 	r.HandleFunc("/crashes/{id}", pageHandler.CrashDetail).Methods("GET")
+	// Worktree home page
+	r.HandleFunc("/worktree/{name}", pageHandler.WorktreeHome).Methods("GET")
+	// Case detail page
+	r.HandleFunc("/case/{worktree}/{id}", pageHandler.CaseDetail).Methods("GET")
+	r.HandleFunc("/case/{worktree}/{id}/trace/{trace_id}", pageHandler.CaseTraceView).Methods("GET")
+	// Claude Code chat pages
+	r.HandleFunc("/claude/{worktree}/{session}", pageHandler.ClaudePage).Methods("GET")
+	r.HandleFunc("/claude/{worktree}", pageHandler.ClaudeRedirect).Methods("GET")
 }
 
 // NewRouterWithTerminalHandler creates a router with a pre-created terminal handler.
@@ -197,7 +209,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	}
 
 	// UI Page handlers
-	pageHandler := handlers.NewPageHandler(deps.ServiceManager, deps.WorktreeManager, deps.WorkflowRunner, deps.EventBus, deps.TerminalManager, deps.LogManager, deps.TraceManager, deps.CrashManager, deps.DefaultWindow, deps.Shortcuts, deps.Notifications, deps.Links)
+	pageHandler := handlers.NewPageHandler(deps.ServiceManager, deps.WorktreeManager, deps.WorkflowRunner, deps.EventBus, deps.TerminalManager, deps.LogManager, deps.TraceManager, deps.CrashManager, deps.ClaudeManager, deps.CaseManager, deps.Shortcuts, deps.Notifications, deps.Links, deps.Version)
 	registerPageRoutes(r, pageHandler)
 
 	// API v1 routes
@@ -243,18 +255,61 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// Terminal handlers (using the provided handler)
 	api.HandleFunc("/terminal/sessions", terminalHandler.ListSessions).Methods("GET")
 	api.HandleFunc("/terminal/ws", terminalHandler.WebSocket).Methods("GET")
+	api.HandleFunc("/terminal/{worktree}/windows", terminalHandler.CreateWindow).Methods("POST")
+	api.HandleFunc("/terminal/{worktree}/windows/{window}", terminalHandler.RenameWindow).Methods("PATCH")
+	api.HandleFunc("/terminal/{worktree}/windows/{window}", terminalHandler.DeleteWindow).Methods("DELETE")
 
 	// Navigation handlers (combined picker options)
 	var projectName string
 	if deps.WorktreeManager != nil {
 		projectName = deps.WorktreeManager.ProjectName()
 	}
-	navHandler := handlers.NewNavHandler(deps.TerminalManager, deps.ServiceManager, deps.LogManager, deps.Links, deps.Shortcuts, deps.Notifications, projectName)
+	navHandler := handlers.NewNavHandler(deps.TerminalManager, deps.ServiceManager, deps.LogManager, deps.ClaudeManager, deps.CaseManager, deps.WorktreeManager, deps.Links, deps.Shortcuts, deps.Notifications, projectName)
 	api.HandleFunc("/nav/options", navHandler.Options).Methods("GET")
+
+	// Case handlers
+	if deps.CaseManager != nil {
+		caseHandler := handlers.NewCaseHandler(deps.CaseManager, deps.ClaudeManager, deps.TraceManager, deps.WorktreeManager)
+		api.HandleFunc("/cases/{worktree}", caseHandler.List).Methods("GET")
+		api.HandleFunc("/cases/{worktree}/archived", caseHandler.ListArchived).Methods("GET")
+		api.HandleFunc("/cases/{worktree}", caseHandler.Create).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}", caseHandler.Get).Methods("GET")
+		api.HandleFunc("/cases/{worktree}/{id}/notes", caseHandler.GetNotes).Methods("GET")
+		api.HandleFunc("/cases/{worktree}/{id}", caseHandler.Update).Methods("PATCH")
+		api.HandleFunc("/cases/{worktree}/{id}", caseHandler.Delete).Methods("DELETE")
+		api.HandleFunc("/cases/{worktree}/{id}/archive", caseHandler.Archive).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}/reopen", caseHandler.Reopen).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}/evidence", caseHandler.AttachEvidence).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}/transcript", caseHandler.SaveTranscript).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}/transcript/{claude_id}", caseHandler.UpdateTranscript).Methods("PUT")
+		api.HandleFunc("/cases/{worktree}/{id}/transcript/{claude_id}/continue", caseHandler.ContinueTranscript).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}/trace", caseHandler.SaveTrace).Methods("POST")
+		api.HandleFunc("/cases/{worktree}/{id}/trace/{trace_id}", caseHandler.DeleteTrace).Methods("DELETE")
+	}
 
 	// VS Code file opening (requires VSCodeHandler)
 	if deps.VSCodeHandler != nil {
 		api.HandleFunc("/vscode/open", deps.VSCodeHandler.OpenFile).Methods("POST")
+	}
+
+	// Claude Code handlers
+	if deps.ClaudeManager != nil {
+		claudeHandler := handlers.NewClaudeHandler(deps.ClaudeManager, deps.WorktreeManager, deps.CaseManager)
+		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.ListSessions).Methods("GET")
+		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.CreateSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/sessions/{session}", claudeHandler.RenameSessionAPI).Methods("PATCH")
+		api.HandleFunc("/claude/sessions/{session}", claudeHandler.DeleteSessionAPI).Methods("DELETE")
+		api.HandleFunc("/claude/sessions/{session}/ws", claudeHandler.WebSocket).Methods("GET")
+		api.HandleFunc("/claude/sessions/{session}/export", claudeHandler.ExportSessionAPI).Methods("GET")
+		api.HandleFunc("/claude/sessions/{session}/restore", claudeHandler.RestoreSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/sessions/{session}/permanent", claudeHandler.PermanentDeleteSessionAPI).Methods("DELETE")
+		api.HandleFunc("/claude/{worktree}/sessions/import", claudeHandler.ImportSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/{worktree}/sessions/trash", claudeHandler.ListTrashedSessionsAPI).Methods("GET")
+		api.HandleFunc("/claude/{worktree}/git-status", claudeHandler.GitStatus).Methods("GET")
+		api.HandleFunc("/claude/{worktree}/session-case", claudeHandler.SessionCase).Methods("GET")
+		api.HandleFunc("/claude/{worktree}/wrap-up", claudeHandler.WrapUp).Methods("POST")
+		// Backwards compat: worktree-level WebSocket uses first session
+		api.HandleFunc("/claude/{worktree}/ws", claudeHandler.WebSocketByWorktree).Methods("GET")
 	}
 
 	// Log viewer handlers
@@ -305,7 +360,7 @@ type Server struct {
 
 // NewServer creates a new API server.
 func NewServer(cfg ServerConfig, deps Dependencies) *Server {
-	terminalHandler := handlers.NewTerminalHandler(deps.TerminalManager)
+	terminalHandler := handlers.NewTerminalHandler(deps.TerminalManager, deps.WorktreeManager)
 	return &Server{
 		router:          NewRouterWithTerminalHandler(deps, terminalHandler),
 		cfg:             cfg,

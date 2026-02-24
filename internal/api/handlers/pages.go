@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/wingedpig/trellis/internal/cases"
+	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
@@ -75,14 +77,16 @@ type PageHandler struct {
 	logManager    *logs.Manager
 	traceManager  *trace.Manager
 	crashManager  *crashes.Manager
-	defaultWindow string
+	claudeManager *claude.Manager
+	caseManager   *cases.Manager
 	shortcuts     []ShortcutConfig
 	notifications NotificationConfig
 	links         []LinkConfig
+	version       string
 }
 
 // NewPageHandler creates a new page handler.
-func NewPageHandler(services service.Manager, worktrees worktree.Manager, workflows workflow.Runner, eventBus events.EventBus, terminals terminal.Manager, logManager *logs.Manager, traceManager *trace.Manager, crashManager *crashes.Manager, defaultWindow string, shortcuts []ShortcutConfig, notifications NotificationConfig, links []LinkConfig) *PageHandler {
+func NewPageHandler(services service.Manager, worktrees worktree.Manager, workflows workflow.Runner, eventBus events.EventBus, terminals terminal.Manager, logManager *logs.Manager, traceManager *trace.Manager, crashManager *crashes.Manager, claudeManager *claude.Manager, caseManager *cases.Manager, shortcuts []ShortcutConfig, notifications NotificationConfig, links []LinkConfig, version string) *PageHandler {
 	return &PageHandler{
 		services:      services,
 		worktrees:     worktrees,
@@ -92,10 +96,12 @@ func NewPageHandler(services service.Manager, worktrees worktree.Manager, workfl
 		logManager:    logManager,
 		traceManager:  traceManager,
 		crashManager:  crashManager,
-		defaultWindow: defaultWindow,
+		claudeManager: claudeManager,
+		caseManager:   caseManager,
 		shortcuts:     shortcuts,
 		notifications: notifications,
 		links:         links,
+		version:       version,
 	}
 }
 
@@ -153,12 +159,12 @@ func (h *PageHandler) ServiceDetail(w http.ResponseWriter, r *http.Request) {
 	page.WriteRender(w)
 }
 
-// Terminal redirects to the default terminal window of the active worktree.
+// Terminal redirects to the worktree home page for the active worktree.
 func (h *PageHandler) Terminal(w http.ResponseWriter, r *http.Request) {
-	// Build redirect URL to the default window of the active worktree
-	if h.worktrees != nil && h.defaultWindow != "" {
+	// Redirect to worktree home page
+	if h.worktrees != nil {
 		worktree := h.activeWorktreeName()
-		http.Redirect(w, r, "/terminal/local/"+worktree+"/"+h.defaultWindow, http.StatusFound)
+		http.Redirect(w, r, "/worktree/"+worktree, http.StatusFound)
 		return
 	}
 
@@ -517,15 +523,23 @@ func (h *PageHandler) Status(w http.ResponseWriter, r *http.Request) {
 	page.WriteRender(w)
 }
 
+// Home renders the home page (worktrees page with project info).
+func (h *PageHandler) Home(w http.ResponseWriter, r *http.Request) {
+	h.renderWorktreesPage(w, r)
+}
+
 // Worktrees renders the worktrees page.
 func (h *PageHandler) Worktrees(w http.ResponseWriter, r *http.Request) {
+	h.renderWorktreesPage(w, r)
+}
+
+// renderWorktreesPage renders the worktrees/home page with project info.
+func (h *PageHandler) renderWorktreesPage(w http.ResponseWriter, r *http.Request) {
 	var wts []worktree.WorktreeInfo
 	var active *worktree.WorktreeInfo
 	var projectName, binariesDir string
 
 	if h.worktrees != nil {
-		// Refresh to get current dirty/ahead/behind status
-		_ = h.worktrees.Refresh()
 		wts, _ = h.worktrees.List()
 		active = h.worktrees.Active()
 		projectName = h.worktrees.ProjectName()
@@ -534,13 +548,14 @@ func (h *PageHandler) Worktrees(w http.ResponseWriter, r *http.Request) {
 
 	page := &views.WorktreesPage{
 		BasePage: views.BasePage{
-			Title:    "Worktrees",
+			Title:    "Home",
 			Worktree: active,
 		},
 		Worktrees:   wts,
 		Active:      active,
 		ProjectName: projectName,
 		BinariesDir: binariesDir,
+		Version:     h.version,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -692,6 +707,234 @@ func (h *PageHandler) Crashes(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page.WriteRender(w)
+}
+
+// WorktreeHome renders the worktree home page.
+func (h *PageHandler) WorktreeHome(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name := vars["name"]
+
+	var activeWorktree *worktree.WorktreeInfo
+	var branch string
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+		if wt, ok := h.worktrees.GetByName(name); ok {
+			branch = wt.Branch
+		}
+	}
+
+	// Get Claude sessions for this worktree
+	var claudeSessions []*claude.SessionInfo
+	if h.claudeManager != nil {
+		claudeSessions = h.claudeManager.ListSessions(name)
+	}
+
+	// Get open cases for this worktree
+	var openCases []cases.CaseInfo
+	if h.caseManager != nil && h.worktrees != nil {
+		if wt, ok := h.worktrees.GetByName(name); ok {
+			openCases, _ = h.caseManager.List(wt.Path)
+		}
+	}
+
+	// Get terminal windows for this worktree
+	var terminals []terminal.WindowInfo
+	if h.terminals != nil {
+		tmuxSession := h.worktreeToSession(name)
+		sessions, err := h.terminals.ListSessions(context.Background())
+		if err == nil {
+			for _, sess := range sessions {
+				if sess.Name == tmuxSession && !sess.IsRemote {
+					terminals = sess.Windows
+					break
+				}
+			}
+		}
+	}
+
+	page := &views.WorktreeHomePage{
+		BasePage: views.BasePage{
+			Title:    "Worktree: " + name,
+			Worktree: activeWorktree,
+		},
+		WorktreeName:   name,
+		Branch:         branch,
+		Cases:          openCases,
+		ClaudeSessions: claudeSessions,
+		Terminals:      terminals,
+		TmuxSessionName: h.worktreeToSession(name),
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// CaseDetail renders the case detail page.
+func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	caseID := vars["id"]
+
+	var activeWorktree *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+	}
+
+	if h.caseManager == nil {
+		http.Error(w, "Cases not configured", http.StatusNotFound)
+		return
+	}
+
+	var worktreePath string
+	if h.worktrees != nil {
+		if wt, ok := h.worktrees.GetByName(worktreeName); ok {
+			worktreePath = wt.Path
+		}
+	}
+	if worktreePath == "" {
+		http.Error(w, "Worktree not found", http.StatusNotFound)
+		return
+	}
+
+	c, err := h.caseManager.Get(worktreePath, caseID)
+	if err != nil {
+		http.Error(w, "Case not found", http.StatusNotFound)
+		return
+	}
+
+	notes, _ := h.caseManager.GetNotes(worktreePath, caseID)
+	traces, _ := h.caseManager.ListTraces(worktreePath, caseID)
+
+	// Backfill transcript previews for older cases saved without them
+	if len(c.Claude) > 0 {
+		h.caseManager.BackfillPreviews(worktreePath, caseID, c.Claude)
+	}
+
+	// Populate staleness info by checking live session message counts
+	if h.claudeManager != nil && len(c.Claude) > 0 {
+		for i := range c.Claude {
+			if c.Claude[i].SourceSessionID == "" {
+				continue
+			}
+			session := h.claudeManager.GetSession(c.Claude[i].SourceSessionID)
+			if session == nil {
+				c.Claude[i].CurrentMessageCount = -1
+			} else {
+				c.Claude[i].CurrentMessageCount = len(session.Messages())
+			}
+		}
+	}
+
+	page := &views.CaseDetailPage{
+		BasePage: views.BasePage{
+			Title:    "Case: " + c.Title,
+			Worktree: activeWorktree,
+		},
+		WorktreeName: worktreeName,
+		Case:         c,
+		Notes:        notes,
+		Traces:       traces,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// CaseTraceView renders a saved trace report from a case using the standard trace report template.
+func (h *PageHandler) CaseTraceView(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	caseID := vars["id"]
+	traceID := vars["trace_id"]
+
+	if h.caseManager == nil {
+		http.Error(w, "Cases not configured", http.StatusNotFound)
+		return
+	}
+
+	var worktreePath string
+	if h.worktrees != nil {
+		if wt, ok := h.worktrees.GetByName(worktreeName); ok {
+			worktreePath = wt.Path
+		}
+	}
+	if worktreePath == "" {
+		http.Error(w, "Worktree not found", http.StatusNotFound)
+		return
+	}
+
+	report, err := h.caseManager.GetTrace(worktreePath, caseID, traceID)
+	if err != nil {
+		http.Error(w, "Trace not found", http.StatusNotFound)
+		return
+	}
+
+	var activeWorktree *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+	}
+
+	logViewers := h.buildLogViewerList()
+
+	page := &views.TraceReportPage{
+		BasePage: views.BasePage{
+			Title:    "Trace: " + report.Name,
+			Worktree: activeWorktree,
+		},
+		Report:     report,
+		LogViewers: logViewers,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// ClaudePage renders the Claude Code chat page for a specific session.
+func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	sessionID := vars["session"]
+
+	var activeWorktree *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+	}
+
+	page := &views.ClaudePage{
+		BasePage: views.BasePage{
+			Title:    "Claude Code",
+			Worktree: activeWorktree,
+		},
+		WorktreeName: worktreeName,
+		SessionID:    sessionID,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// ClaudeRedirect redirects /claude/{worktree} to the first session or creates one.
+func (h *PageHandler) ClaudeRedirect(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+
+	if h.claudeManager != nil {
+		sessions := h.claudeManager.ListSessions(worktreeName)
+		if len(sessions) > 0 {
+			http.Redirect(w, r, "/claude/"+worktreeName+"/"+sessions[0].ID, http.StatusFound)
+			return
+		}
+		// Create a session and redirect to it
+		if h.worktrees != nil {
+			if wt, ok := h.worktrees.GetByName(worktreeName); ok {
+				session := h.claudeManager.CreateSession(worktreeName, wt.Path, "")
+				http.Redirect(w, r, "/claude/"+worktreeName+"/"+session.ID(), http.StatusFound)
+				return
+			}
+		}
+	}
+	// Fallback: redirect to worktree home
+	http.Redirect(w, r, "/worktree/"+worktreeName, http.StatusFound)
 }
 
 // CrashDetail renders a single crash detail page.

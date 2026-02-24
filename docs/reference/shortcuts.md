@@ -44,6 +44,16 @@ Quickly return to recently visited screens:
 
 Use arrow keys to navigate, Enter to select, Escape to cancel.
 
+## Claude Shortcuts
+
+When on the Claude chat page:
+
+| Shortcut | Action |
+|----------|--------|
+| `Enter` | Send message |
+| `Shift + Enter` | Insert newline without sending |
+| `Escape` | Stop/cancel current response |
+
 ## Terminal Shortcuts
 
 When focused on a terminal:

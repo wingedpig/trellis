@@ -11,16 +11,18 @@ The Terminal page is the main view in Trellis. It provides access to terminals, 
 
 ## Navigation Picker
 
-Press **Cmd+P** (or **Ctrl+P**) to open the navigation picker. Items are prefixed to indicate their type:
+Press **Cmd+P** (or **Ctrl+P**) to open the navigation picker. Items are prefixed to indicate their type, and each type has a distinct icon in the dropdown:
 
-| Prefix | Type | Example |
-|--------|------|---------|
-| `@` | Local terminal | `@main - dev` |
-| `#` | Service logs | `#api` |
-| `~` | Log viewer | `~production-logs` |
-| `!` | Remote window | `!admin` |
+| Prefix | Icon | Type | Example |
+|--------|------|------|---------|
+| `@` | terminal | Local terminal | `@main - dev` |
+| `@` | robot | Claude session | `@main - Session 1` |
+| `@` | folder-tree | Worktree home | `@main - Home` |
+| `#` | status dot | Service logs | `#api` |
+| `~` | file-lines | Log viewer | `~production-logs` |
+| `!` | terminal | Remote window | `!admin` |
 
-You can also access pages, links, and other items through the picker.
+Claude sessions and local terminals both use the `@` prefix but are visually distinguished by their icons. You can also access pages, links, and other items through the picker.
 
 ## History Picker
 
@@ -32,7 +34,7 @@ Press **Cmd+Backspace** to open the history picker, which shows your recently vi
 
 Local terminals connect to tmux windows in your project's tmux session. Each worktree has its own tmux session.
 
-**Configuration:** Define default terminal windows in [`terminal.default_windows`](/docs/reference/config/#terminal). Configure tmux settings (history limit, default shell) in [`terminal.tmux`](/docs/reference/config/#terminal).
+**Configuration:** Terminals are created on demand from the worktree home page. Configure tmux settings (history limit, default shell) in [`terminal.tmux`](/docs/reference/config/#terminal).
 
 **Features:**
 - Full terminal emulation via xterm.js

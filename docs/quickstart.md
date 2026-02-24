@@ -47,14 +47,6 @@ Alternatively, create `trellis.hjson` manually in your project root:
     }
   ]
 
-  // Terminal windows to create
-  terminal: {
-    default_windows: [
-      { name: "shell" }
-      { name: "claude", command: "claude" }
-    ]
-  }
-
   // Workflows (builds, tests, etc.)
   workflows: [
     {

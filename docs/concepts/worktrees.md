@@ -101,21 +101,7 @@ Configure where binaries are located:
 
 ## Terminal Sessions
 
-Each worktree gets its own tmux session with configured windows:
-
-```hjson
-{
-  terminal: {
-    default_windows: [
-      { name: "shell" }
-      { name: "claude", command: "claude" }
-      { name: "logs", command: "tail -f logs/app.log" }
-    ]
-  }
-}
-```
-
-Each worktree has its own tmux session.
+Each worktree gets its own tmux session. Terminal windows are created on demand from the worktree home page rather than being pre-configured. Windows and Claude sessions can be renamed from the worktree home page using the pencil icon next to each item.
 
 ## Parallel Development
 
@@ -142,7 +128,11 @@ With worktrees, you can:
 
 ## Creating Worktrees
 
-Create worktrees with git:
+### From the Web UI
+
+The [home page](/docs/pages/worktrees/) has a **Create New Worktree** form. Enter a branch name and Trellis will create both the git branch and worktree directory. Optionally check **Switch to new worktree** to activate it immediately.
+
+### From the Command Line
 
 ```bash
 # Create worktree with new branch
@@ -155,6 +145,14 @@ git worktree add ../myapp-hotfix hotfix-branch
 Trellis will discover the new worktree automatically.
 
 ## Removing Worktrees
+
+### From the Web UI
+
+Click the **Remove** button on the [home page](/docs/pages/worktrees/) to delete a worktree. You'll be asked whether to also delete the associated git branch. Trellis will remove the worktree directory, its binaries directory, and kill the tmux session.
+
+You cannot remove the currently active worktree or the main project worktree.
+
+### From the Command Line
 
 ```bash
 # Remove the worktree directory

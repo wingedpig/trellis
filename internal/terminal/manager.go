@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +27,7 @@ type RealManager struct {
 	pipes         map[string]*pipeReader
 	remoteWindows []RemoteWindowConfig
 	projectPrefix string // Session prefix used to filter sessions (project name with dots replaced)
+	store         *WindowStore
 }
 
 // pipeReader manages a named pipe for terminal output.
@@ -37,7 +40,7 @@ type pipeReader struct {
 
 // NewManager creates a new terminal manager.
 func NewManager(tmux TmuxExecutor, cfg TerminalConfig) *RealManager {
-	return &RealManager{
+	m := &RealManager{
 		tmux:          tmux,
 		cfg:           cfg,
 		sessions:      make(map[string]bool),
@@ -45,6 +48,10 @@ func NewManager(tmux TmuxExecutor, cfg TerminalConfig) *RealManager {
 		remoteWindows: cfg.RemoteWindows,
 		projectPrefix: ToTmuxSessionName(cfg.ProjectName),
 	}
+	if cfg.StateDir != "" {
+		m.store = NewWindowStore(filepath.Join(cfg.StateDir, "windows.json"))
+	}
+	return m
 }
 
 // resolveWindowTarget resolves a window name to an unambiguous target (session:index).
@@ -393,6 +400,87 @@ func (m *RealManager) GetRemoteWindow(name string) *RemoteWindowConfig {
 		}
 	}
 	return nil
+}
+
+// SaveWindow persists a window name for a session.
+func (m *RealManager) SaveWindow(session, window string) {
+	if m.store == nil {
+		return
+	}
+	data, err := m.store.Load()
+	if err != nil {
+		log.Printf("Warning: failed to load window state: %v", err)
+		return
+	}
+	// Avoid duplicates
+	for _, w := range data[session] {
+		if w == window {
+			return
+		}
+	}
+	data[session] = append(data[session], window)
+	if err := m.store.Save(data); err != nil {
+		log.Printf("Warning: failed to save window state: %v", err)
+	}
+}
+
+// RemoveWindow removes a persisted window name for a session.
+func (m *RealManager) RemoveWindow(session, window string) {
+	if m.store == nil {
+		return
+	}
+	data, err := m.store.Load()
+	if err != nil {
+		log.Printf("Warning: failed to load window state: %v", err)
+		return
+	}
+	windows := data[session]
+	for i, w := range windows {
+		if w == window {
+			data[session] = append(windows[:i], windows[i+1:]...)
+			break
+		}
+	}
+	if len(data[session]) == 0 {
+		delete(data, session)
+	}
+	if err := m.store.Save(data); err != nil {
+		log.Printf("Warning: failed to save window state: %v", err)
+	}
+}
+
+// RenameWindowState renames a persisted window.
+func (m *RealManager) RenameWindowState(session, oldName, newName string) {
+	if m.store == nil {
+		return
+	}
+	data, err := m.store.Load()
+	if err != nil {
+		log.Printf("Warning: failed to load window state: %v", err)
+		return
+	}
+	for i, w := range data[session] {
+		if w == oldName {
+			data[session][i] = newName
+			break
+		}
+	}
+	if err := m.store.Save(data); err != nil {
+		log.Printf("Warning: failed to save window state: %v", err)
+	}
+}
+
+// LoadSavedWindows returns all persisted session→window mappings.
+func (m *RealManager) LoadSavedWindows() WindowsData {
+	if m.store == nil {
+		return nil
+	}
+	data, err := m.store.Load()
+	if err != nil {
+		log.Printf("Warning: failed to load saved windows: %v", err)
+		return nil
+	}
+	return data
 }
 
 // Read implements io.Reader for pipeReader.

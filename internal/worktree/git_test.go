@@ -248,7 +248,11 @@ func (m *MockGitExecutor) WorktreeList(ctx context.Context, dir string) ([]Workt
 	if m.err != nil {
 		return nil, m.err
 	}
-	return m.worktrees, nil
+	// Return a copy so concurrent callers don't share the same slice
+	// (mirrors real RealGitExecutor which creates a fresh slice each call)
+	result := make([]WorktreeInfo, len(m.worktrees))
+	copy(result, m.worktrees)
+	return result, nil
 }
 
 func (m *MockGitExecutor) Status(ctx context.Context, path string) (GitStatus, error) {

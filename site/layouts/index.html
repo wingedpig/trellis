@@ -3,7 +3,7 @@
   <div class="container">
     <img src="/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
     <p class="lead">A web-based control plane for your development environment</p>
-    <p class="text-muted">Rapidly switch between worktrees, terminals, locally running services, and local or remote logs using tmux, SSH, and keyboard-driven pickers—instead of a collection of disconnected tools.</p>
+    <p class="text-muted">Run services, stream logs, debug with Claude, and capture investigations—all scoped to the worktree you're working in. One keyboard-driven interface instead of a collection of disconnected tools.</p>
     <div class="mt-4">
       <a href="/docs/" class="btn btn-primary btn-lg me-2">
         <i class="fa-solid fa-book"></i> Documentation
@@ -30,6 +30,8 @@
           <li><strong>Terminal &amp; tmux management</strong> — Trellis creates and manages tmux sessions for you</li>
           <li><strong>Service supervision</strong> — Run your app's components locally with automatic restart on rebuild</li>
           <li><strong>Local log access</strong> — Tail and search logs from the Trellis UI</li>
+          <li><strong>Claude sessions</strong> — AI chat scoped to each worktree, with access to your services, logs, crashes, and CLI tools</li>
+          <li><strong>Cases</strong> — Capture work as a committed case directory (notes, evidence, Claude transcripts; traces when relevant)</li>
         </ul>
       </div>
       <div class="col-lg-4 mb-4">
@@ -39,14 +41,14 @@
           <li><strong>Tailing remote logs</strong> — Stream logs from remote hosts in real time</li>
           <li><strong>Grepping remote logs</strong> — Search through remote logs, including rotated and compressed files</li>
           <li><strong>Distributed tracing</strong> — Search for an ID across multiple machines at once</li>
-          <li><strong>AI-assisted debugging</strong> — Expose logs, traces, crashes, and service state via CLI for AI coding agents to help diagnose issues</li>
+          <li><strong>Claude + production context</strong> — Claude sessions can query remote logs, run distributed traces, and read crash reports directly, so debugging starts from real data instead of guesswork</li>
         </ul>
       </div>
       <div class="col-lg-4 mb-4">
         <h4><i class="fa-solid fa-keyboard text-accent me-2"></i>Navigation &amp; Speed</h4>
         <ul class="text-muted">
           <li><strong>Web UI, keyboard-first</strong> — Runs on localhost but designed for keyboard operation</li>
-          <li><strong>Pickers for everything</strong> — Jump between worktrees, terminals, processes, logs, and workflows</li>
+          <li><strong>Unified picker</strong> — One searchable dropdown (<code>Cmd+P</code>) to jump between worktrees, terminals, services, log viewers, Claude sessions, and cases</li>
           <li><strong>Keyboard shortcuts</strong> — Common actions bound to shortcuts so you rarely touch the mouse</li>
         </ul>
       </div>
@@ -58,27 +60,40 @@
 <div class="container py-5">
   <div class="row justify-content-center">
     <div class="col-lg-8">
-      <h2 class="text-center mb-5">Why Trellis Exists</h2>
+      <h2 class="text-center mb-5">How a Fix Happens</h2>
 
-      <p>I built Trellis because the tools I was using to develop <a href="https://groups.io">Groups.io</a> were annoying me.</p>
+      <p>Something breaks in production. You open a Claude session, and it can pull logs from your remote hosts, run distributed traces across services, and read crash reports directly—so the investigation starts from real data. You find the root cause, write the fix, and save the whole investigation as a Case—notes, the Claude transcript, the trace report—committed alongside the diff.</p>
 
-      <p>Groups.io isn't a weekend project. It's been running for over a decade, has millions of users, and a lot of moving parts. I write the code, run the dev environment, deploy to production, and get woken up when something breaks. The neat "dev vs ops" distinction doesn't really apply—it's just me switching hats all day.</p>
-
-      <p>For years, I glued things together with shell scripts, tmux sessions, and manual steps. It worked, but it was fragile. I'd switch branches, start the services I needed, dig through logs, SSH into production, then jump back to local code. The context lived in my head, and if I lost track, I paid for it.</p>
-
-      <p>I wanted a single workflow—from "I'm writing this code" to "what just broke in production." So I built Trellis.</p>
-
-      <p>Trellis isn't a provisioning system and it doesn't replace your cloud or orchestrator. It becomes your dev environment. It runs your services, restarts them when binaries change, scopes terminals and logs to what you're working on, and keeps everything in sync with the active branch. Switch worktrees, switch your world—without leaving behind a mess of sessions and state.</p>
-
-      <p>I built Trellis for myself. After a while, I realized other people were solving the same problems. So here it is.</p>
-
-      <p class="text-end text-muted">— <a href="https://wingedpig.com">Mark Fletcher</a></p>
+      <p>Or you're building a feature. Your local services are running, Trellis restarts them as you rebuild, and you're working through the implementation in a Claude session. When you're done, you capture the design notes and Claude transcript as a Case, so the reasoning lives in the repo with the code.</p>
     </div>
   </div>
 </div>
 
 <div class="py-5" style="background-color: var(--trellis-card-bg);">
   <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h2 class="text-center mb-5">Why Trellis Exists</h2>
+
+        <p>I built Trellis because the tools I was using to develop <a href="https://groups.io">Groups.io</a> were annoying me.</p>
+
+        <p>Groups.io isn't a weekend project. It's been running for over a decade, has millions of users, and a lot of moving parts. I write the code, run the dev environment, deploy to production, and get woken up when something breaks. The neat "dev vs ops" distinction doesn't really apply—it's just me switching hats all day.</p>
+
+        <p>For years, I glued things together with shell scripts, tmux sessions, and manual steps. It worked, but it was fragile. I'd switch branches, start the services I needed, dig through logs, SSH into production, then jump back to local code. The context lived in my head, and if I lost track, I paid for it.</p>
+
+        <p>I wanted a single workflow—from "I'm writing this code" to "what just broke in production." So I built Trellis.</p>
+
+        <p>Trellis isn't a provisioning system and it doesn't replace your cloud or orchestrator. It becomes your dev environment. It runs your services, restarts them when binaries change, scopes terminals and logs to what you're working on, and keeps everything in sync with the active branch. Switch worktrees, switch your world—without leaving behind a mess of sessions and state.</p>
+
+        <p>I built Trellis for myself. After a while, I realized other people were solving the same problems. So here it is.</p>
+
+        <p class="text-end text-muted">— <a href="https://wingedpig.com">Mark Fletcher</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container py-5">
     <h2 class="text-center mb-5">Who Trellis Is For</h2>
     <div class="row">
       <div class="col-lg-6">
@@ -106,7 +121,7 @@
 
         <div class="mb-4">
           <h6><i class="fa-solid fa-check text-accent me-2"></i>AI-assisted development</h6>
-          <p class="text-muted ms-4">When services crash, Trellis captures full context—logs, stack traces, and trace IDs—so AI assistants can diagnose issues and suggest fixes without guesswork.</p>
+          <p class="text-muted ms-4">Trellis gives Claude Code a native interface with direct access to your services, logs, and traces. Investigations happen inside the same environment your code runs in—not in a separate chat window with copy-pasted context.</p>
         </div>
       </div>
 
@@ -129,7 +144,6 @@
         </div>
       </div>
     </div>
-  </div>
 </div>
 
 <div class="container py-5">

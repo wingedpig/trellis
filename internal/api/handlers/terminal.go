@@ -19,8 +19,10 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/wingedpig/trellis/internal/terminal"
+	"github.com/wingedpig/trellis/internal/worktree"
 )
 
 // Per-target mutexes to serialize tmux send-keys commands per pane.
@@ -42,16 +44,18 @@ type terminalMessage struct {
 
 // TerminalHandler handles terminal-related API requests.
 type TerminalHandler struct {
-	mgr   terminal.Manager
-	mu    sync.Mutex
-	conns map[*websocket.Conn]struct{} // Active WebSocket connections
+	mgr       terminal.Manager
+	worktrees worktree.Manager
+	mu        sync.Mutex
+	conns     map[*websocket.Conn]struct{} // Active WebSocket connections
 }
 
 // NewTerminalHandler creates a new terminal handler.
-func NewTerminalHandler(mgr terminal.Manager) *TerminalHandler {
+func NewTerminalHandler(mgr terminal.Manager, worktrees worktree.Manager) *TerminalHandler {
 	return &TerminalHandler{
-		mgr:   mgr,
-		conns: make(map[*websocket.Conn]struct{}),
+		mgr:       mgr,
+		worktrees: worktrees,
+		conns:     make(map[*websocket.Conn]struct{}),
 	}
 }
 
@@ -310,15 +314,40 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 	tmuxSession := terminal.ToTmuxSessionName(session)
 	log.Printf("Terminal WebSocket: target=%s:%s", tmuxSession, window)
 
-	// First check if the session exists (matches runner's approach)
+	// Check if the session exists; if not, recreate it from worktree info
 	checkCmd := exec.Command("tmux", "has-session", "-t", tmuxSession)
 	if err := checkCmd.Run(); err != nil {
-		errMsg := fmt.Sprintf("Session %s does not exist", tmuxSession)
-		log.Printf("Terminal WebSocket: %s", errMsg)
-		writeMu.Lock()
-		conn.WriteMessage(websocket.TextMessage, []byte(errMsg+"\r\n"))
-		writeMu.Unlock()
-		return
+		log.Printf("Terminal WebSocket: session %s does not exist, attempting to recreate", tmuxSession)
+
+		// Try to find the worktree and recreate the session
+		recreated := false
+		if h.worktrees != nil {
+			workdir := h.findWorkdirForSession(tmuxSession)
+			if workdir != "" {
+				// Use saved windows to restore the session's windows
+				var savedWindowConfigs []terminal.WindowConfig
+				if saved := h.mgr.LoadSavedWindows(); saved != nil {
+					for _, name := range saved[tmuxSession] {
+						savedWindowConfigs = append(savedWindowConfigs, terminal.WindowConfig{Name: name})
+					}
+				}
+				if ensureErr := h.mgr.EnsureSession(ctx, tmuxSession, workdir, savedWindowConfigs); ensureErr != nil {
+					log.Printf("Terminal WebSocket: failed to recreate session %s: %v", tmuxSession, ensureErr)
+				} else {
+					log.Printf("Terminal WebSocket: recreated session %s", tmuxSession)
+					recreated = true
+				}
+			}
+		}
+
+		if !recreated {
+			errMsg := fmt.Sprintf("Session %s does not exist", tmuxSession)
+			log.Printf("Terminal WebSocket: %s", errMsg)
+			writeMu.Lock()
+			conn.WriteMessage(websocket.TextMessage, []byte(errMsg+"\r\n"))
+			writeMu.Unlock()
+			return
+		}
 	}
 
 	// Check if the window exists, if not create it (matches runner's approach)
@@ -360,6 +389,9 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 			return
 		}
 		log.Printf("Terminal WebSocket: Successfully created window %s", window)
+
+		// Persist auto-created window to disk
+		h.mgr.SaveWindow(tmuxSession, window)
 
 		// Get the index of the newly created window
 		getIndexCmd := exec.Command("tmux", "list-windows", "-t", tmuxSession, "-F", "#{window_index}:#{window_name}")
@@ -599,6 +631,190 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 			}
 		}
 	}
+}
+
+// CreateWindow creates a new terminal window for a worktree on demand.
+func (h *TerminalHandler) CreateWindow(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+
+	// Parse optional body
+	var req struct {
+		Name    string `json:"name"`
+		Command string `json:"command"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		WriteError(w, http.StatusBadRequest, ErrTerminalError, "invalid JSON: "+err.Error())
+		return
+	}
+
+	// Resolve worktree path
+	if h.worktrees == nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "worktree manager not available")
+		return
+	}
+	wt, ok := h.worktrees.GetByName(worktreeName)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found: "+worktreeName)
+		return
+	}
+
+	ctx := r.Context()
+	tmuxSession := terminal.ToTmuxSessionName(h.worktreeToSession(worktreeName))
+
+	// Ensure tmux session exists
+	err := h.mgr.EnsureSession(ctx, tmuxSession, wt.Path, nil)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to ensure session: "+err.Error())
+		return
+	}
+
+	// Generate window name if not provided
+	windowName := req.Name
+	if windowName == "" {
+		// Auto-name: "shell", "shell-2", "shell-3", etc.
+		sessions, _ := h.mgr.ListSessions(ctx)
+		existingNames := make(map[string]bool)
+		for _, sess := range sessions {
+			if sess.Name == tmuxSession {
+				for _, win := range sess.Windows {
+					existingNames[win.Name] = true
+				}
+				break
+			}
+		}
+		windowName = "shell"
+		if existingNames[windowName] {
+			for i := 2; ; i++ {
+				candidate := fmt.Sprintf("shell-%d", i)
+				if !existingNames[candidate] {
+					windowName = candidate
+					break
+				}
+			}
+		}
+	}
+
+	// Create the window via tmux
+	createCmd := exec.Command("tmux", "new-window", "-t", tmuxSession, "-n", windowName, "-c", wt.Path)
+	createCmd.Env = append(os.Environ(), "TMUX=")
+	if err := createCmd.Run(); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to create window: "+err.Error())
+		return
+	}
+
+	// Persist window to disk for restore after reboot
+	h.mgr.SaveWindow(tmuxSession, windowName)
+
+	if req.Command != "" {
+		target := tmuxSession + ":" + windowName
+		exec.Command("tmux", "send-keys", "-t", target, req.Command, "Enter").Run()
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]string{
+		"name":    windowName,
+		"session": tmuxSession,
+	})
+}
+
+// RenameWindow renames a terminal window in the worktree's tmux session.
+func (h *TerminalHandler) RenameWindow(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	windowName := vars["window"]
+
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrTerminalError, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.Name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+
+	tmuxSession := terminal.ToTmuxSessionName(h.worktreeToSession(worktreeName))
+	target := tmuxSession + ":" + windowName
+
+	cmd := exec.Command("tmux", "rename-window", "-t", target, body.Name)
+	if err := cmd.Run(); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to rename window: "+err.Error())
+		return
+	}
+
+	// Persist rename to disk
+	h.mgr.RenameWindowState(tmuxSession, windowName, body.Name)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteWindow deletes a terminal window from a worktree's tmux session.
+func (h *TerminalHandler) DeleteWindow(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	windowName := vars["window"]
+
+	tmuxSession := terminal.ToTmuxSessionName(h.worktreeToSession(worktreeName))
+
+	// Kill the window
+	killCmd := exec.Command("tmux", "kill-window", "-t", tmuxSession+":"+windowName)
+	if err := killCmd.Run(); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to delete window: "+err.Error())
+		return
+	}
+
+	// Remove from persisted state
+	h.mgr.RemoveWindow(tmuxSession, windowName)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// worktreeToSession converts a worktree name to a tmux session name.
+func (h *TerminalHandler) worktreeToSession(worktreeName string) string {
+	if h.worktrees == nil {
+		return worktreeName
+	}
+	projectName := h.worktrees.ProjectName()
+	if projectName == "" {
+		return worktreeName
+	}
+	projectPrefix := strings.ReplaceAll(projectName, ".", "_")
+	if worktreeName == "main" {
+		return projectPrefix
+	}
+	return projectPrefix + "-" + worktreeName
+}
+
+// findWorkdirForSession finds the working directory for a tmux session name
+// by matching it against known worktrees.
+func (h *TerminalHandler) findWorkdirForSession(tmuxSession string) string {
+	if h.worktrees == nil {
+		return ""
+	}
+	projectName := h.worktrees.ProjectName()
+	projectPrefix := terminal.ToTmuxSessionName(projectName)
+
+	worktrees, err := h.worktrees.List()
+	if err != nil {
+		return ""
+	}
+
+	for _, wt := range worktrees {
+		dirName := wt.Name()
+		var expectedSession string
+		// Main worktree: directory name matches project name
+		if dirName == projectName || terminal.ToTmuxSessionName(dirName) == projectPrefix {
+			expectedSession = projectPrefix
+		} else {
+			expectedSession = projectPrefix + "-" + dirName
+		}
+		if expectedSession == tmuxSession {
+			return wt.Path
+		}
+	}
+	return ""
 }
 
 // prepareRemoteCommand prepares a remote command for proper terminal operation.

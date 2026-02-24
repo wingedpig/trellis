@@ -150,11 +150,6 @@ func TestLoader_Load_AllSections(t *testing.T) {
 				history_limit: 50000
 				shell: "/bin/zsh"
 			}
-			default_windows: [
-				{ name: "dev", command: "/bin/zsh" }
-				{ name: "claude", command: "claude" }
-				{ name: "code" }
-			]
 			remote_windows: [
 				{ name: "admin", command: ["ssh", "-t", "admin01", "screen", "-dR"] }
 			]
@@ -235,7 +230,6 @@ func TestLoader_Load_AllSections(t *testing.T) {
 	// Terminal
 	assert.Equal(t, "tmux", cfg.Terminal.Backend)
 	assert.Equal(t, 50000, cfg.Terminal.Tmux.HistoryLimit)
-	require.Len(t, cfg.Terminal.DefaultWindows, 3)
 	require.Len(t, cfg.Terminal.RemoteWindows, 1)
 	require.NotNil(t, cfg.Terminal.VSCode)
 	assert.Equal(t, 8443, cfg.Terminal.VSCode.Port)

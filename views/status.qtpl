@@ -77,6 +77,10 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function escapeJsAttr(s) {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function loadStatusData() {
     fetch('/api/v1/services')
         .then(r => r.json())
@@ -106,14 +110,14 @@ function loadStatusData() {
                     <td><span class="badge badge-${state}">${state}</span></td>
                     <td class="text-end">
                         ${isRunning ? `
-                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${name}', 'stop')" title="Stop">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${escapeJsAttr(name)}', 'stop')" title="Stop">
                                 <i class="fa-solid fa-stop"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${name}', 'restart')" title="Restart">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${escapeJsAttr(name)}', 'restart')" title="Restart">
                                 <i class="fa-solid fa-rotate"></i>
                             </button>
                         ` : `
-                            <button class="btn btn-sm btn-primary" onclick="serviceAction('${name}', 'start')" title="Start">
+                            <button class="btn btn-sm btn-primary" onclick="serviceAction('${escapeJsAttr(name)}', 'start')" title="Start">
                                 <i class="fa-solid fa-play"></i>
                             </button>
                         `}

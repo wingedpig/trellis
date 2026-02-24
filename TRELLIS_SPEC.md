@@ -15,16 +15,19 @@
 6. [Event Bus](#6-event-bus)
 7. [Worktree Management](#7-worktree-management)
 8. [Crash Reports](#8-crash-reports)
-9. [Terminal System](#9-terminal-system)
-10. [Log Viewers](#10-log-viewers)
-11. [Distributed Tracing](#11-distributed-tracing)
-12. [Web Interface](#12-web-interface)
-13. [API](#13-api)
-14. [Workflows](#14-workflows)
-15. [Observability](#15-observability)
-16. [Security](#16-security)
-17. [Implementation Guide](#17-implementation-guide)
-18. [CLI Tool (trellis-ctl)](#18-cli-tool-trellis-ctl)
+9. [Cases](#9-cases)
+10. [Terminal System](#10-terminal-system)
+11. [Log Viewers](#11-log-viewers)
+12. [Distributed Tracing](#12-distributed-tracing)
+13. [Web Interface](#13-web-interface)
+14. [API](#14-api)
+15. [Workflows](#15-workflows)
+16. [Observability](#16-observability)
+17. [Security](#17-security)
+18. [Implementation Guide](#18-implementation-guide)
+19. [CLI Tool (trellis-ctl)](#19-cli-tool-trellis-ctl)
+20. [Claude Code Integration](#20-claude-code-integration)
+21. [Reverse Proxy](#21-reverse-proxy)
 
 ---
 
@@ -39,6 +42,9 @@ Trellis is a development environment orchestrator that manages microservice ecos
 - **Crash history**: Persistent crash records with full context for debugging
 - **Worktree support**: Parallel development across git worktrees
 - **Unified terminal**: Browser-based terminal access to all services
+- **Claude Code integration**: AI-assisted development with per-worktree chat sessions
+- **Reverse proxy**: Path-based routing with TLS support for local service access
+- **Cases**: Durable work items linking notes, transcripts, and trace reports
 - **Event-driven architecture**: Extensible event bus for integrations
 
 ### 1.2 Design Principles
@@ -59,6 +65,9 @@ Trellis is a development environment orchestrator that manages microservice ecos
 | **Workflow** | A user-triggered action (build, test, deploy, etc.) |
 | **Event** | An immutable record of something that happened |
 | **Crash** | A recorded service failure with full debugging context |
+| **Case** | A durable, repo-committed object capturing a unit of work (bug, feature, investigation) |
+| **Claude Session** | An AI chat session powered by Claude Code, scoped to a worktree |
+| **Proxy Listener** | A reverse proxy endpoint with path-based routing to backend services |
 
 ---
 
@@ -88,6 +97,10 @@ Trellis is a development environment orchestrator that manages microservice ecos
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
 │  │  Terminal   │  │  Workflow   │  │    Crash                │  │
 │  │  Manager    │  │  Runner     │  │    Manager              │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │    Case     │  │   Claude    │  │    Proxy                │  │
+│  │   Manager   │  │   Manager   │  │    Manager              │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 ├─────────────────────────────────────────────────────────────────┤
 │                         HTTP Server                              │
@@ -145,7 +158,7 @@ Trellis looks for configuration in this order:
     port: 1234
     host: "127.0.0.1"
 
-    // Optional: Enable HTTPS (see section 15.2 for certificate generation)
+    // Optional: Enable HTTPS (see section 17.2 for certificate generation)
     // tls_cert: "~/.trellis/cert.pem"
     // tls_key: "~/.trellis/key.pem"
   }
@@ -162,7 +175,7 @@ Trellis looks for configuration in this order:
 
   // Workflow definitions
   workflows: [
-    // ... see section 12
+    // ... see section 15
   ]
 
   // Crash history configuration
@@ -172,7 +185,7 @@ Trellis looks for configuration in this order:
 
   // Terminal configuration
   terminal: {
-    // ... see section 9
+    // ... see section 10
   }
 
   // Event bus configuration
@@ -182,7 +195,7 @@ Trellis looks for configuration in this order:
 
   // UI configuration
   ui: {
-    // ... see section 10
+    // ... see section 13
   }
 
   // Global watch configuration (binary watching)
@@ -192,7 +205,32 @@ Trellis looks for configuration in this order:
 
   // Logging configuration
   logging: {
-    // ... see section 13
+    // ... see section 16
+  }
+
+  // Cases configuration
+  cases: {
+    // ... see section 9
+  }
+
+  // Reverse proxy listeners
+  proxy: [
+    // ... see section 21
+  ]
+
+  // Log viewer definitions
+  log_viewers: [
+    // ... see section 11
+  ]
+
+  // Trace groups for distributed tracing
+  trace_groups: [
+    // ... see section 12
+  ]
+
+  // Logging defaults (shared parser/derive/layout)
+  logging_defaults: {
+    // ... see section 10.9
   }
 }
 ```
@@ -277,7 +315,7 @@ Templates use Go's `text/template` syntax with additional functions:
       // Optional: logging configuration for structured log viewing
       // When parser is configured, service logs show in a table format
       // with filtering, column display, and entry expansion (like log_viewers).
-      // See section 10 for detailed parser/display options.
+      // See section 11 for detailed parser/display options.
       logging: {
         buffer_size: 50000     // Lines to keep in memory (default: 50000)
 
@@ -885,9 +923,182 @@ The crashes page is accessible at `/crashes` and shows:
 
 ---
 
-## 9. Terminal System
+## 9. Cases
 
-### 9.1 Terminal Configuration
+### 9.1 Overview
+
+Cases are durable, repo-committed objects that capture a unit of work (bug investigation, feature development, etc.) within a Trellis worktree. Each case is a directory containing:
+
+- **`case.json`** — Machine-readable manifest with metadata, links, evidence references, and Claude transcript references
+- **`notes.md`** — Human-written narrative (rendered as Markdown in the UI)
+- **`evidence/`** — Snapshot files (logs, screenshots, data exports)
+- **`transcripts/`** — Exported Claude Code transcripts
+- **`traces/`** — Saved trace reports
+
+Cases are stored in the worktree filesystem and are intended to be committed to version control, providing a persistent record of work alongside the code.
+
+### 9.2 Cases Configuration
+
+```hjson
+{
+  cases: {
+    // Directory for cases, relative to worktree root (default: "trellis/cases")
+    dir: "trellis/cases"
+  }
+}
+```
+
+Archived cases are moved to a sibling `-archived` directory (e.g., `trellis/cases-archived/`).
+
+### 9.3 Case Data Structure
+
+Each case manifest (`case.json`) contains:
+
+| Field | Description |
+|-------|-------------|
+| `schema` | Schema identifier (`trellis.case.v1`) |
+| `id` | Unique identifier (`{date}__{slugified-title}`, e.g., `20260210__fix-login-crash`) |
+| `title` | Human-readable title |
+| `kind` | Category: `bug`, `feature`, `investigation`, or `task` |
+| `status` | State: `open`, `resolved`, or `wontfix` |
+| `created_at` | Creation timestamp |
+| `updated_at` | Last modification timestamp |
+| `worktree` | Worktree context (name, branch, base commit) |
+| `links` | External references (URLs with titles) |
+| `evidence` | Attached evidence files with metadata and tags |
+| `claude` | Claude transcript references (ID, title, message count, export time) |
+| `traces` | Linked trace report references (name, trace ID, group, entry count, linked time) |
+
+### 9.4 Case Lifecycle
+
+```
+Create ──► Open ──► Resolved/Wontfix
+                        │
+                    Archive ──► Reopen ──► Open
+                        │
+                      Delete
+```
+
+- **Create**: Generates a new case directory with `case.json` and empty `notes.md`
+- **Archive**: Moves case directory from `cases/` to `cases-archived/`
+- **Reopen**: Moves case directory back from `cases-archived/` to `cases/`
+- **Delete**: Permanently removes the case directory
+
+### 9.5 Claude Transcript Integration
+
+Cases integrate with the Claude session system for transcript export and import:
+
+- **Export to case**: Export a Claude session transcript and attach it to a case. The transcript file is stored in the case's `transcripts/` directory, and a reference is added to `case.json`.
+- **Continue from case**: Import a transcript from a case back into a new Claude session, preserving conversation history for continued work.
+- **Wrap up**: The "Wrap Up" button (available on both the Claude chat page and the case detail page) orchestrates a complete workflow: create/load case → update all transcripts → merge links → archive case → git add + commit. See §9.5.2.
+
+### 9.5.1 Trace Report Integration
+
+Cases can link to saved trace reports for investigation continuity:
+
+- **Save to case**: From the trace report page, click "Save to Case" to link the trace report to an existing or new case. The full trace report is saved to the case's `traces/` directory, and a lightweight reference (name, trace ID, group, entry count) is added to `case.json`.
+- **View from case**: The case detail page shows linked traces with links back to the trace report page.
+
+### 9.5.2 Wrap Up Workflow
+
+The "Wrap Up" feature collapses several manual steps into a single modal interaction. It is available from two entry points:
+
+1. **Claude chat page** — Wraps up the current session. If the session is already linked to an open case (detected via `FindCaseBySession`), that case is used; otherwise, a new case is created.
+2. **Case detail page** — Wraps up an existing case (case info is read-only).
+
+**Server-side steps (in order):**
+
+1. If `case_id` provided → load existing case; else create new case + save transcript for `session_id`
+2. Update ALL transcripts linked to the case by re-exporting from live sessions
+3. Merge any new links into the case
+4. Archive the case (moves from `cases/` to `cases-archived/`)
+5. `git add` selected files + the archived case directory
+6. `git commit` with the user's message as-is
+
+The archive happens BEFORE the git commit, so the committed state includes the archived case directory.
+
+**Commit message convention:** The client pre-fills the commit message as `<title> [case: <case-id>]`. The case ID is deterministic (`YYYY-MM-DD__slugified-title`), so for new cases the client computes a predicted ID using a JavaScript `slugify()` that matches Go's `config.Slugify()`. The user can freely edit the message before submitting.
+
+### 9.6 Cases API
+
+```
+GET    /api/v1/cases/{worktree}                                    # List open cases
+GET    /api/v1/cases/{worktree}/archived                           # List archived cases
+POST   /api/v1/cases/{worktree}                                    # Create a case
+GET    /api/v1/cases/{worktree}/{id}                               # Get case details
+GET    /api/v1/cases/{worktree}/{id}/notes                         # Get case notes (markdown)
+PATCH  /api/v1/cases/{worktree}/{id}                               # Update case fields
+DELETE /api/v1/cases/{worktree}/{id}                               # Delete case
+POST   /api/v1/cases/{worktree}/{id}/archive                      # Archive case
+POST   /api/v1/cases/{worktree}/{id}/reopen                       # Reopen archived case
+POST   /api/v1/cases/{worktree}/{id}/evidence                     # Attach evidence (multipart)
+POST   /api/v1/cases/{worktree}/{id}/transcript                   # Save transcript to case
+POST   /api/v1/cases/{worktree}/{id}/transcript/{ref}/continue    # Continue transcript as new session
+POST   /api/v1/cases/{worktree}/{id}/trace                        # Link trace report to case
+DELETE /api/v1/cases/{worktree}/{id}/trace/{trace_id}              # Remove trace link from case
+```
+
+**Create a case:**
+
+`POST /api/v1/cases/{worktree}`
+
+Request body:
+```json
+{
+  "title": "Fix login crash on Safari",
+  "kind": "bug"
+}
+```
+
+Response:
+```json
+{
+  "data": {
+    "schema": "trellis.case.v1",
+    "id": "20260210__fix-login-crash-on-safari",
+    "title": "Fix login crash on Safari",
+    "kind": "bug",
+    "status": "open",
+    "created_at": "2026-02-10T10:30:00Z",
+    "updated_at": "2026-02-10T10:30:00Z",
+    "worktree": {
+      "name": "main",
+      "branch": "main",
+      "base_commit": "abc1234"
+    }
+  }
+}
+```
+
+### 9.7 Web UI
+
+**Worktree home page** (`/worktree/{name}`):
+- Lists open cases with title, kind badge, and creation date
+- "New Case" button opens a creation modal (title + kind)
+- Archive button on each case row
+- "Show Archived" toggle to view archived cases
+
+**Case detail page** (`/case/{worktree}/{id}`):
+- Header with title, kind badge, status badge, and timestamps
+- Action bar: Back, Wrap Up (non-archived only), Archive/Reopen, Delete
+- Links section (if any)
+- Notes section rendered as Markdown
+- Evidence list with format badges and tags
+- Transcripts section with "Continue" button to resume Claude sessions
+- Traces section with links to trace report pages
+
+**Claude page** (`/claude/{worktree}/{session}`):
+- "Save to Case" button exports the current transcript to an existing or new case
+- "Wrap Up" button opens a modal to archive case + commit in one step (see §9.5.2)
+
+**Trace report page** (`/trace/report/{name}`):
+- "Save to Case" button links the trace report to an existing or new case
+
+---
+
+## 10. Terminal System
+
+### 10.1 Terminal Configuration
 
 ```hjson
 {
@@ -903,12 +1114,6 @@ The crashes page is accessible at `/crashes` and shows:
       // Default shell
       shell: "/bin/zsh"
     }
-
-    // Default windows per worktree (local tmux)
-    default_windows: [
-      { name: "dev", command: "/bin/zsh" }
-      { name: "claude", command: "claude" }
-    ]
 
     // Remote windows - global terminals (SSH, not local tmux)
     // Two formats supported:
@@ -957,7 +1162,7 @@ The crashes page is accessible at `/crashes` and shows:
 }
 ```
 
-### 9.2 Naming Convention
+### 10.2 Naming Convention
 
 **Tmux session names** (internal):
 - Use the worktree directory name with periods replaced by underscores (tmux compatibility)
@@ -971,30 +1176,24 @@ The crashes page is accessible at `/crashes` and shows:
 | Other worktree | `@` | `groups_io-demovideos` | `@demovideos` |
 | Remote | `!` | (none) | `!admin(1)` |
 
-**Window names** come from `default_windows[].name` and `remote_windows[].name`.
+**Window names** come from on-demand creation and `remote_windows[].name`.
 
 The terminal selector shows: `{display_name} - {window_name}`
-- `@main - dev`
-- `@main - claude`
-- `@demovideos - claude`
+- `@main - shell`
+- `@demovideos - shell`
 - `!admin(1)`
 
-### 9.3 Window Management
+### 10.3 Window Management
 
-Each worktree tmux session has windows defined by `default_windows`:
-
-```
-Session: groups_io
-├── Window 0: dev (zsh)
-└── Window 1: claude (claude CLI)
-```
+Terminal windows are created on demand from the worktree home page. Each worktree gets its own tmux session when the first window is created.
 
 Windows can be:
-- Created on session start
+- Created on demand from the worktree home page
 - Created on demand via API
 - Created by user in tmux
+- Renamed from the worktree home page (calls `tmux rename-window`)
 
-### 9.4 Remote Windows
+### 10.4 Remote Windows
 
 Remote windows are global terminals that persist across worktree switches. They are not local tmux sessions—Trellis spawns the command directly (typically SSH) and streams I/O to xterm.js.
 
@@ -1035,10 +1234,10 @@ This includes:
 |--------|------------------|----------------|
 | Lifetime | Per-worktree, recreated on switch | Global, persist across switches |
 | Backend | Local tmux | Direct command (SSH, etc.) |
-| Multiple windows | Yes (`default_windows` array) | One per entry |
+| Multiple windows | Yes (created on demand) | One per entry |
 | Scrollback | tmux buffer | xterm.js buffer |
 
-### 9.5 Terminal Web Interface
+### 10.5 Terminal Web Interface
 
 Trellis streams terminals to the browser via WebSocket:
 
@@ -1070,7 +1269,7 @@ Features:
 - Multiple concurrent viewers
 - Auto-reconnect for remote windows
 
-### 9.6 VS Code Integration
+### 10.6 VS Code Integration
 
 Trellis provides an integrated VS Code experience using [code-server](https://github.com/coder/code-server). The editor is accessible from the terminal picker as an "editor" option for each worktree.
 
@@ -1163,7 +1362,7 @@ The `~` is automatically expanded to the home directory, so this works identical
 
 **Note:** code-server must be installed separately. If vscode is configured and code-server is not found, Trellis will log a warning. See https://coder.com/docs/code-server/install
 
-### 9.7 Links
+### 10.7 Links
 
 Links provide quick access to external URLs from the terminal picker dropdown. They appear with a `>` prefix in the picker (e.g., `> Grafana`).
 
@@ -1206,7 +1405,7 @@ Trellis stores references to opened link windows. When you click a link:
 
 This allows quick switching between Trellis and external dashboards without accumulating duplicate tabs.
 
-### 9.8 Environment Variables
+### 10.8 Environment Variables
 
 Trellis automatically sets environment variables in tmux sessions to enable integration with tools like `trellis-ctl`:
 
@@ -1222,7 +1421,7 @@ This enables CLI tools and scripts running in Trellis-managed terminals to disco
 
 ---
 
-### 9.9 Logging Defaults
+### 10.9 Logging Defaults
 
 The `logging_defaults` section provides shared default configurations for `parser`, `derive`, and `layout` that apply to all log viewers and service logging unless overridden:
 
@@ -1327,11 +1526,11 @@ The `logging_defaults` section provides shared default configurations for `parse
 
 ---
 
-## 10. Log Viewers
+## 11. Log Viewers
 
 Log Viewers provide structured, searchable log viewing with support for remote sources, multiple parsers, and historical access to rotated/compressed logs.
 
-### 10.1 Log Viewer Configuration
+### 11.1 Log Viewer Configuration
 
 ```hjson
 {
@@ -1343,7 +1542,7 @@ Log Viewers provide structured, searchable log viewing with support for remote s
       // Where logs come from
       source: {
         // Source type: "ssh", "file", "command", "docker", "kubernetes"
-        // Note: "service" sources are auto-generated (see section 10.2)
+        // Note: "service" sources are auto-generated (see section 11.2)
         type: "ssh"
 
         // SSH source options
@@ -1458,7 +1657,7 @@ Log Viewers provide structured, searchable log viewing with support for remote s
 }
 ```
 
-### 10.2 Source Types
+### 11.2 Source Types
 
 #### Service Source (Auto-generated)
 
@@ -1566,7 +1765,7 @@ source: {
 }
 ```
 
-### 10.3 Parser Types
+### 11.3 Parser Types
 
 #### JSON Parser
 
@@ -1634,7 +1833,7 @@ parser: {
 }
 ```
 
-### 10.4 Log Entry Structure
+### 11.4 Log Entry Structure
 
 All parsers produce normalized `LogEntry` objects:
 
@@ -1650,7 +1849,7 @@ type LogEntry struct {
 }
 ```
 
-### 10.5 Filter Syntax
+### 11.5 Filter Syntax
 
 The log viewer supports a query syntax for filtering:
 
@@ -1687,7 +1886,7 @@ request_id:abc123                        # Specific request
 duration:>500ms level:error              # Slow errors
 ```
 
-### 10.6 Historical Access
+### 11.6 Historical Access
 
 When `rotated_pattern` is configured, the log viewer can access historical logs:
 
@@ -1716,7 +1915,7 @@ When the user scrolls into a time range not in the buffer:
 3. Merge into the display buffer
 4. Maintain a sliding window to limit memory usage
 
-### 10.7 Log Viewer Web Interface
+### 11.7 Log Viewer Web Interface
 
 **Naming in the picker:**
 
@@ -1883,7 +2082,7 @@ For searching historical logs with time ranges and grep context (like `grep -B/-
 
 **Server-side optimization:** For SSH sources, grep with context flags runs remotely on the server rather than transferring large files locally.
 
-### 10.8 Log Viewer API
+### 11.8 Log Viewer API
 
 #### List Log Viewers
 
@@ -1942,7 +2141,7 @@ GET /api/v1/logs/:name/history
 
 Returns entries from rotated logs in the time range.
 
-### 10.9 Events
+### 11.9 Events
 
 Log viewers emit events:
 
@@ -1952,7 +2151,7 @@ Log viewers emit events:
 | `log.disconnected` | `{viewer, source, error}` | Source connection lost |
 | `log.error` | `{viewer, error}` | Error parsing or fetching logs |
 
-### 10.10 Implementation Notes
+### 11.10 Implementation Notes
 
 **Backend components:**
 
@@ -1987,11 +2186,11 @@ internal/logs/
 
 ---
 
-## 11. Distributed Tracing
+## 12. Distributed Tracing
 
 Distributed tracing allows searching for a trace ID (or any pattern) across multiple log viewers and combining the results into a unified, time-sorted report.
 
-### 11.1 Configuration
+### 12.1 Configuration
 
 ```hjson
 {
@@ -2039,7 +2238,7 @@ If a `services` trace group already exists in config, the auto-generated `svc:*`
 
 The `svc:*` viewers also participate in two-pass ID expansion — if a service's parser has an `id` field configured, IDs extracted from matching entries are used to find related entries across all services in the group.
 
-### 11.2 CLI Commands
+### 12.2 CLI Commands
 
 #### Execute a Trace
 
@@ -2055,7 +2254,7 @@ trellis-ctl trace <id> <group> [options]
 - `-since <time>` - Start time (see time formats below)
 - `-until <time>` - End time (default: now)
 - `-name <name>` - Report name (default: auto-generated)
-- `-no-expand-by-id` - Disable ID expansion (see section 11.6)
+- `-no-expand-by-id` - Disable ID expansion (see section 12.6)
 
 **Time Input Formats:**
 - Duration: `1h`, `30m`, `2d` (relative to now)
@@ -2100,7 +2299,7 @@ trellis-ctl trace-report -groups
 trellis-ctl trace-report -delete <name>
 ```
 
-### 11.3 API Endpoints
+### 12.3 API Endpoints
 
 #### Execute Trace
 
@@ -2220,7 +2419,7 @@ Response:
 DELETE /api/v1/trace/reports/{name}
 ```
 
-### 11.4 Events
+### 12.4 Events
 
 Trace operations emit events for monitoring and notifications:
 
@@ -2232,7 +2431,7 @@ Trace operations emit events for monitoring and notifications:
 
 Users can subscribe to `trace.completed` in their notification config to be notified when traces finish.
 
-### 11.5 Implementation Details
+### 12.5 Implementation Details
 
 **Parallel Execution:**
 
@@ -2246,7 +2445,7 @@ Traces use the same `GetHistoricalEntries()` method as log viewer history search
 
 Reports are saved as JSON files in the configured `reports_dir`. Old reports are automatically cleaned up based on the `max_age` setting.
 
-### 11.6 ID Expansion
+### 12.6 ID Expansion
 
 When `expand_by_id` is enabled (default), trace performs a two-pass search to capture related log entries:
 
@@ -2294,9 +2493,9 @@ To disable ID expansion and perform a simple single-pass search:
 
 ---
 
-## 12. Web Interface
+## 13. Web Interface
 
-### 12.1 UI Configuration
+### 13.1 UI Configuration
 
 ```hjson
 {
@@ -2322,6 +2521,12 @@ To disable ID expansion and perform a simple single-pass search:
       sound: false
     }
 
+    // Log terminal settings (for structured log viewers and service logs)
+    log_terminal: {
+      font_family: "Monaco, monospace"
+      font_size: 13
+    }
+
     // External editor integration
     editor: {
       // If set, generate vscode-remote:// URLs for clicking error links.
@@ -2334,15 +2539,20 @@ To disable ID expansion and perform a simple single-pass search:
 }
 ```
 
-### 12.2 UI Routes
+### 13.2 UI Routes
 
 | Route | Description |
 |-------|-------------|
-| `/` | Redirects to default terminal window |
+| `/` | Home page — worktree list with project info, links to docs/GitHub/mailing list |
 | `/status` | Service status overview with start/stop controls |
 | `/worktrees` | Worktree list and switcher |
+| `/worktree/{name}` | Worktree home page (terminals, Claude sessions, cases) |
+| `/claude/{worktree}/{session}` | Claude Code chat session |
+| `/case/{worktree}/{id}` | Case detail page |
+| `/case/{worktree}/{id}/trace/{trace_id}` | Case trace report view |
 | `/trace` | Distributed tracing interface |
 | `/trace/report/{name}` | View a specific trace report |
+| `/crashes` | Crash reports viewer |
 | `/events` | Event stream viewer |
 | `/terminal/local/{worktree}/{window}` | Local terminal window (e.g., `/terminal/local/main/dev`) |
 | `/terminal/remote/{name}` | Remote terminal window (e.g., `/terminal/remote/admin(1)`) |
@@ -2356,7 +2566,7 @@ To disable ID expansion and perform a simple single-pass search:
 
 The terminal URLs use a consistent `/{type}/{identifier}` pattern:
 
-- **Local terminals**: `/terminal/local/{worktree}/{window}` - The worktree name is `main` for the main worktree, or the worktree directory name for feature branches. Window names come from `terminal.default_windows[].name`.
+- **Local terminals**: `/terminal/local/{worktree}/{window}` - The worktree name is `main` for the main worktree, or the worktree directory name for feature branches. Windows are created on demand from the worktree home page.
 
 - **Remote terminals**: `/terminal/remote/{name}` - The name comes from `terminal.remote_windows[].name`.
 
@@ -2368,27 +2578,32 @@ The terminal URLs use a consistent `/{type}/{identifier}` pattern:
 
 **Legacy redirect**: Old URLs like `/terminal/{session}/{window}` are automatically redirected to the new format.
 
-### 12.3 Navigation Picker
+### 13.3 Navigation Picker
 
 All navigation in Trellis is done through a unified picker dropdown in the navbar. The picker provides quick access to all destinations using keyboard shortcuts and a searchable dropdown.
 
 **Picker contents (in order):**
 
-| Prefix | Type | Example |
-|--------|------|---------|
-| `/` | Pages | `/ Status`, `/ Worktrees`, `/ Trace`, `/ Events` |
-| `@` | Local terminals | `@main - dev`, `@feature-auth - claude` |
-| `!` | Remote terminals | `!admin(1)` |
-| `#` | Services | `#api - service`, `#worker - service` |
-| `~` | Log viewers | `~nginx-logs - logs`, `~api-logs - logs` |
-| `>` | External links | `> Grafana`, `> Docs` |
+| Prefix | Type | Icon | Example |
+|--------|------|------|---------|
+| `/` | Pages | compass | `/ Status`, `/ Worktrees`, `/ Trace`, `/ Events` |
+| `@` | Local terminals | terminal | `@main - dev`, `@feature-auth - shell` |
+| `@` | Claude sessions | robot | `@main - Session 1` |
+| `@` | Worktree home | folder-tree | `@main - Home` |
+| `!` | Remote terminals | terminal | `!admin(1)` |
+| `#` | Services | status dot | `#api - service`, `#worker - service` |
+| `~` | Log viewers | file-lines | `~nginx-logs - logs`, `~api-logs - logs` |
+| `>` | External links | arrow-up-right | `> Grafana`, `> Docs` |
+| `?` | Cases | briefcase | `? Fix login crash (bug)` |
+
+Each item type is visually distinguished by a FontAwesome icon rendered inline in the picker dropdown. Claude sessions and local terminals share the `@` prefix but are differentiated by their icons (robot vs terminal).
 
 **Opening the picker:**
 - Click the dropdown in the navbar
 - Press `Cmd/Ctrl + P` to open and focus the picker
 - Type to filter/search destinations
 
-### 12.4 Keyboard Shortcuts
+### 13.4 Keyboard Shortcuts
 
 Keyboard shortcuts available in the web interface:
 
@@ -2413,7 +2628,7 @@ Press Enter to select the highlighted item, use arrow keys to navigate, or Escap
 
 **Note:** Links open in separate browser tabs and do not affect the navigation history within Trellis.
 
-### 11.3.1 Editor Integration
+### 13.4.1 Editor Integration
 
 Build errors and test failures display clickable links that open the file in VS Code at the error location.
 
@@ -2438,7 +2653,7 @@ For remote Trellis, set `remote_host` to the SSH hostname you use to connect:
 
 **Note:** Remote links require VS Code with the Remote-SSH extension installed. The hostname must match your SSH config.
 
-### 11.4 Dashboard Components
+### 13.5 Dashboard Components
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -2478,9 +2693,9 @@ Clicking a terminal button opens a dedicated browser window:
 - **Open Code button**: Opens VS Code for the current worktree (hidden for remote terminals)
   - Uses `vscode://` or `vscode-remote://` URL based on `editor.remote_host` config
 
-Terminal windows use xterm.js and connect via WebSocket (see section 9.4).
+Terminal windows use xterm.js and connect via WebSocket (see section 10.4).
 
-### 11.5 Real-time Updates
+### 13.6 Real-time Updates
 
 The UI uses WebSocket for real-time updates:
 
@@ -2499,9 +2714,9 @@ Message format:
 }
 ```
 
-### 11.6 Notifications
+### 13.7 Notifications
 
-Browser notifications for critical events (configured in `ui.notifications`, see section 10.1):
+Browser notifications for critical events (configured in `ui.notifications`, see section 13.1):
 
 | Event | Notification |
 |-------|--------------|
@@ -2512,9 +2727,9 @@ Notifications require browser permission. Trellis will prompt on first visit.
 
 ---
 
-## 12. API
+## 14. API
 
-### 12.1 REST API
+### 14.1 REST API
 
 All endpoints return JSON. Prefix: `/api/v1`
 
@@ -2620,9 +2835,51 @@ DELETE /api/v1/crashes                     # Clear all crashes
 
 ```
 GET    /api/v1/terminal/sessions           # List tmux sessions
+POST   /api/v1/terminal/{worktree}/windows          # Create a new terminal window
+PATCH  /api/v1/terminal/{worktree}/windows/{window}  # Rename a terminal window
+DELETE /api/v1/terminal/{worktree}/windows/{window}  # Delete a terminal window
 ```
 
-### 12.2 WebSocket API
+#### Claude Sessions
+
+```
+GET    /api/v1/claude/{worktree}/sessions            # List sessions for a worktree
+POST   /api/v1/claude/{worktree}/sessions            # Create a new session
+PATCH  /api/v1/claude/sessions/{session}             # Rename a session
+DELETE /api/v1/claude/sessions/{session}             # Trash a session (soft delete)
+GET    /api/v1/claude/{worktree}/sessions/trash      # List trashed sessions
+POST   /api/v1/claude/sessions/{session}/restore     # Restore a trashed session
+DELETE /api/v1/claude/sessions/{session}/permanent   # Permanently delete a session
+```
+
+#### Cases
+
+```
+GET    /api/v1/cases/{worktree}                                    # List open cases
+GET    /api/v1/cases/{worktree}/archived                           # List archived cases
+POST   /api/v1/cases/{worktree}                                    # Create a case
+GET    /api/v1/cases/{worktree}/{id}                               # Get case details
+GET    /api/v1/cases/{worktree}/{id}/notes                         # Get case notes (markdown)
+PATCH  /api/v1/cases/{worktree}/{id}                               # Update case fields
+DELETE /api/v1/cases/{worktree}/{id}                               # Delete case
+POST   /api/v1/cases/{worktree}/{id}/archive                      # Archive case
+POST   /api/v1/cases/{worktree}/{id}/reopen                       # Reopen archived case
+POST   /api/v1/cases/{worktree}/{id}/evidence                     # Attach evidence (multipart)
+POST   /api/v1/cases/{worktree}/{id}/transcript                   # Save transcript to case
+POST   /api/v1/cases/{worktree}/{id}/transcript/{ref}/continue    # Continue transcript
+POST   /api/v1/cases/{worktree}/{id}/trace                        # Link trace report to case
+DELETE /api/v1/cases/{worktree}/{id}/trace/{trace_id}              # Remove trace link
+```
+
+#### Navigation
+
+```
+GET    /api/v1/nav/options                                         # Combined picker options
+```
+
+Returns all navigation destinations (services, log viewers, Claude sessions, cases, worktrees) for the navigation picker dropdown.
+
+### 14.2 WebSocket API
 
 #### Terminal Stream
 
@@ -2652,7 +2909,7 @@ Messages:
 - Server → Client: `{"type": "event", "event": {...}}`
 - Client → Server: `{"type": "subscribe", "patterns": ["service.*"]}`
 
-### 12.3 Response Format
+### 14.3 Response Format
 
 Success:
 ```json
@@ -2675,7 +2932,7 @@ Error:
 }
 ```
 
-### 12.4 Go Client Library
+### 14.4 Go Client Library
 
 Trellis provides an official Go client library at `pkg/client` for programmatic access to the API. The library provides typed access to all endpoints and is used internally by `trellis-ctl`.
 
@@ -2938,9 +3195,9 @@ See the package documentation (`go doc github.com/wingedpig/trellis/pkg/client`)
 
 ---
 
-## 13. Workflows
+## 15. Workflows
 
-### 13.1 Workflow Definition
+### 15.1 Workflow Definition
 
 Workflows are user-triggered actions:
 
@@ -3087,7 +3344,7 @@ Workflows are user-triggered actions:
 }
 ```
 
-### 13.2 Output Parsers
+### 15.2 Output Parsers
 
 | Parser | Input Format | Extracts |
 |--------|--------------|----------|
@@ -3101,7 +3358,7 @@ Workflows are user-triggered actions:
 
 **Note:** The `html` parser is useful when a workflow command outputs pre-formatted HTML. The output is displayed directly without HTML escaping or link formatting. Use with caution - only use with trusted commands.
 
-### 13.3 Workflow Execution and Streaming
+### 15.3 Workflow Execution and Streaming
 
 Workflows execute asynchronously and stream output in real-time via WebSocket:
 
@@ -3194,7 +3451,7 @@ For clients that don't support WebSocket, `GET /api/v1/workflows/:runID/status` 
 }
 ```
 
-### 13.4 Built-in Workflows
+### 15.4 Built-in Workflows
 
 Trellis provides these built-in workflows (can be overridden):
 
@@ -3207,9 +3464,9 @@ Trellis provides these built-in workflows (can be overridden):
 
 ---
 
-## 14. Observability
+## 16. Observability
 
-### 14.1 Logging
+### 16.1 Logging
 
 Trellis logs to stderr with structured JSON:
 
@@ -3238,9 +3495,9 @@ Configuration:
 
 ---
 
-## 15. Security
+## 17. Security
 
-### 15.1 Network Binding
+### 17.1 Network Binding
 
 By default, Trellis binds to `127.0.0.1` only:
 
@@ -3253,7 +3510,7 @@ By default, Trellis binds to `127.0.0.1` only:
 }
 ```
 
-### 15.2 TLS/HTTPS
+### 17.2 TLS/HTTPS
 
 Trellis supports HTTPS for secure remote access. This is required when accessing Trellis over a network (e.g., via Tailscale) because HTTP triggers browser security warnings that disable clipboard access, service workers, and other features.
 
@@ -3307,7 +3564,7 @@ API server listening on http://0.0.0.0:1234
 API server listening on https://0.0.0.0:1234 (TLS enabled)
 ```
 
-### 15.3 Command Execution
+### 17.3 Command Execution
 
 Trellis executes commands defined in configuration. Security considerations:
 
@@ -3351,7 +3608,7 @@ command: ["sh", "-c", "cd {{.Worktree.Root | quote}} && make build"]
 command: ["./deploy.sh", "{{.Worktree.Branch | slugify}}"]
 ```
 
-### 15.4 File System Access
+### 17.4 File System Access
 
 Trellis operates within:
 - Worktree directories
@@ -3364,9 +3621,9 @@ It does not:
 
 ---
 
-## 16. Implementation Guide
+## 18. Implementation Guide
 
-### 16.1 Technology Stack
+### 18.1 Technology Stack
 
 Recommended implementation:
 
@@ -3383,13 +3640,15 @@ Recommended implementation:
 | Icons | Font Awesome (free) |
 | Terminal UI | xterm.js |
 
-### 16.2 Package Structure
+### 18.2 Package Structure
 
 ```
 trellis/
 ├── cmd/
-│   └── trellis/
-│       └── main.go           # Entry point
+│   ├── trellis/
+│   │   └── main.go           # Server entry point
+│   └── trellis-ctl/
+│       └── main.go           # CLI tool entry point
 ├── internal/
 │   ├── config/
 │   │   ├── loader.go         # HJSON loading
@@ -3413,6 +3672,17 @@ trellis/
 │   ├── crashes/
 │   │   ├── types.go          # Crash data structures
 │   │   └── manager.go        # Crash storage and cleanup
+│   ├── cases/
+│   │   ├── types.go          # Case data structures
+│   │   ├── store.go          # Case file I/O (load/save/scan)
+│   │   └── manager.go        # Case lifecycle management
+│   ├── claude/
+│   │   ├── manager.go        # Session lifecycle, Claude CLI process management
+│   │   ├── claudecli.go      # Claude CLI NDJSON streaming protocol
+│   │   └── transcript.go     # Transcript import/export
+│   ├── proxy/
+│   │   ├── manager.go        # Proxy lifecycle management
+│   │   └── listener.go       # HTTP reverse proxy with path-based routing
 │   ├── terminal/
 │   │   ├── tmux.go           # Tmux operations
 │   │   └── stream.go         # WebSocket streaming
@@ -3429,9 +3699,13 @@ trellis/
 │   ├── dashboard.qtpl        # Dashboard view
 │   ├── services.qtpl         # Services list
 │   ├── terminal.qtpl         # Terminal view
-│   ├── worktrees.qtpl        # Worktree switcher
+│   ├── worktrees.qtpl        # Home page / worktree list
 │   ├── workflows.qtpl        # Workflow runner
-│   └── crashes.qtpl          # Crash history view
+│   ├── crashes.qtpl          # Crash history view
+│   ├── case_detail.qtpl     # Case detail page
+│   ├── claude.qtpl           # Claude Code chat interface
+│   ├── worktree_home.qtpl    # Worktree home (terminals, sessions, cases)
+│   └── trace_report.qtpl    # Trace report viewer
 ├── static/
 │   ├── css/
 │   │   └── xterm.css         # xterm.js styles
@@ -3449,7 +3723,7 @@ trellis/
 └── README.md
 ```
 
-### 16.2.1 Web Templates
+### 18.2.1 Web Templates
 
 Web pages use [quicktemplate](https://github.com/valyala/quicktemplate) for type-safe, compiled templates.
 
@@ -3571,17 +3845,12 @@ type DashboardData struct {
         </div>
     </div>
 
-    <!-- Terminals -->
+    <!-- Terminals (created on demand from worktree home page) -->
     <div class="row mt-3">
         <div class="col-12">
-            <div class="btn-group" role="group">
-                {% for _, term := range d.Config.Terminal.DefaultWindows %}
-                <a href="/terminal/local/{%s d.Worktree %}/{%s term.Name %}"
-                   class="btn btn-outline-secondary" target="_blank">
-                    <i class="fa-solid fa-terminal"></i> {%s term.Name %}
-                </a>
-                {% endfor %}
-            </div>
+            <a href="/worktree/{%s d.Worktree %}" class="btn btn-outline-secondary">
+                <i class="fa-solid fa-terminal"></i> Open Worktree Home
+            </a>
         </div>
     </div>
 </div>
@@ -3688,7 +3957,7 @@ go install github.com/valyala/quicktemplate/qtc@latest
 qtc -dir=views/
 ```
 
-### 16.2.2 Terminal Implementation
+### 18.2.2 Terminal Implementation
 
 This section documents the production-tested terminal WebSocket implementation. Getting terminal streaming right requires careful handling of tmux pipe-pane, UTF-8 validation, reconnection, and keyboard input.
 
@@ -4227,7 +4496,7 @@ func terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 
 7. **Cursor restoration**: After sending scrollback, send cursor position using ANSI escape sequence to restore proper cursor location.
 
-### 16.3 Core Interfaces
+### 18.3 Core Interfaces
 
 ```go
 // Service Manager
@@ -4269,7 +4538,7 @@ type CrashManager interface {
 }
 ```
 
-### 16.3.1 Command Line Options
+### 18.3.1 Command Line Options
 
 The `trellis` server binary accepts the following command-line flags:
 
@@ -4310,7 +4579,7 @@ trellis -w feature-branch
 trellis -v
 ```
 
-### 16.4 Startup Sequence
+### 18.4 Startup Sequence
 
 1. Parse command-line flags
 2. Load configuration file(s)
@@ -4322,11 +4591,13 @@ trellis -v
 8. Set active worktree
 9. Initialize terminal (tmux sessions)
 10. Initialize service manager
-11. Start file watchers
-12. Start services (including code-server if configured)
-13. Start HTTP server
+11. Initialize Claude session manager
+12. Start file watchers
+13. Start services (including code-server if configured)
+14. Start proxy listeners (if configured)
+15. Start HTTP server
 
-### 16.5 Shutdown Sequence
+### 18.5 Shutdown Sequence
 
 1. Receive shutdown signal (SIGTERM, SIGINT)
 2. Stop accepting new HTTP requests
@@ -4336,7 +4607,7 @@ trellis -v
 6. Close tmux sessions (optional, configurable)
 7. Exit
 
-### 16.6 Example Configuration
+### 18.6 Example Configuration
 
 Complete example for a Go microservices project:
 
@@ -4425,10 +4696,6 @@ Complete example for a Go microservices project:
     tmux: {
       history_limit: 50000
     }
-    default_windows: [
-      { name: "shell", command: "/bin/zsh" }
-      { name: "claude", command: "claude" }
-    ]
     vscode: {
       binary: "code-server"
       port: 8443
@@ -4453,11 +4720,11 @@ Complete example for a Go microservices project:
 
 ---
 
-## 17. CLI Tool (trellis-ctl)
+## 19. CLI Tool (trellis-ctl)
 
 `trellis-ctl` is a command-line tool for controlling a running Trellis instance. It communicates with the Trellis HTTP API and is designed for use in Trellis-managed terminal sessions where the `TRELLIS_API` environment variable is automatically set.
 
-### 17.1 Installation
+### 19.1 Installation
 
 The CLI is built alongside the main Trellis binary:
 
@@ -4472,7 +4739,7 @@ Or build directly:
 go build -o trellis-ctl ./cmd/trellis-ctl
 ```
 
-### 17.2 Configuration
+### 19.2 Configuration
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
@@ -4480,7 +4747,7 @@ go build -o trellis-ctl ./cmd/trellis-ctl
 
 In Trellis-managed tmux sessions, `TRELLIS_API` is set automatically.
 
-### 17.3 Global Flags
+### 19.3 Global Flags
 
 | Flag | Description |
 |------|-------------|
@@ -4494,7 +4761,7 @@ trellis-ctl status -json
 trellis-ctl workflow -json list
 ```
 
-### 17.4 Commands
+### 19.4 Commands
 
 #### Service Commands
 
@@ -4700,7 +4967,7 @@ trellis-ctl version    # Show version
 trellis-ctl help       # Show help
 ```
 
-### 17.5 Output Formats
+### 19.5 Output Formats
 
 **Status output** (table format):
 ```
@@ -4769,7 +5036,7 @@ myproject-feature    feature              /Users/dev/src/myproject-feature
 }
 ```
 
-### 17.6 CLI Integration Patterns
+### 19.6 CLI Integration Patterns
 
 `trellis-ctl` is designed for automation and scripting. Common patterns:
 
@@ -4803,7 +5070,7 @@ trellis-ctl workflow run build
 trellis-ctl status
 ```
 
-### 17.7 Claude Code Skills
+### 19.7 Claude Code Skills
 
 A skill file can be placed at `.claude/skills/trellis.md` to teach Claude Code how to use `trellis-ctl`:
 
@@ -4822,6 +5089,363 @@ environment variable is automatically set.
 - `trellis-ctl restart <service>` - Restart after fixes
 - `trellis-ctl workflow run build` - Run builds
 ```
+
+---
+
+## 20. Claude Code Integration
+
+### 20.1 Overview
+
+Trellis provides built-in integration with Claude Code, allowing AI-assisted development directly in the web interface. Each worktree can have multiple Claude sessions, with full conversation history, transcript management, and case integration.
+
+### 20.2 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Browser                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ Claude Chat UI (WebSocket)                                  ││
+│  │ - Message display with syntax-highlighted code blocks       ││
+│  │ - Input area with send/cancel/reset controls                ││
+│  │ - Context usage indicator                                   ││
+│  └─────────────────────────────────────────────────────────────┘│
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ WebSocket
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Trellis Server                                                 │
+│  ┌──────────────────┐  ┌────────────────────────────────────┐  │
+│  │  Claude Manager  │──│  Sessions (per-worktree)           │  │
+│  │                  │  │  - Message history                 │  │
+│  │  .trellis/claude │  │  - WebSocket subscribers           │  │
+│  │  /sessions.json  │  │  - Claude CLI process (stdin/out)  │  │
+│  │  /messages/      │  └────────────────────────────────────┘  │
+│  └──────────────────┘                                          │
+│           │ stdin/stdout (NDJSON)                               │
+│           ▼                                                     │
+│  ┌──────────────────┐                                          │
+│  │  claude CLI      │  (long-running subprocess)               │
+│  │  --output-format │                                          │
+│  │  stream-json     │                                          │
+│  └──────────────────┘                                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 20.3 Session Management
+
+**Session lifecycle:**
+
+```
+Create ──► Idle ──► Active (generating) ──► Idle
+                         │
+                     Cancel/Reset ──► Idle
+```
+
+Each session maintains:
+
+| Field | Description |
+|-------|-------------|
+| `id` | UUID for the session |
+| `worktree_name` | Which worktree this session belongs to |
+| `display_name` | User-visible label (auto-generated or custom) |
+| `session_id` | Claude CLI session ID for `--session-id` resume |
+| `running` | Whether the Claude CLI process is active |
+| `generating` | Whether Claude is currently generating a response |
+| `created_at` | Creation timestamp |
+
+**Persistence:**
+
+Sessions and messages are persisted to disk:
+- **Session index**: `.trellis/claude/sessions.json` — list of session records
+- **Message history**: `.trellis/claude/messages/{session_id}.json` — per-session conversation
+
+### 20.4 Claude CLI Protocol
+
+Trellis communicates with the Claude CLI using the NDJSON streaming protocol (`--output-format stream-json`). Each session spawns a long-running `claude` process with:
+
+```bash
+claude --output-format stream-json --session-id <session_id> --include-partial-messages
+```
+
+**Input:** Messages are sent via stdin as JSON objects.
+
+**Output:** Claude CLI streams NDJSON events:
+
+| Event Type | Description |
+|------------|-------------|
+| `system.init` | CLI initialization with available skills and slash commands |
+| `assistant.message.start` | Beginning of a new assistant response |
+| `assistant.message.delta` | Incremental content update (text or tool_use blocks) |
+| `assistant.message.complete` | Full assistant message with token usage |
+| `result` | Final result with session metadata |
+
+**Session resumption:** When a session already has a `session_id`, the CLI is started with `--session-id` to resume the existing conversation context.
+
+### 20.5 Web Interface
+
+**Claude page** (`/claude/{worktree}/{session}`):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  [Nav Picker ▼]              Save to Case  Wrap Up  Reset        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─── user ────────────────────────────────────────────────────┐│
+│  │ Fix the authentication bug in login.go                      ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                 │
+│  ┌─── assistant ───────────────────────────────────────────────┐│
+│  │ I'll look at the login.go file to understand the issue.     ││
+│  │                                                             ││
+│  │ ```go                                                       ││
+│  │ func Login(ctx context.Context) error {                     ││
+│  │     // Fixed: check for nil user before accessing fields    ││
+│  │     if user == nil {                                        ││
+│  │         return ErrNotFound                                  ││
+│  │     }                                                       ││
+│  │ ```                                                         ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  [Message input...                              ] [Send]        │
+│  Context: 12% used                                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Keyboard shortcuts:**
+
+| Shortcut | Action |
+|----------|--------|
+| `Enter` | Send message |
+| `Shift+Enter` | Insert newline without sending |
+| `Escape` | Stop/cancel current response |
+
+**Worktree home page** (`/worktree/{name}`):
+
+The Claude Sessions section lists all sessions for the worktree with controls to:
+- Create new sessions (with optional display name)
+- Rename sessions (pencil icon)
+- Trash sessions (trash icon) — moves to trash instead of permanent delete
+- Import transcripts from JSON files
+- Show Trash — toggle to view trashed sessions with Restore and Permanent Delete buttons
+
+Trashed sessions are automatically purged after 7 days on server startup.
+
+### 20.6 Transcript Management
+
+**Export:** The Claude page has a "Save to Case" button that exports the current conversation to a case's `transcripts/` directory.
+
+**Import:** The worktree home page has an "Import Transcript" button to load a previously exported transcript JSON file, creating a new session with the imported history.
+
+**Continue:** From the case detail page, click "Continue" on a saved transcript to import it into a new Claude session, preserving conversation context.
+
+**Wrap Up:** The Claude page and case detail page both have a "Wrap Up" button that orchestrates: create/load case → update all transcripts → merge links → archive → git add + commit. See §9.5.2 for full details.
+
+### 20.7 API
+
+```
+GET    /api/v1/claude/{worktree}/sessions            # List sessions for a worktree
+POST   /api/v1/claude/{worktree}/sessions            # Create a new session
+PATCH  /api/v1/claude/sessions/{session}             # Rename a session
+DELETE /api/v1/claude/sessions/{session}             # Trash a session (soft delete)
+GET    /api/v1/claude/{worktree}/sessions/trash      # List trashed sessions
+POST   /api/v1/claude/sessions/{session}/restore     # Restore a trashed session
+DELETE /api/v1/claude/sessions/{session}/permanent   # Permanently delete a session
+GET    /api/v1/claude/sessions/{session}/ws          # WebSocket connection for chat
+GET    /api/v1/claude/sessions/{session}/export      # Export transcript as JSON
+POST   /api/v1/claude/{worktree}/sessions/import     # Import transcript JSON
+GET    /api/v1/claude/{worktree}/git-status          # Git status for the worktree
+GET    /api/v1/claude/{worktree}/session-case        # Check if session is linked to a case
+POST   /api/v1/claude/{worktree}/wrap-up             # Wrap up: create/archive case + commit
+```
+
+**Git status:**
+
+`GET /api/v1/claude/{worktree}/git-status`
+
+Response:
+```json
+{
+  "data": {
+    "clean": false,
+    "modified": ["file.go"],
+    "added": [],
+    "deleted": [],
+    "renamed": [],
+    "untracked": ["new.txt"],
+    "branch": "main"
+  }
+}
+```
+
+**Session case lookup:**
+
+`GET /api/v1/claude/{worktree}/session-case?session_id=abc`
+
+Returns 200 with case info if the session is linked to an open case, or 404 if not.
+
+Response:
+```json
+{
+  "data": {
+    "case_id": "2026-02-19__fix-bug",
+    "title": "Fix bug",
+    "kind": "bug"
+  }
+}
+```
+
+**Wrap up:**
+
+`POST /api/v1/claude/{worktree}/wrap-up`
+
+Request body (new case from Claude page):
+```json
+{
+  "session_id": "abc",
+  "title": "Fix bug",
+  "kind": "bug",
+  "commit_message": "Fix bug [case: 2026-02-19__fix-bug]",
+  "files": ["file.go"],
+  "links": [{"title": "Issue", "url": "https://..."}]
+}
+```
+
+Request body (existing case from case detail page):
+```json
+{
+  "case_id": "2026-02-19__fix-bug",
+  "commit_message": "Fix bug [case: 2026-02-19__fix-bug]",
+  "files": ["file.go"],
+  "links": []
+}
+```
+
+Response:
+```json
+{
+  "data": {
+    "case_id": "2026-02-19__fix-bug",
+    "commit_hash": "a1b2c3d"
+  }
+}
+```
+
+**WebSocket protocol** (`/api/v1/claude/sessions/{session}/ws`):
+
+Client → Server:
+```json
+{"type": "message", "content": "Fix the login bug"}
+{"type": "cancel"}
+{"type": "reset"}
+```
+
+Server → Client:
+```json
+{"type": "message", "role": "assistant", "content": [...], "usage": {...}}
+{"type": "partial", "content": [...]}
+{"type": "status", "generating": true}
+{"type": "error", "message": "..."}
+```
+
+### 20.8 Navigation
+
+Claude sessions appear in the navigation picker with the `@` prefix and a robot icon, distinguishing them from regular terminal windows:
+
+- `@main - Session 1` (robot icon)
+- `@main - dev` (terminal icon)
+
+---
+
+## 21. Reverse Proxy
+
+### 21.1 Overview
+
+Trellis can run reverse proxy listeners that mirror production routing locally. This allows routing requests to different backend services by path, with optional TLS support via custom certificates or Tailscale.
+
+### 21.2 Configuration
+
+```hjson
+{
+  proxy: [
+    {
+      // Address to bind
+      listen: ":443"
+
+      // TLS options (choose one):
+
+      // Option 1: Custom certificate files (supports ~ expansion)
+      tls_cert: "~/.trellis/cert.pem"
+      tls_key: "~/.trellis/key.pem"
+
+      // Option 2: Automatic Tailscale TLS
+      // tls_tailscale: true
+
+      // Ordered route rules (first match wins)
+      routes: [
+        {
+          // Regex to match request path (omit for catch-all)
+          path_regexp: "^/api/"
+          // Target backend address
+          upstream: "localhost:8080"
+        }
+        {
+          path_regexp: "^/admin/"
+          upstream: "localhost:9090"
+        }
+        {
+          // Catch-all route (no path_regexp)
+          upstream: "localhost:3000"
+        }
+      ]
+    }
+    {
+      // Second listener (e.g., HTTP redirect or different port)
+      listen: ":80"
+      routes: [
+        { upstream: "localhost:3000" }
+      ]
+    }
+  ]
+}
+```
+
+### 21.3 Route Matching
+
+Routes are evaluated in array order. The first route whose `path_regexp` matches the request path is selected. A route without `path_regexp` matches all requests (catch-all).
+
+**Route processing:**
+
+1. Compile each route's `path_regexp` as a Go `regexp.Regexp`
+2. For each incoming request, iterate routes in order
+3. First route whose regex matches `r.URL.Path` handles the request
+4. If no route matches, return 502 Bad Gateway
+
+### 21.4 WebSocket Support
+
+The proxy automatically detects WebSocket upgrade requests (`Connection: Upgrade` + `Upgrade: websocket`) and tunnels them to the upstream using bi-directional copying. This enables proxying WebSocket-based applications without additional configuration.
+
+### 21.5 TLS Options
+
+| Option | Description |
+|--------|-------------|
+| `tls_cert` + `tls_key` | Use custom certificate and key files. Paths support `~` expansion. |
+| `tls_tailscale` | Use Tailscale daemon for automatic TLS certificates (no cert files needed). |
+| Neither | Plain HTTP listener (no TLS). |
+
+**Tailscale TLS:** When `tls_tailscale: true`, the proxy uses `tailscale.GetCertificate()` to automatically provision and renew TLS certificates via the Tailscale daemon. This requires Tailscale to be running and the machine to be connected to a tailnet.
+
+### 21.6 Implementation
+
+The proxy manager starts one goroutine per listener. Each listener:
+
+1. Compiles route regexes at startup
+2. Starts an HTTP server (with TLS if configured)
+3. For each request, matches against routes
+4. Proxies the request to the matched upstream using `httputil.ReverseProxy`
+5. Flushes responses immediately for streaming support
+
+**Shutdown:** Proxy listeners are stopped gracefully during Trellis shutdown, with a timeout for in-flight requests.
 
 ---
 
@@ -4898,6 +5522,9 @@ HJSON is JSON for humans. Key differences from JSON:
 | **trellis-ctl** | Command-line tool for controlling a running Trellis instance |
 | **Worktree** | Git worktree representing an isolated development context |
 | **Workflow** | User-triggered action like build, test, or deploy |
+| **Claude Session** | An AI chat session powered by Claude Code, scoped to a worktree |
+| **Proxy Listener** | A reverse proxy endpoint with path-based routing to backend services |
+| **Trace Report** | Saved results of a distributed trace search across multiple log sources |
 
 ---
 

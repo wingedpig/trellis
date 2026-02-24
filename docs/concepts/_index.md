@@ -29,3 +29,11 @@ Trellis provides unified log viewing across multiple sources. Learn about:
 - Log parsers (JSON, logfmt, regex)
 - Filtering and searching
 - Distributed tracing
+
+## [Workflows](/docs/concepts/workflows/)
+
+Workflows are parameterized commands you can run from the web UI or CLI. Learn about:
+- Defining workflows with inputs
+- Output parsers
+- Service coordination
+- Running from the web UI and CLI

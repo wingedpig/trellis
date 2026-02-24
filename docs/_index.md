@@ -14,8 +14,11 @@ Trellis is a **local web app** that acts as a control panel for your development
 - **Worktrees as environments** — Each git worktree gets its own terminals, running processes, and logs
 - **Service supervision** — Run your app's components locally with automatic restart when binaries change
 - **Terminal & tmux management** — Trellis creates and manages tmux sessions for you
+- **Claude Code integration** — AI-assisted development with per-worktree chat sessions and transcript management
+- **Cases** — Track units of work (bugs, features, investigations) with notes, links, transcripts, and trace reports
 - **Remote access** — SSH terminals and log streaming from staging/production in the same UI
 - **Log search** — Tail, search, and correlate logs across local and remote systems
+- **Reverse proxy** — Mirror production routing locally with path-based routing and optional Tailscale TLS
 - **Keyboard-first** — Pickers and shortcuts for rapid navigation without touching the mouse
 
 ## Getting Started
@@ -33,8 +36,10 @@ Trellis is a **local web app** that acts as a control panel for your development
 ## Web Interface
 
 - [Terminal Page](/docs/pages/terminal/) - Main view: terminals, service logs, log viewers, remote windows
+- [Claude Page](/docs/pages/claude/) - AI-assisted development with Claude Code
 - [Status Page](/docs/pages/status/) - Monitor and control services
 - [Worktrees Page](/docs/pages/worktrees/) - Manage git worktrees
+- [Cases Page](/docs/pages/cases/) - Track work items with notes, transcripts, and traces
 - [Events Page](/docs/pages/events/) - View system event timeline
 - [Crashes Page](/docs/pages/crashes/) - Review crash reports
 - [Trace Page](/docs/pages/trace/) - Distributed tracing across log sources

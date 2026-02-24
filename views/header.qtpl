@@ -22,6 +22,31 @@ func JSAttr(s string) string {
     return s
 }
 
+// FormatRelativeTime formats a time as a human-readable relative string.
+func FormatRelativeTime(t time.Time) string {
+    d := time.Since(t)
+    switch {
+    case d < time.Minute:
+        return "just now"
+    case d < time.Hour:
+        m := int(d.Minutes())
+        if m == 1 {
+            return "1 minute ago"
+        }
+        return strconv.Itoa(m) + " minutes ago"
+    case d < 24*time.Hour:
+        h := int(d.Hours())
+        if h == 1 {
+            return "1 hour ago"
+        }
+        return strconv.Itoa(h) + " hours ago"
+    case d < 48*time.Hour:
+        return "yesterday"
+    default:
+        return t.Format("Jan 2")
+    }
+}
+
 type BasePage struct {
     Title    string
     Worktree *worktree.WorktreeInfo
@@ -98,8 +123,8 @@ window.TrellisNav = (function() {
 
     // Shared page definitions
     const NAV_PAGES = [
+        { value: '/', text: '/Home', icon: 'folder-tree' },
         { value: '/status', text: '/Status', icon: 'server' },
-        { value: '/worktrees', text: '/Worktrees', icon: 'code-branch' },
         { value: '/trace', text: '/Trace', icon: 'magnifying-glass-location' },
         { value: '/crashes', text: '/Crashes', icon: 'skull-crossbones' },
         { value: '/events', text: '/Events', icon: 'clock-rotate-left' }
@@ -123,6 +148,11 @@ window.TrellisNav = (function() {
             return '~' + decodeURIComponent(url.substring('/terminal/logviewer/'.length)) + ' - logs';
         } else if (url.startsWith('/trace/report/')) {
             return '/Trace: ' + url.substring('/trace/report/'.length);
+        } else if (url.startsWith('/worktree/')) {
+            return '@' + decodeURIComponent(url.substring('/worktree/'.length)) + ' - Home';
+        } else if (url.startsWith('/claude/')) {
+            const parts = url.substring('/claude/'.length).split('/');
+            return '@' + decodeURIComponent(parts[0]) + ' - Claude';
         }
         return null;
     }
@@ -149,13 +179,30 @@ window.TrellisNav = (function() {
     function formatNavOption(option) {
         if (!option.element) return option.text;
         const el = option.element;
+        let icon = '';
+        if (el.dataset.isClaude === 'true') {
+            icon = '<i class="fa-solid fa-robot" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isTerminal === 'true') {
+            icon = '<i class="fa-solid fa-terminal" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isWorktree === 'true') {
+            icon = '<i class="fa-solid fa-folder-tree" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isLogViewer === 'true') {
+            icon = '<i class="fa-solid fa-file-lines" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isLink === 'true') {
+            icon = '<i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isPage === 'true') {
+            icon = '<i class="fa-solid fa-compass" style="margin-right:6px;opacity:0.7;"></i>';
+        }
         if (el.dataset.serviceStatus) {
             let color = '#6c757d';
             if (el.dataset.serviceStatus === 'running') color = '#56AB2F';
             else if (el.dataset.serviceStatus === 'crashed') color = '#dc3545';
             else if (el.dataset.serviceStatus === 'stopped') color = '#6c757d';
             else if (el.dataset.serviceStatus === 'starting') color = '#0dcaf0';
-            return $('<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:6px;"></span>' + option.text + '</span>');
+            icon = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:6px;"></span>';
+        }
+        if (icon) {
+            return $('<span>' + icon + option.text + '</span>');
         }
         return option.text;
     }
@@ -253,7 +300,8 @@ window.TrellisNav = (function() {
             placeholder: 'Select from history...',
             allowClear: false,
             width: '300px',
-            templateResult: formatNavOption
+            templateResult: formatNavOption,
+                    templateSelection: formatNavOption
         }).on('select2:select', function() {
             handleNavSelection();
             exitHistoryMode();
@@ -290,7 +338,8 @@ window.TrellisNav = (function() {
         $('#navSelect').select2('destroy').select2({
             placeholder: 'Navigate...',
             width: '280px',
-            templateResult: formatNavOption
+            templateResult: formatNavOption,
+                    templateSelection: formatNavOption
         }).on('select2:select', handleNavSelection);
     }
 
@@ -442,16 +491,86 @@ window.TrellisNav = (function() {
 
                 // Add options from API response
                 if (data.data) {
-                    if (data.data.terminals) {
-                        for (const term of data.data.terminals) {
+                    // Group by worktree: home page, then local terminals, then Claude sessions
+                    const localTerminals = (data.data.terminals || []).filter(t => !t.isRemote);
+                    const remoteTerminals = (data.data.terminals || []).filter(t => t.isRemote);
+                    const claudeSessions = data.data.claudeSessions || [];
+                    const worktrees = data.data.worktrees || [];
+
+                    // Build a map of worktree name -> items
+                    const wtNames = worktrees.map(wt => wt.name);
+                    for (const wtData of worktrees) {
+                        // Worktree home page
+                        const wtOpt = document.createElement('option');
+                        wtOpt.value = wtData.url;
+                        wtOpt.dataset.isPage = 'true';
+                        wtOpt.dataset.isWorktree = 'true';
+                        wtOpt.textContent = '@' + wtData.display + ' - Home';
+                        select.appendChild(wtOpt);
+
+                        // Local terminals for this worktree
+                        for (const term of localTerminals) {
+                            if (term.url.startsWith('/terminal/local/' + wtData.name + '/')) {
+                                const opt = document.createElement('option');
+                                opt.value = term.url;
+                                opt.dataset.isTerminal = 'true';
+                                opt.dataset.isRemote = 'false';
+                                opt.textContent = term.display;
+                                select.appendChild(opt);
+                            }
+                        }
+
+                        // Claude sessions for this worktree
+                        for (const sess of claudeSessions) {
+                            if (sess.worktree === wtData.name) {
+                                const opt = document.createElement('option');
+                                opt.value = sess.url;
+                                opt.dataset.isPage = 'true';
+                                opt.dataset.isClaude = 'true';
+
+                                opt.textContent = sess.display;
+                                select.appendChild(opt);
+                            }
+                        }
+                    }
+
+                    // Local terminals not matching any known worktree
+                    for (const term of localTerminals) {
+                        const matched = wtNames.some(n => term.url.startsWith('/terminal/local/' + n + '/'));
+                        if (!matched) {
                             const opt = document.createElement('option');
                             opt.value = term.url;
                             opt.dataset.isTerminal = 'true';
-                            opt.dataset.isRemote = term.isRemote ? 'true' : 'false';
+                            opt.dataset.isRemote = 'false';
                             opt.textContent = term.display;
                             select.appendChild(opt);
                         }
                     }
+
+                    // Claude sessions not matching any known worktree
+                    for (const sess of claudeSessions) {
+                        const matched = wtNames.some(n => sess.worktree === n);
+                        if (!matched) {
+                            const opt = document.createElement('option');
+                            opt.value = sess.url;
+                            opt.dataset.isPage = 'true';
+                            opt.dataset.isClaude = 'true';
+                            opt.dataset.claudeRunning = sess.running ? 'true' : 'false';
+                            opt.textContent = sess.display;
+                            select.appendChild(opt);
+                        }
+                    }
+
+                    // Remote terminals
+                    for (const term of remoteTerminals) {
+                        const opt = document.createElement('option');
+                        opt.value = term.url;
+                        opt.dataset.isTerminal = 'true';
+                        opt.dataset.isRemote = 'true';
+                        opt.textContent = term.display;
+                        select.appendChild(opt);
+                    }
+
                     if (data.data.services) {
                         for (const svc of data.data.services) {
                             const opt = document.createElement('option');
@@ -503,7 +622,8 @@ window.TrellisNav = (function() {
                 $('#navSelect').select2({
                     placeholder: 'Navigate...',
                     width: '280px',
-                    templateResult: formatNavOption
+                    templateResult: formatNavOption,
+                    templateSelection: formatNavOption
                 }).on('select2:select', handleNavSelection);
 
                 // Set current page as selected

@@ -104,6 +104,10 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function escapeJsAttr(s) {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function loadStatusData() {
     fetch('/api/v1/services')
         .then(r => r.json())
@@ -141,10 +145,10 @@ function loadStatusData() {
 	qw422016.N().S("`")
 //line views/status.qtpl:14
 	qw422016.N().S(`
-                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${name}', 'stop')" title="Stop">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${escapeJsAttr(name)}', 'stop')" title="Stop">
                                 <i class="fa-solid fa-stop"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${name}', 'restart')" title="Restart">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="serviceAction('${escapeJsAttr(name)}', 'restart')" title="Restart">
                                 <i class="fa-solid fa-rotate"></i>
                             </button>
                         `)
@@ -156,7 +160,7 @@ function loadStatusData() {
 	qw422016.N().S("`")
 //line views/status.qtpl:14
 	qw422016.N().S(`
-                            <button class="btn btn-sm btn-primary" onclick="serviceAction('${name}', 'start')" title="Start">
+                            <button class="btn btn-sm btn-primary" onclick="serviceAction('${escapeJsAttr(name)}', 'start')" title="Start">
                                 <i class="fa-solid fa-play"></i>
                             </button>
                         `)
@@ -236,36 +240,36 @@ setInterval(loadStatusData, 5000);
 </script>
 
 `)
-//line views/status.qtpl:187
+//line views/status.qtpl:191
 	p.StreamFooter(qw422016)
-//line views/status.qtpl:187
+//line views/status.qtpl:191
 	qw422016.N().S(`
 `)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 }
 
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 func (p *StatusPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	p.StreamRender(qw422016)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	qt422016.ReleaseWriter(qw422016)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 }
 
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 func (p *StatusPage) Render() string {
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	p.WriteRender(qb422016)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	qs422016 := string(qb422016.B)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 	return qs422016
-//line views/status.qtpl:188
+//line views/status.qtpl:192
 }

@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	version    = "0.90"
+	version    = "0.95"
 	apiURL     = "http://localhost:1234"
 	jsonOutput = false
 
@@ -754,10 +754,8 @@ func fetchLogViewerEntries(name string, limit int, since, until time.Time, grep 
 
 		histEntries, err := apiClient.Logs.GetHistoryEntries(ctx, name, histOpts)
 		if err != nil {
-			// History might not be available (no rotated files), continue with live buffer
-			if !strings.Contains(err.Error(), "404") {
-				return nil, err
-			}
+			// History might not be available (no rotated files, unsupported source), continue with live buffer
+			fmt.Fprintf(os.Stderr, "Warning: history not available for %s: %v\n", name, err)
 		} else {
 			allEntries = append(allEntries, convertClientLogEntries(histEntries)...)
 		}
@@ -765,9 +763,12 @@ func fetchLogViewerEntries(name string, limit int, since, until time.Time, grep 
 
 	// Also query live buffer
 	bufferOpts := &client.LogEntriesOptions{
-		Limit: limit,
-		Since: since,
-		Until: until,
+		Limit:  limit,
+		Since:  since,
+		Until:  until,
+		Grep:   grep,
+		Before: before,
+		After:  after,
 	}
 
 	bufferEntries, err := apiClient.Logs.GetEntries(ctx, name, bufferOpts)

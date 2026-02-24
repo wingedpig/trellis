@@ -2,15 +2,7 @@
 <div class="container py-4">
   <div class="row">
     <div class="col-lg-3 d-none d-lg-block">
-      <nav class="docs-sidebar">
-        <ul class="nav flex-column">
-          {{ range .Pages }}
-          <li class="nav-item">
-            <a class="nav-link" href="{{ .RelPermalink }}">{{ .Title }}</a>
-          </li>
-          {{ end }}
-        </ul>
-      </nav>
+      {{ partial "docs-sidebar.html" . }}
     </div>
     <div class="col-lg-9">
       <div class="docs-content">

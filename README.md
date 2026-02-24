@@ -10,6 +10,9 @@ Trellis is a **local web app** that acts as a control panel for your development
 - Treat each git worktree as its own environment with isolated terminals, processes, and logs
 - Run and supervise your app's services locally, with automatic restart when binaries change
 - Create and manage tmux sessions without manual layout management
+- Chat with Claude Code directly in the web UI, with per-worktree sessions and transcript management
+- Track work items (bugs, features, investigations) with cases that link notes, transcripts, and trace reports
+- Run reverse proxies with path-based routing and TLS support to mirror production routing locally
 
 **Remote systems:**
 - Open SSH terminals to staging/production from the same interface
@@ -18,7 +21,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 
 **Navigation:**
 - Keyboard-first web UI with pickers for rapid context switching
-- Jump between worktrees, terminals, processes, logs, and workflows
+- Jump between worktrees, terminals, services, logs, Claude sessions, and workflows
 
 ## Quick Start
 
@@ -69,12 +72,6 @@ Or create `trellis.hjson` manually in your project root:
       watch_binary: "./bin/backend"
     }
   ]
-
-  terminal: {
-    default_windows: [
-      { name: "shell" }
-    ]
-  }
 
   workflows: [
     {
@@ -136,7 +133,17 @@ git worktree add ../myapp-feature -b feature-branch
 | `Cmd/Ctrl + Backspace` | History picker |
 | `Cmd/Ctrl + H` | Show all shortcuts |
 
-### AI Assistant Integration
+### Claude Code Integration
+
+Each worktree can have multiple Claude Code chat sessions directly in the Trellis web UI. Sessions persist across restarts, and transcripts can be saved to cases or imported from previous exports.
+
+Claude sessions appear in the navigation picker alongside terminals (`@main - Session 1` with a robot icon).
+
+### Cases
+
+Cases track units of work (bugs, features, investigations) within a worktree. Attach notes, evidence, Claude transcripts, and trace reports to build a durable record alongside your code.
+
+### AI Assistant Skill File
 
 Install the skill file for Claude Code or Codex:
 
@@ -161,6 +168,8 @@ Key sections:
 - `terminal` — Window configuration and remote terminals
 - `log_viewers` — External log sources (SSH, Docker, K8s)
 - `trace_groups` — Log viewers to search together for tracing
+- `proxy` — Reverse proxy listeners with path-based routing
+- `cases` — Work item storage configuration
 
 ## API
 
@@ -182,21 +191,28 @@ cmd/
   trellis/          # Main server
   trellis-ctl/      # CLI tool
 internal/
+  api/              # HTTP handlers and routing
   app/              # Application initialization
-  config/           # Configuration loading
-  service/          # Service management
-  workflow/         # Workflow execution
-  events/           # Event bus
+  cases/            # Case (work item) management
+  claude/           # Claude Code session management
+  config/           # Configuration loading and validation
   crashes/          # Crash report management
+  events/           # Event bus
+  logs/             # Log viewing and parsing
+  proxy/            # Reverse proxy with path-based routing
+  service/          # Service lifecycle management
   terminal/         # Terminal/tmux integration
-  logs/             # Log viewing
   trace/            # Distributed tracing
+  watcher/          # Binary file watching
+  workflow/         # Workflow execution and output parsing
+  worktree/         # Git worktree discovery and switching
 pkg/
   client/           # Go API client library
 api/
   openapi.yaml      # API specification
-views/              # Web UI templates
-site/               # Documentation website
+views/              # Web UI templates (quicktemplate)
+static/             # CSS and embedded static assets
+docs/               # Documentation (Hugo site)
 ```
 
 ## License

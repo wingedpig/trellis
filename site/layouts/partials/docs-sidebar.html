@@ -1,0 +1,30 @@
+{{/* Navigate to the docs section root */}}
+{{ $docsRoot := .Site.GetPage "/docs" }}
+{{ if $docsRoot }}
+<nav class="docs-sidebar">
+  <ul class="nav flex-column">
+    {{/* Top-level pages (overview, install, quickstart) */}}
+    {{ range $docsRoot.Pages }}
+    {{ if not .IsSection }}
+    <li class="nav-item">
+      <a class="nav-link{{ if eq $.RelPermalink .RelPermalink }} active{{ end }}" href="{{ .RelPermalink }}">{{ .Title }}</a>
+    </li>
+    {{ end }}
+    {{ end }}
+
+    {{/* Sections (concepts, pages, reference) */}}
+    {{ range $docsRoot.Sections }}
+    <li class="nav-item mt-2">
+      <a class="nav-link fw-bold{{ if eq $.RelPermalink .RelPermalink }} active{{ end }}" href="{{ .RelPermalink }}">{{ .Title }}</a>
+      <ul class="nav flex-column ms-3">
+        {{ range .Pages }}
+        <li class="nav-item">
+          <a class="nav-link{{ if eq $.RelPermalink .RelPermalink }} active{{ end }}" href="{{ .RelPermalink }}">{{ .Title }}</a>
+        </li>
+        {{ end }}
+      </ul>
+    </li>
+    {{ end }}
+  </ul>
+</nav>
+{{ end }}

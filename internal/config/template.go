@@ -30,8 +30,14 @@ func NewTemplateExpander() *TemplateExpander {
 	}
 }
 
-// inputsPlaceholderPrefix is used to temporarily preserve .Inputs references during config expansion.
-const inputsPlaceholderPrefix = "\x00TRELLIS_INPUTS_"
+// inputsOrControlPattern matches template actions that reference .Inputs or are control-flow (if/else/end/range/with).
+var inputsOrControlPattern = regexp.MustCompile(`\{\{-?\s*(?:(?:if|else if|with|range)\s+[^}]*\.Inputs\.[^}]*|\.Inputs\.[^}]*|end|else)\s*-?\}\}`)
+
+// controlFlowPattern matches control-flow template directives (if/else/end/range/with).
+var controlFlowPattern = regexp.MustCompile(`\{\{-?\s*(?:if|else if|else|end|range|with)\b`)
+
+// inputsActionPattern matches standalone {{ .Inputs.xxx }} actions (no control flow).
+var inputsActionPattern = regexp.MustCompile(`\{\{-?\s*\.Inputs\.\w+\s*-?\}\}`)
 
 // Expand expands template variables in a string value.
 // Templates referencing .Inputs are preserved (they are expanded at runtime).
@@ -40,35 +46,30 @@ func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, e
 		return value, nil
 	}
 
-	// Temporarily replace .Inputs references with placeholders to preserve them
-	// They will be expanded at runtime when the workflow is executed
-	preserved := value
-	hasInputs := strings.Contains(value, ".Inputs")
-	if hasInputs {
-		// Use a regex to find and replace {{ ... .Inputs ... }} patterns
-		inputsPattern := regexp.MustCompile(`\{\{[^}]*\.Inputs\.[^}]*\}\}`)
-		matches := inputsPattern.FindAllString(value, -1)
-		for i, match := range matches {
-			placeholder := fmt.Sprintf("%s%d\x00", inputsPlaceholderPrefix, i)
-			preserved = strings.Replace(preserved, match, placeholder, 1)
+	// If the value contains .Inputs references, it's a runtime template
+	// (e.g. workflow commands with {{if .Inputs.id}}...{{end}}).
+	// We can't selectively extract individual {{ }} blocks because
+	// control-flow directives like {{if}}/{{end}} span multiple blocks.
+	// Instead, skip expansion entirely if the only templates are .Inputs references.
+	if strings.Contains(value, ".Inputs") {
+		// Check if there are any non-.Inputs template actions to expand.
+		// Remove all {{ }} blocks that reference .Inputs or are control flow (if/else/end/range/with).
+		remaining := inputsOrControlPattern.ReplaceAllString(value, "")
+		if !strings.Contains(remaining, "{{") {
+			// Everything is .Inputs-related — preserve the whole string
+			return value, nil
 		}
+		// There's a mix of .Inputs and other templates. If control-flow
+		// blocks are present we can't safely partial-expand.
+		if controlFlowPattern.MatchString(value) {
+			return value, nil
+		}
+		// Simple mix: replace .Inputs actions with placeholders, expand,
+		// then restore.
+		return e.expandWithInputsPlaceholders(value, ctx)
 	}
 
-	// If nothing left to expand, restore and return
-	if !strings.Contains(preserved, "{{") {
-		// Restore .Inputs patterns
-		if hasInputs {
-			inputsPattern := regexp.MustCompile(`\{\{[^}]*\.Inputs\.[^}]*\}\}`)
-			matches := inputsPattern.FindAllString(value, -1)
-			for i, match := range matches {
-				placeholder := fmt.Sprintf("%s%d\x00", inputsPlaceholderPrefix, i)
-				preserved = strings.Replace(preserved, placeholder, match, 1)
-			}
-		}
-		return preserved, nil
-	}
-
-	tmpl, err := template.New("").Funcs(e.funcMap).Parse(preserved)
+	tmpl, err := template.New("").Funcs(e.funcMap).Parse(value)
 	if err != nil {
 		return "", err
 	}
@@ -78,16 +79,39 @@ func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, e
 		return "", err
 	}
 
-	result := buf.String()
+	return buf.String(), nil
+}
 
-	// Restore .Inputs patterns
-	if hasInputs {
-		inputsPattern := regexp.MustCompile(`\{\{[^}]*\.Inputs\.[^}]*\}\}`)
-		matches := inputsPattern.FindAllString(value, -1)
-		for i, match := range matches {
-			placeholder := fmt.Sprintf("%s%d\x00", inputsPlaceholderPrefix, i)
-			result = strings.Replace(result, placeholder, match, 1)
-		}
+// expandWithInputsPlaceholders handles mixed templates containing both .Inputs
+// references and other expandable actions. It replaces .Inputs actions with
+// unique placeholders, expands the rest, then restores the originals.
+func (e *TemplateExpander) expandWithInputsPlaceholders(value string, ctx *TemplateContext) (string, error) {
+	// Collect all .Inputs actions and replace with placeholders
+	var placeholders []string
+	i := 0
+	replaced := inputsActionPattern.ReplaceAllStringFunc(value, func(match string) string {
+		ph := fmt.Sprintf("__TRELLIS_INPUTS_%d__", i)
+		i++
+		placeholders = append(placeholders, match)
+		return ph
+	})
+
+	// Expand the remaining template actions
+	tmpl, err := template.New("").Funcs(e.funcMap).Parse(replaced)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, ctx); err != nil {
+		return "", err
+	}
+
+	// Restore .Inputs placeholders
+	result := buf.String()
+	for j, original := range placeholders {
+		ph := fmt.Sprintf("__TRELLIS_INPUTS_%d__", j)
+		result = strings.Replace(result, ph, original, 1)
 	}
 
 	return result, nil

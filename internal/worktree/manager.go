@@ -466,8 +466,8 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 		return fmt.Errorf("cannot remove the main repository")
 	}
 
-	// Kill any tmux session for this worktree
-	sessionName := strings.ReplaceAll(name, ".", "_")
+	// Kill any tmux session for this worktree (use canonical wt.Name(), not request alias)
+	sessionName := strings.ReplaceAll(wt.Name(), ".", "_")
 	killTmux := exec.CommandContext(ctx, "tmux", "kill-session", "-t", sessionName)
 	killTmux.Run() // Ignore error - session may not exist
 

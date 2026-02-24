@@ -675,12 +675,15 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 	qw422016.N().S(`</option>
                 </select>
 
-                `)
+                <div class="btn-group" role="group"`)
 //line views/terminal.qtpl:301
-	if p.ViewType == "local" {
+	if p.ViewType != "local" {
 //line views/terminal.qtpl:301
-		qw422016.N().S(`
-                <div class="btn-group" role="group">
+		qw422016.N().S(` style="display:none"`)
+//line views/terminal.qtpl:301
+	}
+//line views/terminal.qtpl:301
+	qw422016.N().S(`>
                     <button id="showTerminalBtn" class="btn btn-sm btn-terminal active" onclick="showTerminal()">
                         <i class="fa-solid fa-terminal"></i>
                     </button>
@@ -689,37 +692,40 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     </button>
                 </div>
 
-                <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;">
+                <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;`)
+//line views/terminal.qtpl:310
+	if p.ViewType != "local" && p.ViewType != "output" {
+//line views/terminal.qtpl:310
+		qw422016.N().S(` display:none;`)
+//line views/terminal.qtpl:310
+	}
+//line views/terminal.qtpl:310
+	qw422016.N().S(`">
                     <option value="">Workflow...</option>
                 </select>
-                `)
-//line views/terminal.qtpl:314
-	}
-//line views/terminal.qtpl:314
-	qw422016.N().S(`
             </div>
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/terminal.qtpl:318
+//line views/terminal.qtpl:316
 	if p.Worktree != nil {
-//line views/terminal.qtpl:318
+//line views/terminal.qtpl:316
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/terminal.qtpl:320
+//line views/terminal.qtpl:318
 		qw422016.E().S(p.Worktree.Name())
-//line views/terminal.qtpl:320
+//line views/terminal.qtpl:318
 		qw422016.N().S(` (`)
-//line views/terminal.qtpl:320
+//line views/terminal.qtpl:318
 		qw422016.E().S(p.Worktree.Branch)
-//line views/terminal.qtpl:320
+//line views/terminal.qtpl:318
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/terminal.qtpl:322
+//line views/terminal.qtpl:320
 	}
-//line views/terminal.qtpl:322
+//line views/terminal.qtpl:320
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-terminal" onclick="showHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+?)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -1321,7 +1327,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             <button class="btn btn-sm btn-outline-secondary" onclick="clearLogViewerLog()" title="Clear log">
                 <i class="fa-solid fa-trash"></i>
             </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="showTerminal()" title="Back to terminal">
+            <button class="btn btn-sm btn-outline-secondary" id="logviewer-back-btn" onclick="showTerminal()" title="Back to terminal">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
@@ -1371,37 +1377,37 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                         <td>Show this help</td>
                     </tr>
                     `)
-//line views/terminal.qtpl:972
+//line views/terminal.qtpl:970
 	if len(p.Shortcuts) > 0 {
-//line views/terminal.qtpl:972
+//line views/terminal.qtpl:970
 		qw422016.N().S(`
                     <tr><td colspan="2" style="padding-top: 12px;"><strong>Custom Shortcuts</strong></td></tr>
                     `)
-//line views/terminal.qtpl:974
+//line views/terminal.qtpl:972
 		for _, sc := range p.Shortcuts {
-//line views/terminal.qtpl:974
+//line views/terminal.qtpl:972
 			qw422016.N().S(`
                     <tr>
                         <td>`)
-//line views/terminal.qtpl:976
+//line views/terminal.qtpl:974
 			streamshortcutKeyDisplay(qw422016, sc.Key)
-//line views/terminal.qtpl:976
+//line views/terminal.qtpl:974
 			qw422016.N().S(`</td>
                         <td>Jump to `)
-//line views/terminal.qtpl:977
+//line views/terminal.qtpl:975
 			qw422016.E().S(sc.Window)
-//line views/terminal.qtpl:977
+//line views/terminal.qtpl:975
 			qw422016.N().S(`</td>
                     </tr>
                     `)
-//line views/terminal.qtpl:979
+//line views/terminal.qtpl:977
 		}
-//line views/terminal.qtpl:979
+//line views/terminal.qtpl:977
 		qw422016.N().S(`
                     `)
-//line views/terminal.qtpl:980
+//line views/terminal.qtpl:978
 	}
-//line views/terminal.qtpl:980
+//line views/terminal.qtpl:978
 	qw422016.N().S(`
                 </table>
             </div>
@@ -1528,9 +1534,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 `)
-//line views/terminal.qtpl:1105
+//line views/terminal.qtpl:1103
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "terminal")
-//line views/terminal.qtpl:1105
+//line views/terminal.qtpl:1103
 	qw422016.N().S(`
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1538,69 +1544,69 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="/static/js/logviewer.js"></script>
 <script>
     const initialSession = '`)
-//line views/terminal.qtpl:1111
+//line views/terminal.qtpl:1109
 	qw422016.E().S(JSAttr(p.Session))
-//line views/terminal.qtpl:1111
+//line views/terminal.qtpl:1109
 	qw422016.N().S(`';
     const initialWindow = '`)
-//line views/terminal.qtpl:1112
+//line views/terminal.qtpl:1110
 	qw422016.E().S(JSAttr(p.Window))
-//line views/terminal.qtpl:1112
+//line views/terminal.qtpl:1110
 	qw422016.N().S(`';
     const initialIsRemote = `)
-//line views/terminal.qtpl:1113
+//line views/terminal.qtpl:1111
 	qw422016.E().V(p.IsRemote)
-//line views/terminal.qtpl:1113
+//line views/terminal.qtpl:1111
 	qw422016.N().S(`;
     const initialViewType = '`)
-//line views/terminal.qtpl:1114
+//line views/terminal.qtpl:1112
 	qw422016.E().S(JSAttr(p.ViewType))
-//line views/terminal.qtpl:1114
+//line views/terminal.qtpl:1112
 	qw422016.N().S(`';
     const initialServiceName = '`)
-//line views/terminal.qtpl:1115
+//line views/terminal.qtpl:1113
 	qw422016.E().S(JSAttr(p.ServiceName))
-//line views/terminal.qtpl:1115
+//line views/terminal.qtpl:1113
 	qw422016.N().S(`';
     const initialLogViewerName = '`)
-//line views/terminal.qtpl:1116
+//line views/terminal.qtpl:1114
 	qw422016.E().S(JSAttr(p.LogViewerName))
-//line views/terminal.qtpl:1116
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`';
     const initialWorktree = '`)
-//line views/terminal.qtpl:1117
+//line views/terminal.qtpl:1115
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/terminal.qtpl:1117
+//line views/terminal.qtpl:1115
 	qw422016.N().S(`';
     const projectName = '`)
-//line views/terminal.qtpl:1118
+//line views/terminal.qtpl:1116
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/terminal.qtpl:1118
+//line views/terminal.qtpl:1116
 	qw422016.N().S(`';
     const customShortcuts = `)
-//line views/terminal.qtpl:1119
+//line views/terminal.qtpl:1117
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:1119
+//line views/terminal.qtpl:1117
 	qw422016.N().S(`;
     const notificationSettings = `)
-//line views/terminal.qtpl:1120
+//line views/terminal.qtpl:1118
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:1120
+//line views/terminal.qtpl:1118
 	qw422016.N().S(`;
     const initialServices = `)
-//line views/terminal.qtpl:1121
+//line views/terminal.qtpl:1119
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:1121
+//line views/terminal.qtpl:1119
 	qw422016.N().S(`;
     const initialLinks = `)
-//line views/terminal.qtpl:1122
+//line views/terminal.qtpl:1120
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:1122
+//line views/terminal.qtpl:1120
 	qw422016.N().S(`;
     const initialLogViewers = `)
-//line views/terminal.qtpl:1123
+//line views/terminal.qtpl:1121
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:1123
+//line views/terminal.qtpl:1121
 	qw422016.N().S(`;
 
     // Map of terminalKey -> {term, fitAddon, ws, container, isRemote}
@@ -1619,9 +1625,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
     // Clear history if server was restarted (session ID changed)
     const currentSessionID = '`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.E().S(JSAttr(p.SessionID()))
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`';
     const storedSessionID = sessionStorage.getItem('trellis-session-id');
     if (storedSessionID !== currentSessionID) {
@@ -1793,6 +1799,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     // Service log state
     let currentServiceName = null;
     let serviceLogPollTimer = null;
+    let serviceLogFetching = false;   // Guard against overlapping log fetches
+    let serviceStatusFetching = false; // Guard against overlapping status fetches
     let lastLogLength = 0;
     // Structured service log state (when parser is configured)
     let serviceLogConfig = null;        // Current service's logging config
@@ -1990,6 +1998,94 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
     }
 
+    // Fetch worktree home pages and Claude sessions from nav API and add to picker.
+    // Inserts them grouped with their worktree's terminals:
+    //   @worktree (home), @worktree - shell, @worktree - Claude Session, @worktree - output, ...
+    function fetchNavExtras(select) {
+        fetch('/api/v1/nav/options')
+            .then(r => r.json())
+            .then(navData => {
+                if (!navData.data) return;
+                const currentVal = $('#navSelect').val();
+                const worktrees = navData.data.worktrees || [];
+                const claudeSessions = navData.data.claudeSessions || [];
+                if (worktrees.length === 0 && claudeSessions.length === 0) return;
+
+                for (const wt of worktrees) {
+                    if (select.querySelector('option[value="' + CSS.escape(wt.url) + '"]')) continue;
+                    // Find the first option belonging to this worktree to insert before it
+                    const firstForWt = select.querySelector('option[data-worktree="' + CSS.escape(wt.name) + '"]');
+                    const opt = document.createElement('option');
+                    opt.value = wt.url;
+                    opt.dataset.isPage = 'true';
+                    opt.dataset.isWorktree = 'true';
+                    opt.textContent = '@' + wt.display + ' - Home';
+                    if (firstForWt) {
+                        select.insertBefore(opt, firstForWt);
+                    } else {
+                        // No terminals for this worktree yet; insert before nav pages
+                        const navPage = select.querySelector('option[data-is-page="true"]');
+                        if (navPage) {
+                            select.insertBefore(opt, navPage);
+                        } else {
+                            select.appendChild(opt);
+                        }
+                    }
+                }
+
+                for (const sess of claudeSessions) {
+                    if (select.querySelector('option[value="' + CSS.escape(sess.url) + '"]')) continue;
+                    // Insert after the last terminal (but before output/editor) for this worktree
+                    // Find all terminal options for this worktree
+                    const wtOpts = select.querySelectorAll('option[data-worktree="' + CSS.escape(sess.worktree) + '"][data-is-terminal="true"]');
+                    const opt = document.createElement('option');
+                    opt.value = sess.url;
+                    opt.dataset.isPage = 'true';
+                    opt.dataset.isClaude = 'true';
+                    opt.textContent = sess.display;
+                    if (wtOpts.length > 0) {
+                        // Insert after the last terminal for this worktree
+                        const lastTerminal = wtOpts[wtOpts.length - 1];
+                        lastTerminal.after(opt);
+                    } else {
+                        // Insert after worktree home if present
+                        const wtHome = select.querySelector('option[value="' + CSS.escape('/worktree/' + sess.worktree) + '"]');
+                        if (wtHome) {
+                            wtHome.after(opt);
+                        } else {
+                            const navPage = select.querySelector('option[data-is-page="true"]');
+                            if (navPage) {
+                                select.insertBefore(opt, navPage);
+                            } else {
+                                select.appendChild(opt);
+                            }
+                        }
+                    }
+                }
+
+                // Rebuild originalNavOptions and re-init Select2
+                originalNavOptions = Array.from(select.options).map(opt => ({
+                    value: opt.value,
+                    textContent: opt.textContent,
+                    dataset: { ...opt.dataset }
+                }));
+                TrellisNav.setOriginalOptions(originalNavOptions);
+
+                refreshingPicker = true;
+                $('#navSelect').select2('destroy').select2({
+                    placeholder: 'Select terminal...',
+                    width: '300px',
+                    templateResult: formatPickerOption,
+                    templateSelection: formatPickerOption
+                }).on('select2:select', handleNormalSelection);
+                if (currentVal) {
+                    $('#navSelect').val(currentVal).trigger('change.select2');
+                }
+                refreshingPicker = false;
+            })
+            .catch(() => {});
+    }
+
     // Reload terminal picker from API (full refresh)
     function reloadTerminalPicker() {
         fetch('/api/v1/terminal/sessions')
@@ -2120,6 +2216,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     }
                 }
                 refreshingPicker = false;
+
+                // Fetch worktree home pages and Claude sessions from nav API and merge into picker
+                fetchNavExtras(select);
             });
     }
 
@@ -2619,14 +2718,14 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         $('#navSelect').val(newUrl).trigger('change.select2');
         isSwitchingTerminal = false;
 
-        // Update workflow selector visibility
+        // Update workflow selector and code toggle visibility
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
-            workflowSelect.style.display = isRemote ? 'none' : 'inline-block';
+            workflowSelect.style.display = isRemote ? 'none' : '';
         }
-        const showCodeBtn = document.getElementById('showCodeBtn');
-        if (showCodeBtn) {
-            showCodeBtn.style.display = isRemote ? 'none' : 'inline-block';
+        const showTerminalBtn = document.getElementById('showTerminalBtn');
+        if (showTerminalBtn) {
+            showTerminalBtn.parentElement.style.display = isRemote ? 'none' : '';
         }
     }
 
@@ -2820,6 +2919,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 templateSelection: formatPickerOption
             }).on('select2:select', handleNormalSelection);
 
+            // Fetch worktree home pages and Claude sessions from nav API and merge into picker
+            fetchNavExtras(select);
+
             // Wait for select2 to fully render before initializing terminal
             // This ensures navbar has final height for correct terminal sizing
             requestAnimationFrame(() => {
@@ -2828,6 +2930,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     if (initialViewType === 'service' && initialServiceName) {
                         showService(initialServiceName);
                     } else if (initialViewType === 'logviewer' && initialLogViewerName) {
+                        var backBtn = document.getElementById('logviewer-back-btn');
+                        if (backBtn) backBtn.style.display = 'none';
                         showLogViewer(initialLogViewerName);
                     } else if (initialViewType === 'editor') {
                         showCode();
@@ -2966,6 +3070,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
         // Escape to close various panels
         if (e.key === 'Escape') {
+            // If Select2 picker is open, let it handle Escape
+            var s2 = $('#navSelect').data('select2');
+            if (s2 && s2.isOpen()) return;
             // Close log viewer expanded detail panel
             const logViewerExpanded = document.getElementById('logviewer-expanded');
             if (logViewerExpanded && logViewerExpanded.style.display !== 'none') {
@@ -3354,16 +3461,17 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
         if (document.getElementById('showTerminalBtn')) {
             document.getElementById('showTerminalBtn').classList.remove('active');
+            // Show the parent btn-group (may have been hidden by showService/showLogViewer)
+            document.getElementById('showTerminalBtn').parentElement.style.display = '';
         }
         if (document.getElementById('showCodeBtn')) {
-            document.getElementById('showCodeBtn').style.display = 'inline-block';
             document.getElementById('showCodeBtn').classList.add('active');
         }
 
         // Restore workflow selector (may have been hidden by showService/showLogViewer)
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
-            workflowSelect.style.display = 'inline-block';
+            workflowSelect.style.display = '';
         }
 
         // Update picker to show editor URL
@@ -3487,7 +3595,19 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         const outputData = workflowOutputs[worktree];
         const titleEl = document.getElementById('workflow-title');
         const outputEl = document.querySelector('#workflow-output code');
-        if (outputData) {
+
+        // Check for run/workflow query params (from workflow picker on other pages)
+        const urlParams = new URLSearchParams(window.location.search);
+        const runParam = urlParams.get('run');
+        const workflowParam = urlParams.get('workflow');
+        if (runParam) {
+            // Clear query params from URL without reloading
+            history.replaceState(null, '', window.location.pathname);
+            titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Running: ' + (workflowParam || runParam);
+            outputEl.textContent = 'Starting workflow...\n';
+            // Start streaming this run
+            streamWorkflowOutput(runParam, workflowParam || runParam, outputEl);
+        } else if (outputData) {
             titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> ' + outputData.title;
             if (outputData.html) {
                 outputEl.innerHTML = outputData.html;
@@ -3993,18 +4113,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
         document.getElementById('service-wrapper').style.display = 'flex';
 
-        // Hide workflow selector (not applicable for service logs)
+        // Hide workflow selector and terminal/code toggle (not applicable for service logs)
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
             workflowSelect.style.display = 'none';
         }
-        const showCodeBtn = document.getElementById('showCodeBtn');
-        if (showCodeBtn) {
-            showCodeBtn.style.display = 'none';
-        }
-
         if (document.getElementById('showTerminalBtn')) {
+            document.getElementById('showTerminalBtn').parentElement.style.display = 'none';
             document.getElementById('showTerminalBtn').classList.remove('active');
+        }
+        if (document.getElementById('showCodeBtn')) {
             document.getElementById('showCodeBtn').classList.remove('active');
         }
 
@@ -4110,7 +4228,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
 
     function updateServiceStatus() {
-        if (!currentServiceName) return;
+        if (!currentServiceName || serviceStatusFetching) return;
+        serviceStatusFetching = true;
 
         fetch('/api/v1/services/' + encodeURIComponent(currentServiceName))
             .then(r => r.json())
@@ -4137,11 +4256,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     }
                 }
             })
-            .catch(err => console.error('Error fetching service status:', err));
+            .catch(err => console.error('Error fetching service status:', err))
+            .finally(() => { serviceStatusFetching = false; });
     }
 
     function fetchServiceLogs() {
-        if (!currentServiceName) return;
+        if (!currentServiceName || serviceLogFetching) return;
+        serviceLogFetching = true;
 
         fetch('/api/v1/services/' + encodeURIComponent(currentServiceName) + '/logs?lines=1000')
             .then(r => r.json())
@@ -4255,7 +4376,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 } else {
                     document.getElementById('service-log').textContent = 'Error loading logs: ' + err;
                 }
-            });
+            })
+            .finally(() => { serviceLogFetching = false; });
     }
 
     function parseServiceLogLine(line) {
@@ -4610,18 +4732,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         document.getElementById('service-wrapper').style.display = 'none';
         document.getElementById('logviewer-wrapper').style.display = 'flex';
 
-        // Hide workflow selector (not applicable for log viewers)
+        // Hide workflow selector and terminal/code toggle (not applicable for log viewers)
         const workflowSelect = document.getElementById('workflowSelect');
         if (workflowSelect) {
             workflowSelect.style.display = 'none';
         }
-        const showCodeBtn = document.getElementById('showCodeBtn');
-        if (showCodeBtn) {
-            showCodeBtn.style.display = 'none';
-        }
-
         if (document.getElementById('showTerminalBtn')) {
+            document.getElementById('showTerminalBtn').parentElement.style.display = 'none';
             document.getElementById('showTerminalBtn').classList.remove('active');
+        }
+        if (document.getElementById('showCodeBtn')) {
             document.getElementById('showCodeBtn').classList.remove('active');
         }
 
@@ -4862,7 +4982,6 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         if (!entries || entries.length === 0) return;
 
         const logEl = document.getElementById('logviewer-log');
-        const tbody = document.getElementById('logviewer-log');
 
         // Save current scroll position and height
         const scrollHeightBefore = logEl.scrollHeight;
@@ -4883,20 +5002,35 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         // Prepend to filtered entries if they match filter
         const matchingEntries = entries.filter(e => !logViewerFilter || matchesLogViewerFilter(e, logViewerFilter));
         if (matchingEntries.length > 0) {
-            logViewerFilteredEntries = matchingEntries.concat(logViewerFilteredEntries);
-
-            // Create document fragment for efficient DOM manipulation
-            const fragment = document.createDocumentFragment();
-            for (const entry of matchingEntries) {
-                const row = createLogViewerRow(entry);
-                fragment.appendChild(row);
+            // Adjust entry indices for existing rows (shift by number of new entries)
+            const existingRows = logEl.querySelectorAll('.logviewer-entry');
+            for (const row of existingRows) {
+                const idx = parseInt(row.dataset.entryIndex, 10);
+                if (!isNaN(idx)) {
+                    row.dataset.entryIndex = idx + matchingEntries.length;
+                }
             }
 
-            // Insert at beginning of tbody
-            if (tbody.firstChild) {
-                tbody.insertBefore(fragment, tbody.firstChild);
+            logViewerFilteredEntries = matchingEntries.concat(logViewerFilteredEntries);
+
+            // Render into a document fragment using the shared renderLogEntry()
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < matchingEntries.length; i++) {
+                renderLogEntry(matchingEntries[i], {
+                    container: fragment,
+                    layout: logViewerLayout,
+                    fieldMap: logViewerFieldMap,
+                    formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
+                    onExpand: expandLogViewerEntry,
+                    entryIndex: i
+                });
+            }
+
+            // Insert at beginning
+            if (logEl.firstChild) {
+                logEl.insertBefore(fragment, logEl.firstChild);
             } else {
-                tbody.appendChild(fragment);
+                logEl.appendChild(fragment);
             }
 
             // Restore scroll position (adjust for new content height)
@@ -4904,49 +5038,6 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             const heightDiff = scrollHeightAfter - scrollHeightBefore;
             logEl.scrollTop = scrollTopBefore + heightDiff;
         }
-    }
-
-    function createLogViewerRow(entry) {
-        const row = document.createElement('tr');
-        row.className = 'log-entry';
-        if (entry.level) {
-            row.classList.add('level-' + entry.level.toLowerCase());
-        }
-
-        // Use layout if available
-        const layout = (logViewerLayout && logViewerLayout.length > 0)
-            ? logViewerLayout
-            : [{field: 'timestamp', timestamp: true}, {field: 'level'}, {field: 'message'}];
-
-        for (const col of layout) {
-            const td = document.createElement('td');
-            if (col.width) td.style.width = col.width;
-
-            if (col.kvpairs) {
-                // Render key-value pairs
-                td.innerHTML = renderKvPairs(entry, logViewerFieldMap);
-            } else if (col.timestamp) {
-                const ts = entry.timestamp || entry[logViewerFieldNames.timestamp];
-                td.className = 'log-timestamp';
-                td.setAttribute('data-timestamp', ts || '');
-                td.textContent = formatTimestamp(ts, logViewerTimestampAbsolute);
-            } else {
-                const fieldName = col.field;
-                const mappedField = logViewerFieldMap[fieldName] || fieldName;
-                let value = entry[mappedField] !== undefined ? entry[mappedField] : entry[fieldName];
-                if (value === undefined) value = '';
-                td.textContent = String(value);
-                if (mappedField === 'level' || fieldName === 'level') {
-                    td.className = 'log-level';
-                }
-            }
-            row.appendChild(td);
-        }
-
-        // Click handler for expansion
-        row.onclick = function() { expandLogViewerEntry(entry, row); };
-
-        return row;
     }
 
     function matchesLogViewerFilter(entry, filter) {
@@ -5396,13 +5487,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         throw new Error(`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`Invalid time format: ${input}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`);
     }
 
@@ -5438,63 +5529,63 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         try {
             // Build query URL
             let url = `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`/api/v1/logs/${encodeURIComponent(currentLogViewerName)}/history`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`?start=${encodeURIComponent(startTime)}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`&end=${encodeURIComponent(endTime)}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             if (grep) {
                 url += `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`&grep=${encodeURIComponent(grep)}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             }
             if (before > 0) {
                 url += `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`&before=${before}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             }
             if (after > 0) {
                 url += `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`&after=${after}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             }
 
@@ -5502,13 +5593,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`HTTP ${response.status}`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`);
             }
 
@@ -5545,13 +5636,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             // Update connection status
             const statusEl = document.getElementById('logviewer-status');
             statusEl.textContent = `)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`${data.entries?.length || 0} results`)
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1140
+//line views/terminal.qtpl:1138
 	qw422016.N().S(`;
             statusEl.className = 'logviewer-connection-status text-info';
 
@@ -5591,36 +5682,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5036
+//line views/terminal.qtpl:5119
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5036
+//line views/terminal.qtpl:5119
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 }
 
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 }
 
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 	return qs422016
-//line views/terminal.qtpl:5037
+//line views/terminal.qtpl:5120
 }

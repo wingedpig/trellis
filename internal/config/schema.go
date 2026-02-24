@@ -29,6 +29,12 @@ type Config struct {
 	TraceGroups       []TraceGroupConfig    `json:"trace_groups"`
 	Crashes           CrashesConfig         `json:"crashes"`
 	Proxy             []ProxyListenerConfig `json:"proxy"`
+	Cases             CasesConfig           `json:"cases"`
+}
+
+// CasesConfig configures case objects storage.
+type CasesConfig struct {
+	Dir string `json:"dir"` // Relative to worktree root (default: "trellis/cases")
 }
 
 // LoggingDefaultsConfig provides default parser, derive, and layout settings
@@ -181,13 +187,12 @@ type CrashesConfig struct {
 
 // TerminalConfig configures the terminal system.
 type TerminalConfig struct {
-	Backend        string               `json:"backend"` // "tmux"
-	Tmux           TmuxConfig           `json:"tmux"`
-	DefaultWindows []WindowConfig       `json:"default_windows"`
-	RemoteWindows  []RemoteWindowConfig `json:"remote_windows"`
-	VSCode         *VSCodeConfig        `json:"vscode"`
-	Shortcuts      []ShortcutConfig     `json:"shortcuts"`
-	Links          []LinkConfig         `json:"links"`
+	Backend       string               `json:"backend"` // "tmux"
+	Tmux          TmuxConfig           `json:"tmux"`
+	RemoteWindows []RemoteWindowConfig `json:"remote_windows"`
+	VSCode        *VSCodeConfig        `json:"vscode"`
+	Shortcuts     []ShortcutConfig     `json:"shortcuts"`
+	Links         []LinkConfig         `json:"links"`
 }
 
 // LinkConfig defines a link that appears in the terminal picker.
@@ -212,12 +217,6 @@ type ShortcutConfig struct {
 type TmuxConfig struct {
 	HistoryLimit int    `json:"history_limit"`
 	Shell        string `json:"shell"`
-}
-
-// WindowConfig defines a terminal window.
-type WindowConfig struct {
-	Name    string `json:"name"`
-	Command string `json:"command"`
 }
 
 // RemoteWindowConfig defines a remote terminal window.

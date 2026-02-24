@@ -141,28 +141,42 @@ func (p *TraceReportPage) StreamRender(qw422016 *qt422016.Writer) {
     </div>
 </div>
 
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="/trace" class="btn btn-secondary">
+        <i class="fa-solid fa-arrow-left"></i> Back to Traces
+    </a>
+    <div>
+        <button class="btn btn-outline-primary me-2" onclick="showSaveToCase()">
+            <i class="fa-solid fa-briefcase"></i> Save to Case
+        </button>
+        <button class="btn btn-outline-danger" onclick="deleteAndGoBack()">
+            <i class="fa-solid fa-trash"></i> Delete Report
+        </button>
+    </div>
+</div>
+
 <!-- Log Entries -->
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="fa-solid fa-list"></i> Log Entries (`)
-//line views/trace_report.qtpl:80
+//line views/trace_report.qtpl:94
 	qw422016.N().D(len(p.Report.Entries))
-//line views/trace_report.qtpl:80
+//line views/trace_report.qtpl:94
 	qw422016.N().S(`)</span>
     </div>
     <div class="card-body p-0">
         `)
-//line views/trace_report.qtpl:83
+//line views/trace_report.qtpl:97
 	if len(p.Report.Entries) == 0 {
-//line views/trace_report.qtpl:83
+//line views/trace_report.qtpl:97
 		qw422016.N().S(`
         <div class="alert alert-info m-3">
             <i class="fa-solid fa-info-circle"></i> No log entries found for this trace.
         </div>
         `)
-//line views/trace_report.qtpl:87
+//line views/trace_report.qtpl:101
 	} else {
-//line views/trace_report.qtpl:87
+//line views/trace_report.qtpl:101
 		qw422016.N().S(`
         <div class="trace-filter-bar">
             <i class="fa-solid fa-search text-muted"></i>
@@ -186,33 +200,24 @@ func (p *TraceReportPage) StreamRender(qw422016 *qt422016.Writer) {
             </div>
         </div>
         `)
-//line views/trace_report.qtpl:109
+//line views/trace_report.qtpl:123
 	}
-//line views/trace_report.qtpl:109
+//line views/trace_report.qtpl:123
 	qw422016.N().S(`
     </div>
-</div>
-
-<div class="mt-3">
-    <a href="/trace" class="btn btn-secondary">
-        <i class="fa-solid fa-arrow-left"></i> Back to Traces
-    </a>
-    <button class="btn btn-outline-danger float-end" onclick="deleteAndGoBack()">
-        <i class="fa-solid fa-trash"></i> Delete Report
-    </button>
 </div>
 
 <script>
 // Uses shared functions from /static/js/logviewer.js
 var allEntries = `)
-//line views/trace_report.qtpl:124
+//line views/trace_report.qtpl:129
 	qw422016.N().S(p.EntriesJSON())
-//line views/trace_report.qtpl:124
+//line views/trace_report.qtpl:129
 	qw422016.N().S(`;
 var logViewers = `)
-//line views/trace_report.qtpl:125
+//line views/trace_report.qtpl:130
 	qw422016.N().S(p.LogViewersJSON())
-//line views/trace_report.qtpl:125
+//line views/trace_report.qtpl:130
 	qw422016.N().S(`;
 var filteredEntries = [];
 var selectedEntry = null;
@@ -304,9 +309,9 @@ function toggleTimestampFormat() {
 function deleteAndGoBack() {
     if (!confirm('Delete this trace report?')) return;
     fetch('/api/v1/trace/reports/`)
-//line views/trace_report.qtpl:215
+//line views/trace_report.qtpl:220
 	qw422016.E().S(p.Report.Name)
-//line views/trace_report.qtpl:215
+//line views/trace_report.qtpl:220
 	qw422016.N().S(`', { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -377,42 +382,194 @@ function formatTimeRange(startISO, endISO) {
 })();
 </script>
 
+<!-- Save to Case Modal -->
+<div class="modal fade" id="saveToCaseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-briefcase"></i> Save Trace to Case</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="traceCaseWorktree" class="form-label">Worktree</label>
+                    <select class="form-select" id="traceCaseWorktree" onchange="onTraceCaseWorktreeChange()"></select>
+                </div>
+                <div class="mb-3">
+                    <label for="traceCaseSelect" class="form-label">Case</label>
+                    <select class="form-select" id="traceCaseSelect" onchange="onTraceCaseSelectChange()" disabled></select>
+                </div>
+                <div id="traceCaseNewFields" style="display:none;">
+                    <div class="mb-3">
+                        <label for="traceCaseNewTitle" class="form-label">New Case Title</label>
+                        <input type="text" class="form-control" id="traceCaseNewTitle" placeholder="Bug investigation">
+                    </div>
+                    <div class="mb-3">
+                        <label for="traceCaseNewKind" class="form-label">Kind</label>
+                        <select class="form-select" id="traceCaseNewKind">
+                            <option value="task">Task</option>
+                            <option value="bug">Bug</option>
+                            <option value="feature">Feature</option>
+                            <option value="investigation" selected>Investigation</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveToCaseConfirm()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var TRACE_REPORT_NAME = '`)
+//line views/trace_report.qtpl:332
+	qw422016.E().S(JSAttr(p.Report.Name))
+//line views/trace_report.qtpl:332
+	qw422016.N().S(`';
+
+function showSaveToCase() {
+    fetch('/api/v1/nav/options')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var opts = data.data || data;
+        var wts = opts.worktrees || [];
+        var select = document.getElementById('traceCaseWorktree');
+        select.innerHTML = '<option value="">-- Select a worktree --</option>';
+        for (var i = 0; i < wts.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = wts[i].name;
+            opt.textContent = wts[i].name;
+            select.appendChild(opt);
+        }
+        document.getElementById('traceCaseSelect').innerHTML = '';
+        document.getElementById('traceCaseSelect').disabled = true;
+        document.getElementById('traceCaseNewFields').style.display = 'none';
+        var modal = new bootstrap.Modal(document.getElementById('saveToCaseModal'));
+        modal.show();
+    })
+    .catch(function(err) { alert('Failed to load worktrees: ' + err); });
+}
+
+function onTraceCaseWorktreeChange() {
+    var wt = document.getElementById('traceCaseWorktree').value;
+    var select = document.getElementById('traceCaseSelect');
+    if (!wt) {
+        select.innerHTML = '';
+        select.disabled = true;
+        return;
+    }
+    fetch('/api/v1/cases/' + encodeURIComponent(wt))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var cases = data.data || data || [];
+        select.innerHTML = '<option value="">-- Select a case --</option>';
+        for (var i = 0; i < cases.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = cases[i].id;
+            opt.textContent = '[' + cases[i].kind + '] ' + cases[i].title;
+            select.appendChild(opt);
+        }
+        select.innerHTML += '<option value="__new__">+ Create new case...</option>';
+        select.disabled = false;
+        document.getElementById('traceCaseNewFields').style.display = 'none';
+    })
+    .catch(function(err) { alert('Failed to load cases: ' + err); });
+}
+
+function onTraceCaseSelectChange() {
+    var val = document.getElementById('traceCaseSelect').value;
+    document.getElementById('traceCaseNewFields').style.display = (val === '__new__') ? 'block' : 'none';
+}
+
+function saveToCaseConfirm() {
+    var wt = document.getElementById('traceCaseWorktree').value;
+    var selectVal = document.getElementById('traceCaseSelect').value;
+    if (!wt) { alert('Please select a worktree'); return; }
+
+    if (selectVal === '__new__') {
+        var newTitle = document.getElementById('traceCaseNewTitle').value.trim();
+        var newKind = document.getElementById('traceCaseNewKind').value;
+        if (!newTitle) { alert('Title is required'); return; }
+        fetch('/api/v1/cases/' + encodeURIComponent(wt), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title: newTitle, kind: newKind})
+        })
+        .then(function(r) {
+            if (!r.ok) return r.json().then(function(d) { throw new Error(d.error && d.error.message || 'Create failed'); });
+            return r.json();
+        })
+        .then(function(data) {
+            var c = data.data || data;
+            return doLinkTrace(wt, c.id);
+        })
+        .catch(function(err) { alert('Failed: ' + err); });
+    } else if (selectVal) {
+        doLinkTrace(wt, selectVal);
+    } else {
+        alert('Please select a case');
+    }
+}
+
+function doLinkTrace(worktree, caseId) {
+    return fetch('/api/v1/cases/' + encodeURIComponent(worktree) + '/' + encodeURIComponent(caseId) + '/trace', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            report_name: TRACE_REPORT_NAME
+        })
+    })
+    .then(function(r) {
+        if (!r.ok) return r.json().then(function(d) { throw new Error(d.error && d.error.message || 'Link failed'); });
+        return r.json();
+    })
+    .then(function() {
+        bootstrap.Modal.getInstance(document.getElementById('saveToCaseModal')).hide();
+        alert('Trace report saved to case.');
+    })
+    .catch(function(err) { alert('Save failed: ' + err); });
+}
+</script>
+
 `)
-//line views/trace_report.qtpl:285
+//line views/trace_report.qtpl:438
 	p.StreamFooter(qw422016)
-//line views/trace_report.qtpl:285
+//line views/trace_report.qtpl:438
 	qw422016.N().S(`
 `)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 }
 
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 func (p *TraceReportPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	p.StreamRender(qw422016)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	qt422016.ReleaseWriter(qw422016)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 }
 
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 func (p *TraceReportPage) Render() string {
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	p.WriteRender(qb422016)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	qs422016 := string(qb422016.B)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 	return qs422016
-//line views/trace_report.qtpl:286
+//line views/trace_report.qtpl:439
 }
 
-//line views/trace_report.qtpl:289
+//line views/trace_report.qtpl:442
 func levelBadgeClass(level string) string {
 	switch level {
 	case "ERROR", "error", "ERR":

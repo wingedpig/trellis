@@ -70,11 +70,6 @@ Trellis searches for configuration in this order:
       history_limit: 50000
       shell: "/bin/zsh"
     }
-    default_windows: [
-      { name: "shell" }
-      { name: "claude" }
-      { name: "dev" }
-    ]
     shortcuts: [
       { key: "cmd+l", window: "~prod-logs" }
     ]
@@ -97,6 +92,10 @@ Trellis searches for configuration in this order:
     reports_dir: ".trellis/crashes"
     max_age: "7d"
     max_count: 100
+  }
+
+  cases: {
+    dir: "trellis/cases"
   }
 
   trace: {
@@ -515,7 +514,7 @@ workflows: [
         type: "datepicker"
         label: "Deploy Date"
         description: "Scheduled deployment date"
-        // default: "2024-01-15"  // Optional, defaults to today
+        // default: "2026-01-15"  // Optional, defaults to today
       }
       {
         name: "dry_run"
@@ -565,7 +564,7 @@ Input values are available in command and confirm_message templates via `{{ .Inp
 }
 ```
 
-The datepicker defaults to today's date if no default is specified. Date values are passed as `YYYY-MM-DD` strings (e.g., `2024-01-15`).
+The datepicker defaults to today's date if no default is specified. Date values are passed as `YYYY-MM-DD` strings (e.g., `2026-01-15`).
 
 ### terminal
 
@@ -577,11 +576,6 @@ terminal: {
     history_limit: 50000
     shell: "/bin/sh"              // Default shell
   }
-
-  default_windows: [
-    { name: "shell" }
-    { name: "claude", command: "claude" }
-  ]
 
   remote_windows: [
     // Option 1: SSH host + tmux session (auto-builds command)
@@ -707,6 +701,18 @@ crashes: {
 }
 ```
 
+### cases
+
+```hjson
+cases: {
+  dir: "trellis/cases"        // Cases directory relative to worktree root
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `dir` | `"trellis/cases"` | Directory for case storage, relative to worktree root. Archived cases are stored in a sibling `-archived` directory (e.g., `trellis/cases-archived/`). |
+
 ### logging_defaults
 
 ```hjson
@@ -760,6 +766,7 @@ events: {
 ```hjson
 ui: {
   theme: "auto"                   // "light", "dark", "auto"
+  log_terminal: "dev"             // Default terminal window for Cmd+L jump
 
   terminal: {
     font_family: "Monaco, monospace"

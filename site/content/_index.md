@@ -1,4 +1,4 @@
 ---
-title: "Trellis - One workflow for building and running systems"
+title: "Trellis — Development control plane"
 ---
 

@@ -202,7 +202,10 @@ func (r *RealRunner) RunWithOptions(ctx context.Context, id string, opts RunOpti
 	}
 
 	// Validate inputs against workflow constraints
-	if len(wf.Inputs) > 0 && opts.Inputs != nil {
+	if len(wf.Inputs) > 0 {
+		if opts.Inputs == nil {
+			opts.Inputs = make(map[string]any)
+		}
 		if err := ValidateInputs(wf.Inputs, opts.Inputs); err != nil {
 			return nil, err
 		}
@@ -335,8 +338,8 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 		return
 	}
 
-	// Expand command templates with inputs
-	if len(opts.Inputs) > 0 {
+	// Expand command templates with inputs (always expand to catch unresolved placeholders)
+	if len(wf.Inputs) > 0 {
 		var err error
 		commands, err = expandCommandsWithInputs(commands, opts.Inputs)
 		if err != nil {

@@ -282,8 +282,8 @@ func TestProcess_WorkDir(t *testing.T) {
 }
 
 func TestProcess_OnExit_Callback(t *testing.T) {
-	var callbackCalled atomic.Bool
-	var exitCode int
+	var exitCode atomic.Int32
+	callbackDone := make(chan struct{})
 
 	cfg := config.ServiceConfig{
 		Name:    "test-service",
@@ -293,18 +293,21 @@ func TestProcess_OnExit_Callback(t *testing.T) {
 
 	proc := NewProcess(cfg, nil)
 	proc.OnExit(func(code int) {
-		callbackCalled.Store(true)
-		exitCode = code
+		exitCode.Store(int32(code))
+		close(callbackDone)
 	})
 
 	err := proc.Start(context.Background())
 	require.NoError(t, err)
 
 	// Wait for exit callback
-	time.Sleep(300 * time.Millisecond)
+	select {
+	case <-callbackDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for exit callback")
+	}
 
-	assert.True(t, callbackCalled.Load())
-	assert.Equal(t, 42, exitCode)
+	assert.Equal(t, int32(42), exitCode.Load())
 }
 
 func TestProcess_Restart(t *testing.T) {

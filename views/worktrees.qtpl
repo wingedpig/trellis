@@ -10,13 +10,30 @@ type WorktreesPage struct {
     Active      *worktree.WorktreeInfo
     ProjectName string
     BinariesDir string
+    Version     string
 }
 %}
 
 {% func (p *WorktreesPage) Render() %}
 {%= p.Header() %}
 
-<h2 class="mb-4"><i class="fa-solid fa-code-branch"></i> Worktrees</h2>
+<main>
+<div class="hero">
+    <div class="container">
+        <img src="https://trellis.dev/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
+        <p class="lead">A web-based control plane for your development environment</p>
+        <p class="text-muted">Rapidly switch between worktrees, terminals, locally running services, and local or remote logs using tmux, SSH, and keyboard-driven pickers—instead of a collection of disconnected tools.</p>
+        {% if p.Version != "" %}<p class="text-muted mb-2">v{%s p.Version %}</p>{% endif %}
+        <div class="mt-4">
+            <a href="https://trellis.dev/docs/" class="btn btn-primary btn-lg me-2"><i class="fa-solid fa-book"></i> Documentation</a>
+            <a href="https://github.com/wingedpig/trellis" class="btn btn-outline-secondary btn-lg me-2" target="_blank"><i class="fa-brands fa-github"></i> GitHub</a>
+            <a href="https://groups.io/g/trellis" class="btn btn-outline-secondary btn-lg" target="_blank"><i class="fa-solid fa-envelope"></i> Email Group</a>
+        </div>
+    </div>
+</div>
+</main>
+
+<h5 class="mb-3"><i class="fa-solid fa-code-branch"></i> Worktrees</h5>
 
 <p>Current worktree: <strong>{% if p.Active != nil %}{%s p.Active.Name() %}{% else %}None{% endif %}</strong></p>
 
@@ -24,7 +41,7 @@ type WorktreesPage struct {
     {% for _, wt := range p.Worktrees %}
     {% code isActive := p.Active != nil && p.Active.Path == wt.Path %}
     {% code isMain := wt.Name() == p.ProjectName %}
-    <div class="list-group-item {% if isActive %}active{% endif %}">
+    <div class="list-group-item {% if isActive %}active{% endif %}" data-worktree-path="{%s wt.Path %}">
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 {% if isActive %}
@@ -34,6 +51,7 @@ type WorktreesPage struct {
                 {% endif %}
                 {%s wt.Name() %}
                 {% if isActive %} (current){% endif %}
+                <span class="wt-status">
                 {% if wt.Dirty %}
                 <span class="badge bg-danger ms-2" title="Uncommitted changes">
                     <i class="fa-solid fa-pencil"></i> dirty
@@ -48,6 +66,7 @@ type WorktreesPage struct {
                 {% if wt.Detached %}
                 <span class="badge bg-secondary ms-2">Detached</span>
                 {% endif %}
+                </span>
                 <br>
                 <small class="text-muted">Branch: {%s wt.Branch %}</small>
             </div>
@@ -328,7 +347,7 @@ function switchWorktree(name) {
                 heading.textContent = 'Hook Results:';
                 container.appendChild(heading);
 
-                data.hook_results.forEach(function(hook) {
+                hook_results.forEach(function(hook) {
                     var hookDiv = document.createElement('div');
                     hookDiv.className = 'card mb-2';
                     hookDiv.innerHTML = '<div class="card-header d-flex justify-content-between align-items-center py-2">' +
@@ -524,6 +543,33 @@ document.getElementById('branchName').addEventListener('input', function(e) {
     document.getElementById('branchPreview').textContent = value;
     document.getElementById('dirPreview').textContent = repoName;
 });
+
+// Async refresh of worktree dirty/ahead/behind status
+fetch('/api/v1/worktrees')
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        var worktrees = (resp.data && resp.data.worktrees) || [];
+        worktrees.forEach(function(wt) {
+            var el = document.querySelector('[data-worktree-path="' + CSS.escape(wt.Path) + '"]');
+            if (!el) return;
+            var statusEl = el.querySelector('.wt-status');
+            if (!statusEl) return;
+            var html = '';
+            if (wt.Dirty) {
+                html += '<span class="badge bg-danger ms-2" title="Uncommitted changes"><i class="fa-solid fa-pencil"></i> dirty</span>';
+            }
+            if (wt.Ahead > 0 || wt.Behind > 0) {
+                html += '<span class="badge bg-info text-dark ms-2" title="Commits ahead/behind main">';
+                if (wt.Ahead > 0) html += '<i class="fa-solid fa-arrow-up"></i>' + wt.Ahead;
+                if (wt.Behind > 0) html += '<i class="fa-solid fa-arrow-down"></i>' + wt.Behind;
+                html += '</span>';
+            }
+            if (wt.Detached) {
+                html += '<span class="badge bg-secondary ms-2">Detached</span>';
+            }
+            statusEl.innerHTML = html;
+        });
+    });
 </script>
 
 {%= p.Footer() %}

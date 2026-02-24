@@ -183,14 +183,6 @@ func (v *Validator) validateTerminal(cfg *Config, errs *ValidationError) {
 	if cfg.Terminal.Backend != "" && cfg.Terminal.Backend != "tmux" {
 		errs.Add("terminal.backend", "must be 'tmux' (only supported backend)")
 	}
-
-	for i, win := range cfg.Terminal.DefaultWindows {
-		prefix := fmt.Sprintf("terminal.default_windows[%d]", i)
-
-		if win.Name == "" {
-			errs.Add(prefix+".name", "window name is required")
-		}
-	}
 }
 
 func (v *Validator) validateLogging(cfg *Config, errs *ValidationError) {

@@ -50,6 +50,31 @@ func JSAttr(s string) string {
 	return s
 }
 
+// FormatRelativeTime formats a time as a human-readable relative string.
+func FormatRelativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1 minute ago"
+		}
+		return strconv.Itoa(m) + " minutes ago"
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1 hour ago"
+		}
+		return strconv.Itoa(h) + " hours ago"
+	case d < 48*time.Hour:
+		return "yesterday"
+	default:
+		return t.Format("Jan 2")
+	}
+}
+
 type BasePage struct {
 	Title    string
 	Worktree *worktree.WorktreeInfo
@@ -81,9 +106,9 @@ func (p *BasePage) BranchName() string {
 // mode: "page" for regular pages (navigation via href), "terminal" for fullscreen terminal (in-place switching)
 // The terminal mode expects global functions: switchTerminal(), showLogViewer(), showService()
 
-//line views/header.qtpl:56
+//line views/header.qtpl:81
 func StreamNavScript(qw422016 *qt422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:56
+//line views/header.qtpl:81
 	qw422016.N().S(`
 <script>
 // ============================================
@@ -92,20 +117,20 @@ func StreamNavScript(qw422016 *qt422016.Writer, sessionID, shortcutsJSON, mode s
 
 window.TrellisNav = (function() {
     const NAV_MODE = '`)
-//line views/header.qtpl:63
+//line views/header.qtpl:88
 	qw422016.E().S(JSAttr(mode))
-//line views/header.qtpl:63
+//line views/header.qtpl:88
 	qw422016.N().S(`';
     const SESSION_ID = '`)
-//line views/header.qtpl:64
+//line views/header.qtpl:89
 	qw422016.E().S(JSAttr(sessionID))
-//line views/header.qtpl:64
+//line views/header.qtpl:89
 	qw422016.N().S(`';
     // Start with shortcuts from page (terminal page passes these), will be updated from API
     let CUSTOM_SHORTCUTS = `)
-//line views/header.qtpl:66
+//line views/header.qtpl:91
 	qw422016.N().S(shortcutsJSON)
-//line views/header.qtpl:66
+//line views/header.qtpl:91
 	qw422016.N().S(`;
 
     // Theme management
@@ -141,8 +166,8 @@ window.TrellisNav = (function() {
 
     // Shared page definitions
     const NAV_PAGES = [
+        { value: '/', text: '/Home', icon: 'folder-tree' },
         { value: '/status', text: '/Status', icon: 'server' },
-        { value: '/worktrees', text: '/Worktrees', icon: 'code-branch' },
         { value: '/trace', text: '/Trace', icon: 'magnifying-glass-location' },
         { value: '/crashes', text: '/Crashes', icon: 'skull-crossbones' },
         { value: '/events', text: '/Events', icon: 'clock-rotate-left' }
@@ -166,6 +191,11 @@ window.TrellisNav = (function() {
             return '~' + decodeURIComponent(url.substring('/terminal/logviewer/'.length)) + ' - logs';
         } else if (url.startsWith('/trace/report/')) {
             return '/Trace: ' + url.substring('/trace/report/'.length);
+        } else if (url.startsWith('/worktree/')) {
+            return '@' + decodeURIComponent(url.substring('/worktree/'.length)) + ' - Home';
+        } else if (url.startsWith('/claude/')) {
+            const parts = url.substring('/claude/'.length).split('/');
+            return '@' + decodeURIComponent(parts[0]) + ' - Claude';
         }
         return null;
     }
@@ -192,13 +222,30 @@ window.TrellisNav = (function() {
     function formatNavOption(option) {
         if (!option.element) return option.text;
         const el = option.element;
+        let icon = '';
+        if (el.dataset.isClaude === 'true') {
+            icon = '<i class="fa-solid fa-robot" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isTerminal === 'true') {
+            icon = '<i class="fa-solid fa-terminal" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isWorktree === 'true') {
+            icon = '<i class="fa-solid fa-folder-tree" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isLogViewer === 'true') {
+            icon = '<i class="fa-solid fa-file-lines" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isLink === 'true') {
+            icon = '<i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:6px;opacity:0.7;"></i>';
+        } else if (el.dataset.isPage === 'true') {
+            icon = '<i class="fa-solid fa-compass" style="margin-right:6px;opacity:0.7;"></i>';
+        }
         if (el.dataset.serviceStatus) {
             let color = '#6c757d';
             if (el.dataset.serviceStatus === 'running') color = '#56AB2F';
             else if (el.dataset.serviceStatus === 'crashed') color = '#dc3545';
             else if (el.dataset.serviceStatus === 'stopped') color = '#6c757d';
             else if (el.dataset.serviceStatus === 'starting') color = '#0dcaf0';
-            return $('<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:6px;"></span>' + option.text + '</span>');
+            icon = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:6px;"></span>';
+        }
+        if (icon) {
+            return $('<span>' + icon + option.text + '</span>');
         }
         return option.text;
     }
@@ -296,7 +343,8 @@ window.TrellisNav = (function() {
             placeholder: 'Select from history...',
             allowClear: false,
             width: '300px',
-            templateResult: formatNavOption
+            templateResult: formatNavOption,
+                    templateSelection: formatNavOption
         }).on('select2:select', function() {
             handleNavSelection();
             exitHistoryMode();
@@ -333,7 +381,8 @@ window.TrellisNav = (function() {
         $('#navSelect').select2('destroy').select2({
             placeholder: 'Navigate...',
             width: '280px',
-            templateResult: formatNavOption
+            templateResult: formatNavOption,
+                    templateSelection: formatNavOption
         }).on('select2:select', handleNavSelection);
     }
 
@@ -485,16 +534,86 @@ window.TrellisNav = (function() {
 
                 // Add options from API response
                 if (data.data) {
-                    if (data.data.terminals) {
-                        for (const term of data.data.terminals) {
+                    // Group by worktree: home page, then local terminals, then Claude sessions
+                    const localTerminals = (data.data.terminals || []).filter(t => !t.isRemote);
+                    const remoteTerminals = (data.data.terminals || []).filter(t => t.isRemote);
+                    const claudeSessions = data.data.claudeSessions || [];
+                    const worktrees = data.data.worktrees || [];
+
+                    // Build a map of worktree name -> items
+                    const wtNames = worktrees.map(wt => wt.name);
+                    for (const wtData of worktrees) {
+                        // Worktree home page
+                        const wtOpt = document.createElement('option');
+                        wtOpt.value = wtData.url;
+                        wtOpt.dataset.isPage = 'true';
+                        wtOpt.dataset.isWorktree = 'true';
+                        wtOpt.textContent = '@' + wtData.display + ' - Home';
+                        select.appendChild(wtOpt);
+
+                        // Local terminals for this worktree
+                        for (const term of localTerminals) {
+                            if (term.url.startsWith('/terminal/local/' + wtData.name + '/')) {
+                                const opt = document.createElement('option');
+                                opt.value = term.url;
+                                opt.dataset.isTerminal = 'true';
+                                opt.dataset.isRemote = 'false';
+                                opt.textContent = term.display;
+                                select.appendChild(opt);
+                            }
+                        }
+
+                        // Claude sessions for this worktree
+                        for (const sess of claudeSessions) {
+                            if (sess.worktree === wtData.name) {
+                                const opt = document.createElement('option');
+                                opt.value = sess.url;
+                                opt.dataset.isPage = 'true';
+                                opt.dataset.isClaude = 'true';
+
+                                opt.textContent = sess.display;
+                                select.appendChild(opt);
+                            }
+                        }
+                    }
+
+                    // Local terminals not matching any known worktree
+                    for (const term of localTerminals) {
+                        const matched = wtNames.some(n => term.url.startsWith('/terminal/local/' + n + '/'));
+                        if (!matched) {
                             const opt = document.createElement('option');
                             opt.value = term.url;
                             opt.dataset.isTerminal = 'true';
-                            opt.dataset.isRemote = term.isRemote ? 'true' : 'false';
+                            opt.dataset.isRemote = 'false';
                             opt.textContent = term.display;
                             select.appendChild(opt);
                         }
                     }
+
+                    // Claude sessions not matching any known worktree
+                    for (const sess of claudeSessions) {
+                        const matched = wtNames.some(n => sess.worktree === n);
+                        if (!matched) {
+                            const opt = document.createElement('option');
+                            opt.value = sess.url;
+                            opt.dataset.isPage = 'true';
+                            opt.dataset.isClaude = 'true';
+                            opt.dataset.claudeRunning = sess.running ? 'true' : 'false';
+                            opt.textContent = sess.display;
+                            select.appendChild(opt);
+                        }
+                    }
+
+                    // Remote terminals
+                    for (const term of remoteTerminals) {
+                        const opt = document.createElement('option');
+                        opt.value = term.url;
+                        opt.dataset.isTerminal = 'true';
+                        opt.dataset.isRemote = 'true';
+                        opt.textContent = term.display;
+                        select.appendChild(opt);
+                    }
+
                     if (data.data.services) {
                         for (const svc of data.data.services) {
                             const opt = document.createElement('option');
@@ -546,7 +665,8 @@ window.TrellisNav = (function() {
                 $('#navSelect').select2({
                     placeholder: 'Navigate...',
                     width: '280px',
-                    templateResult: formatNavOption
+                    templateResult: formatNavOption,
+                    templateSelection: formatNavOption
                 }).on('select2:select', handleNavSelection);
 
                 // Set current page as selected
@@ -741,38 +861,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 }
 
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 }
 
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 	return qs422016
-//line views/header.qtpl:700
+//line views/header.qtpl:820
 }
 
-//line views/header.qtpl:702
+//line views/header.qtpl:822
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:702
+//line views/header.qtpl:822
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -780,9 +900,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:708
+//line views/header.qtpl:828
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:708
+//line views/header.qtpl:828
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -846,25 +966,25 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:770
+//line views/header.qtpl:890
 	if p.Worktree != nil {
-//line views/header.qtpl:770
+//line views/header.qtpl:890
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:772
+//line views/header.qtpl:892
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:772
+//line views/header.qtpl:892
 		qw422016.N().S(` (`)
-//line views/header.qtpl:772
+//line views/header.qtpl:892
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:772
+//line views/header.qtpl:892
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:774
+//line views/header.qtpl:894
 	}
-//line views/header.qtpl:774
+//line views/header.qtpl:894
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -921,74 +1041,74 @@ function showShortcutHelp() {
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="/static/js/logviewer.js"></script>
 `)
-//line views/header.qtpl:829
+//line views/header.qtpl:949
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:829
+//line views/header.qtpl:949
 	qw422016.N().S(`
 `)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 }
 
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 }
 
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 func (p *BasePage) Header() string {
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 	return qs422016
-//line views/header.qtpl:830
+//line views/header.qtpl:950
 }
 
-//line views/header.qtpl:832
+//line views/header.qtpl:952
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:832
+//line views/header.qtpl:952
 	qw422016.N().S(`
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 `)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 }
 
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 }
 
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 	return qs422016
-//line views/header.qtpl:837
+//line views/header.qtpl:957
 }

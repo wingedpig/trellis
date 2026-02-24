@@ -27,6 +27,18 @@ Trellis runs and supervises the local instances of the services that make up you
 
 You can tail and search the logs produced by those locally running components directly from the Trellis UI.
 
+### Reverse Proxy
+
+Trellis can run reverse proxy listeners that mirror your production routing (e.g., Caddy or nginx) locally. Route requests to different backend services by path, with optional Tailscale TLS or custom certificates.
+
+### Claude Code Integration
+
+Each worktree can have multiple Claude Code chat sessions. You can interact with Claude directly in the Trellis web UI, save transcripts to cases for later reference, and continue previous conversations.
+
+### Cases
+
+Cases track units of work—bugs, features, investigations—within a worktree. Attach notes, links, Claude transcripts, and trace reports to build a durable record of your investigation or task.
+
 ---
 
 ## Remote Systems (Over SSH)
@@ -76,4 +88,6 @@ Common actions—switching context, opening terminals, running commands—are bo
 | **Workflow** | A predefined command or sequence of commands you run frequently—builds, tests, deployments. Workflows can have input parameters and run from the UI or CLI. |
 | **Trace Group** | A named collection of log viewers that are searched together during distributed tracing. Allows correlating events across multiple systems by trace ID. |
 | **Remote Window** | An SSH terminal to a remote server, displayed in the same UI as local terminals. In the picker, remote windows appear as `!name`. |
+| **Claude Session** | An AI chat session powered by Claude Code, scoped to a worktree. Accessible via the navigation picker with `@` prefix and a robot icon. |
+| **Case** | A durable work item (bug, feature, investigation, task) stored per-worktree with notes, links, Claude transcripts, and saved trace reports. |
 | **Picker** | The fuzzy-search popup (`Cmd+P`) for quickly navigating to any terminal, service, log viewer, or page. |
