@@ -11,10 +11,12 @@
         {{ if .Pages }}
         <div class="list-group mt-4">
           {{ range .Pages }}
+          {{ if ne .Params.layout "docs-all" }}
           <a href="{{ .RelPermalink }}" class="list-group-item list-group-item-action">
             <h5 class="mb-1">{{ .Title }}</h5>
             {{ if .Description }}<p class="mb-0 text-muted small">{{ .Description }}</p>{{ end }}
           </a>
+          {{ end }}
           {{ end }}
         </div>
         {{ end }}

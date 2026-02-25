@@ -1,0 +1,104 @@
+{{ define "head" }}
+<style>
+  .docs-all-section {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--trellis-card-border);
+  }
+  .docs-all-section:last-child {
+    border-bottom: none;
+  }
+  .docs-all-toc {
+    position: sticky;
+    top: 80px;
+    height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+  .docs-all-toc .nav-link {
+    color: var(--trellis-text-muted);
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+  }
+  .docs-all-toc .nav-link:hover {
+    color: var(--bs-primary);
+  }
+  .docs-all-toc .nav-link.fw-bold {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-top: 0.5rem;
+  }
+  .docs-all-toc .ms-3 .nav-link {
+    font-size: 0.85rem;
+    padding: 0.15rem 0;
+  }
+</style>
+{{ end }}
+
+{{ define "main" }}
+{{ $docsRoot := .Site.GetPage "/docs" }}
+<div class="container py-4">
+  <div class="row">
+    {{/* Sidebar TOC */}}
+    <div class="col-lg-3 d-none d-lg-block">
+      <nav class="docs-all-toc">
+        <ul class="nav flex-column">
+          {{/* Top-level pages */}}
+          {{ range $docsRoot.Pages }}
+          {{ if and (not .IsSection) (ne .Params.layout "docs-all") }}
+          <li class="nav-item">
+            <a class="nav-link" href="#{{ .File.ContentBaseName }}">{{ .Title }}</a>
+          </li>
+          {{ end }}
+          {{ end }}
+
+          {{/* Sections */}}
+          {{ range $docsRoot.Sections }}
+          <li class="nav-item mt-2">
+            <a class="nav-link fw-bold" href="#section-{{ .File.ContentBaseName }}">{{ .Title }}</a>
+            <ul class="nav flex-column ms-3">
+              {{ range .Pages }}
+              <li class="nav-item">
+                <a class="nav-link" href="#{{ .File.ContentBaseName }}">{{ .Title }}</a>
+              </li>
+              {{ end }}
+            </ul>
+          </li>
+          {{ end }}
+        </ul>
+      </nav>
+    </div>
+
+    {{/* Content */}}
+    <div class="col-lg-9">
+      <div class="docs-content">
+        <h1 class="mb-4">{{ .Title }}</h1>
+
+        {{/* Top-level pages */}}
+        {{ range $docsRoot.Pages }}
+        {{ if and (not .IsSection) (ne .Params.layout "docs-all") }}
+        <div class="docs-all-section" id="{{ .File.ContentBaseName }}">
+          {{ .Content }}
+        </div>
+        {{ end }}
+        {{ end }}
+
+        {{/* Sections */}}
+        {{ range $docsRoot.Sections }}
+        <div class="docs-all-section" id="section-{{ .File.ContentBaseName }}">
+          <h1 style="border-bottom: 1px solid var(--trellis-card-border); padding-bottom: 0.5rem;">{{ .Title }}</h1>
+
+          {{/* Section child pages */}}
+          {{ range .Pages }}
+          <div class="docs-all-section" id="{{ .File.ContentBaseName }}">
+            {{ .Content }}
+          </div>
+          {{ end }}
+        </div>
+        {{ end }}
+
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}

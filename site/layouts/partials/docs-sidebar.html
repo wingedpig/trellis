@@ -5,7 +5,7 @@
   <ul class="nav flex-column">
     {{/* Top-level pages (overview, install, quickstart) */}}
     {{ range $docsRoot.Pages }}
-    {{ if not .IsSection }}
+    {{ if and (not .IsSection) (ne .Params.layout "docs-all") }}
     <li class="nav-item">
       <a class="nav-link{{ if eq $.RelPermalink .RelPermalink }} active{{ end }}" href="{{ .RelPermalink }}">{{ .Title }}</a>
     </li>
@@ -25,6 +25,10 @@
       </ul>
     </li>
     {{ end }}
+
+    <li class="nav-item mt-3" style="border-top: 1px solid var(--trellis-card-border); padding-top: 0.5rem;">
+      <a class="nav-link{{ if eq $.RelPermalink "/docs/all/" }} active{{ end }}" href="/docs/all/"><i class="fa-solid fa-file-lines me-1"></i> Single page</a>
+    </li>
   </ul>
 </nav>
 {{ end }}

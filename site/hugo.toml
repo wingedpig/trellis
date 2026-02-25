@@ -9,6 +9,14 @@ canonifyURLs = true
   description = "A web-based control plane for your development environment. Manage terminals, services, logs, and git worktrees from one keyboard-driven interface."
   image = "/images/social-preview.png"
 
+[mediaTypes."text/markdown"]
+  suffixes = ["md"]
+
+[outputFormats.Markdown]
+  mediaType = "text/markdown"
+  baseName = "index"
+  isPlainText = true
+
 [markup]
   [markup.goldmark.renderer]
     unsafe = true
