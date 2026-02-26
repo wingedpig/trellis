@@ -596,6 +596,11 @@ func (h *ClaudeHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
 		commitHash = strings.TrimSpace(hashOut)
 	}
 
+	// Step 7: Trash the Claude session
+	if req.SessionID != "" && h.manager != nil {
+		_ = h.manager.TrashSession(req.SessionID)
+	}
+
 	WriteJSON(w, http.StatusOK, map[string]string{
 		"case_id":     caseID,
 		"commit_hash": commitHash,

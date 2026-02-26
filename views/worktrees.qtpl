@@ -21,8 +21,8 @@ type WorktreesPage struct {
 <div class="hero">
     <div class="container">
         <img src="https://trellis.dev/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
-        <p class="lead">A web-based control plane for your development environment</p>
-        <p class="text-muted">Rapidly switch between worktrees, terminals, locally running services, and local or remote logs using tmux, SSH, and keyboard-driven pickers—instead of a collection of disconnected tools.</p>
+        <p class="lead">An AI-native development environment</p>
+        <p class="text-muted">Claude sessions, service logs, distributed traces, and crash reports — all scoped to the worktree you're working in. Investigations become Cases, committed to git alongside the fix. One keyboard-driven interface instead of a collection of disconnected tools.</p>
         {% if p.Version != "" %}<p class="text-muted mb-2">v{%s p.Version %}</p>{% endif %}
         <div class="mt-4">
             <a href="https://trellis.dev/docs/" class="btn btn-primary btn-lg me-2"><i class="fa-solid fa-book"></i> Documentation</a>

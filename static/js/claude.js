@@ -270,6 +270,8 @@
                 renderHistory(msg.messages || []);
                 if (msg.generating) {
                     setGenerating(true);
+                } else {
+                    requestAnimationFrame(function() { inputEl.focus(); });
                 }
                 if (msg.input_tokens) {
                     inputTokens = msg.input_tokens;
@@ -1701,6 +1703,10 @@
         sendBtn.style.display = value ? 'none' : 'flex';
         cancelBtn.style.display = value ? 'flex' : 'none';
         inputEl.focus();
+        if (!value) {
+            // Re-focus after any pending DOM updates (markdown rendering, scroll, etc.)
+            requestAnimationFrame(function() { inputEl.focus(); });
+        }
     }
 
     // --- Context Usage ---
