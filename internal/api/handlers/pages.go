@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/wingedpig/trellis/internal/cases"
@@ -900,13 +901,22 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 		activeWorktree = h.worktrees.Active()
 	}
 
+	var sessionCreatedAt string
+	if h.claudeManager != nil {
+		session := h.claudeManager.GetSession(sessionID)
+		if session != nil {
+			sessionCreatedAt = session.Info().CreatedAt.Format(time.RFC3339)
+		}
+	}
+
 	page := &views.ClaudePage{
 		BasePage: views.BasePage{
 			Title:    "Claude Code",
 			Worktree: activeWorktree,
 		},
-		WorktreeName: worktreeName,
-		SessionID:    sessionID,
+		WorktreeName:     worktreeName,
+		SessionID:        sessionID,
+		SessionCreatedAt: sessionCreatedAt,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -294,7 +294,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 
 	// Claude Code handlers
 	if deps.ClaudeManager != nil {
-		claudeHandler := handlers.NewClaudeHandler(deps.ClaudeManager, deps.WorktreeManager, deps.CaseManager)
+		claudeHandler := handlers.NewClaudeHandler(deps.ClaudeManager, deps.WorktreeManager, deps.CaseManager, deps.TraceManager)
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.ListSessions).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.CreateSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}", claudeHandler.RenameSessionAPI).Methods("PATCH")
@@ -308,6 +308,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/{worktree}/git-status", claudeHandler.GitStatus).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/session-case", claudeHandler.SessionCase).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/wrap-up", claudeHandler.WrapUp).Methods("POST")
+		api.HandleFunc("/claude/{worktree}/trace-reports", claudeHandler.ListTraceReports).Methods("GET")
 		// Backwards compat: worktree-level WebSocket uses first session
 		api.HandleFunc("/claude/{worktree}/ws", claudeHandler.WebSocketByWorktree).Methods("GET")
 	}

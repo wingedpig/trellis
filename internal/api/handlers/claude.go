@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
 
@@ -28,14 +29,16 @@ type ClaudeHandler struct {
 	manager     *claude.Manager
 	worktreeMgr worktree.Manager
 	caseMgr     *cases.Manager
+	traceMgr    *trace.Manager
 }
 
 // NewClaudeHandler creates a new Claude handler.
-func NewClaudeHandler(manager *claude.Manager, worktreeMgr worktree.Manager, caseMgr *cases.Manager) *ClaudeHandler {
+func NewClaudeHandler(manager *claude.Manager, worktreeMgr worktree.Manager, caseMgr *cases.Manager, traceMgr *trace.Manager) *ClaudeHandler {
 	return &ClaudeHandler{
 		manager:     manager,
 		worktreeMgr: worktreeMgr,
 		caseMgr:     caseMgr,
+		traceMgr:    traceMgr,
 	}
 }
 
@@ -458,6 +461,22 @@ func (h *ClaudeHandler) SessionCase(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListTraceReports returns available trace report summaries.
+func (h *ClaudeHandler) ListTraceReports(w http.ResponseWriter, r *http.Request) {
+	if h.traceMgr == nil {
+		WriteJSON(w, http.StatusOK, map[string]interface{}{"reports": []interface{}{}})
+		return
+	}
+
+	reports, err := h.traceMgr.ListReports()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, "list trace reports: "+err.Error())
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]interface{}{"reports": reports})
+}
+
 // wrapUpRequest is the request body for the WrapUp handler.
 type wrapUpRequest struct {
 	SessionID     string           `json:"session_id"`
@@ -467,6 +486,7 @@ type wrapUpRequest struct {
 	CommitMessage string           `json:"commit_message"`
 	Files         []string         `json:"files"`
 	Links         []cases.CaseLink `json:"links"`
+	Traces        []string         `json:"traces"`
 }
 
 // WrapUp orchestrates the full wrap-up workflow: create/update case, update transcripts, archive, commit.
@@ -561,13 +581,25 @@ func (h *ClaudeHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 4: Archive case
+	// Step 4: Save selected traces
+	if len(req.Traces) > 0 && h.traceMgr != nil {
+		for _, traceName := range req.Traces {
+			report, err := h.traceMgr.GetReport(traceName)
+			if err != nil {
+				continue
+			}
+			refID := uuid.New().String()[:8]
+			_ = h.caseMgr.SaveTrace(wt.Path, caseID, refID, report)
+		}
+	}
+
+	// Step 5: Archive case
 	if err := h.caseMgr.Archive(wt.Path, caseID); err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, "archive case: "+err.Error())
 		return
 	}
 
-	// Step 5: git add selected files + archived case directory
+	// Step 6: git add selected files + archived case directory
 	archivedCaseRelDir := filepath.Join(h.caseMgr.ArchivedRelDir(), caseID)
 	gitArgs := []string{"-C", wt.Path, "add", archivedCaseRelDir}
 	for _, f := range req.Files {
@@ -582,7 +614,7 @@ func (h *ClaudeHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 6: git commit
+	// Step 7: git commit
 	commitOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "commit", "-m", req.CommitMessage)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git commit: "+commitOut+" "+err.Error())
@@ -596,7 +628,7 @@ func (h *ClaudeHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
 		commitHash = strings.TrimSpace(hashOut)
 	}
 
-	// Step 7: Trash the Claude session
+	// Step 8: Trash the Claude session
 	if req.SessionID != "" && h.manager != nil {
 		_ = h.manager.TrashSession(req.SessionID)
 	}

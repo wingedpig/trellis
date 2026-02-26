@@ -4,8 +4,9 @@
 {% code
 type ClaudePage struct {
     BasePage
-    WorktreeName string
-    SessionID    string
+    WorktreeName     string
+    SessionID        string
+    SessionCreatedAt string // ISO 8601 timestamp
 }
 %}
 
@@ -174,6 +175,7 @@ function doSaveTranscript(caseId, title) {
 <script>
 const WRAPUP_WORKTREE = CLAUDE_WORKTREE;
 const WRAPUP_SESSION_ID = CLAUDE_SESSION;
+const WRAPUP_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
 let WRAPUP_CASE = null;
 </script>
 
@@ -221,6 +223,12 @@ let WRAPUP_CASE = null;
                 <div class="mb-3">
                     <label class="form-label">Files to commit</label>
                     <div id="wrapUpFileList" class="wrap-up-file-list"></div>
+                </div>
+
+                <!-- Traces -->
+                <div class="mb-3" id="wrapUpTraceSection" style="display:none">
+                    <label class="form-label">Traces to include</label>
+                    <div id="wrapUpTraceList" class="wrap-up-file-list"></div>
                 </div>
 
                 <!-- Commit message -->
