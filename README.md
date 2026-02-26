@@ -2,7 +2,7 @@
 
 Trellis is a **local web app** that acts as a control panel for your development environment. It brings together terminals, tmux sessions, git worktrees, and logs—both local and remote—into one place, with fast, keyboard-driven navigation.
 
-**[Documentation](https://trellis.dev/docs/)** | **[API Reference](https://trellis.dev/api/)**
+**[Documentation](https://trellis.dev/docs/)** | **[API Reference](https://trellis.dev/api/)** | **[Demo Video](https://youtu.be/6Hb7cakS7WU)**
 
 ## What Trellis Does
 
