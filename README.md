@@ -133,6 +133,26 @@ git worktree add ../myapp-feature -b feature-branch
 | `Cmd/Ctrl + Backspace` | History picker |
 | `Cmd/Ctrl + H` | Show all shortcuts |
 
+### Production Debugging
+
+Trace a request across multiple hosts, read the relevant code, and notify the team — without leaving Trellis:
+
+```bash
+# 1. Gather cross-host evidence (nginx, API, database logs)
+trellis-ctl -json trace req-abc123 api-flow -since 10am
+
+# 2. Tail remote logs over SSH (rotated and compressed files supported)
+trellis-ctl logs -viewer nginx-prod -grep "req-abc123" -C 5
+
+# 3. Query production data through validated workflows (inputs checked server-side)
+trellis-ctl -json workflow run db-fetch --table=users --id=12345
+
+# 4. Notify when the investigation is complete
+trellis-ctl notify "Found issue: group lookup fails on special chars"
+```
+
+Trace groups define which log viewers to search together. Workflow inputs are validated against configured patterns and allowed values before execution, so AI assistants can safely query production without risk of malformed commands.
+
 ### Claude Code Integration
 
 Each worktree can have multiple Claude Code chat sessions directly in the Trellis web UI. Sessions persist across restarts, and transcripts can be saved to cases or imported from previous exports.
