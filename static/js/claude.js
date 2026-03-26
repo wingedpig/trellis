@@ -28,23 +28,45 @@
         return name === 'EnterPlanMode' || name === 'ExitPlanMode';
     }
 
-    function appendPlanModeBanner(bubble, name, input, toolId, planContent) {
+    // Check if a file path looks like a plan file (markdown).
+    function isPlanFilePath(filePath) {
+        if (!filePath) return false;
+        return filePath.match(/\.md$/i) !== null;
+    }
+
+    function appendPlanModeBanner(bubble, name, input, toolId, planContent, interactive) {
         var isEnter = (name === 'EnterPlanMode');
         var icon = isEnter ? 'fa-clipboard-list' : 'fa-clipboard-check';
         var label = isEnter ? 'Entering plan mode' : 'Plan ready for review';
 
         var banner = document.createElement('div');
         banner.className = 'claude-plan-mode';
+        if (interactive) banner.classList.add('claude-plan-mode-interactive');
         banner.dataset.planMode = name;
         if (toolId) banner.dataset.toolId = toolId;
         banner.innerHTML =
             '<i class="fa-solid ' + icon + '"></i>' +
             '<span class="claude-plan-mode-label">' + escapeHtml(label) + '</span>';
 
+        // For ExitPlanMode, add plan content area first (before permissions)
+        if (!isEnter) {
+            var contentDiv = document.createElement('div');
+            contentDiv.className = 'claude-plan-mode-content';
+            if (planContent) {
+                contentDiv.innerHTML = marked.parse(planContent);
+                addCopyButtons(contentDiv);
+            }
+            banner.appendChild(contentDiv);
+        }
+
         // For ExitPlanMode, show allowed prompts if present
         if (!isEnter && input && input.allowedPrompts && input.allowedPrompts.length > 0) {
             var permsDiv = document.createElement('div');
             permsDiv.className = 'claude-plan-mode-permissions';
+            var permsLabel = document.createElement('div');
+            permsLabel.className = 'claude-plan-permissions-label';
+            permsLabel.textContent = 'Requested permissions:';
+            permsDiv.appendChild(permsLabel);
             var ul = document.createElement('ul');
             for (var i = 0; i < input.allowedPrompts.length; i++) {
                 var li = document.createElement('li');
@@ -55,15 +77,60 @@
             banner.appendChild(permsDiv);
         }
 
-        // For ExitPlanMode, add plan content area (populated now or later via fillToolResult)
-        if (!isEnter) {
-            var contentDiv = document.createElement('div');
-            contentDiv.className = 'claude-plan-mode-content';
-            if (planContent) {
-                contentDiv.innerHTML = marked.parse(planContent);
-                addCopyButtons(contentDiv);
-            }
-            banner.appendChild(contentDiv);
+        // For ExitPlanMode with no tool_result, add Approve/Reject buttons
+        if (!isEnter && interactive) {
+            var actions = document.createElement('div');
+            actions.className = 'claude-plan-mode-actions';
+
+            var approveBtn = document.createElement('button');
+            approveBtn.className = 'btn btn-success btn-sm';
+            approveBtn.textContent = 'Approve Plan';
+            approveBtn.addEventListener('click', function() {
+                // Send approval as a user message
+                var text = 'I approve this plan. Please proceed with the implementation.';
+                var wrapper = document.createElement('div');
+                wrapper.className = 'claude-message claude-message-user';
+                var userBubble = document.createElement('div');
+                userBubble.className = 'claude-bubble claude-bubble-user';
+                userBubble.textContent = text;
+                wrapper.appendChild(userBubble);
+                messagesEl.appendChild(wrapper);
+                scrollToBottom();
+
+                sendWS({ type: 'message', content: text });
+                setGenerating(true);
+                showWorkingIndicator();
+
+                // Mark as handled
+                actions.innerHTML = '<span class="claude-permission-allowed"><i class="fa-solid fa-check"></i> Approved</span>';
+                banner.classList.remove('claude-plan-mode-interactive');
+            });
+
+            var rejectBtn = document.createElement('button');
+            rejectBtn.className = 'btn btn-outline-danger btn-sm';
+            rejectBtn.textContent = 'Reject';
+            rejectBtn.addEventListener('click', function() {
+                var text = 'I reject this plan. Please reconsider the approach.';
+                var wrapper = document.createElement('div');
+                wrapper.className = 'claude-message claude-message-user';
+                var userBubble = document.createElement('div');
+                userBubble.className = 'claude-bubble claude-bubble-user';
+                userBubble.textContent = text;
+                wrapper.appendChild(userBubble);
+                messagesEl.appendChild(wrapper);
+                scrollToBottom();
+
+                sendWS({ type: 'message', content: text });
+                setGenerating(true);
+                showWorkingIndicator();
+
+                actions.innerHTML = '<span class="claude-permission-denied"><i class="fa-solid fa-xmark"></i> Rejected</span>';
+                banner.classList.remove('claude-plan-mode-interactive');
+            });
+
+            actions.appendChild(approveBtn);
+            actions.appendChild(rejectBtn);
+            banner.appendChild(actions);
         }
 
         bubble.appendChild(banner);
@@ -487,15 +554,16 @@
                                     lastBanner.appendChild(permsDiv);
                                 }
                                 // For ExitPlanMode, find plan content from preceding Write tool
+                                // Search all messages (the Write may be in a previous turn/bubble)
                                 if (lastToolName === 'ExitPlanMode') {
                                     var contentDiv = lastBanner.querySelector('.claude-plan-mode-content');
                                     if (contentDiv && !contentDiv.innerHTML) {
-                                        var toolDivs = currentBubble.querySelectorAll('.claude-tool-use');
+                                        var toolDivs = messagesEl.querySelectorAll('.claude-tool-use');
                                         for (var ti = toolDivs.length - 1; ti >= 0; ti--) {
                                             var nameEl = toolDivs[ti].querySelector('.claude-tool-name');
                                             var subEl = toolDivs[ti].querySelector('.claude-tool-subtitle');
                                             if (nameEl && nameEl.textContent === 'Write' &&
-                                                subEl && subEl.textContent.indexOf('/plans/') !== -1) {
+                                                subEl && isPlanFilePath(subEl.textContent)) {
                                                 try {
                                                     var pre = toolDivs[ti].querySelector('.claude-tool-body pre');
                                                     var writeInput = JSON.parse(pre.textContent);
@@ -518,8 +586,12 @@
                             if (toolDivs.length > 0) {
                                 var lastTool = toolDivs[toolDivs.length - 1];
 
+                                // AskUserQuestion: remove the tool placeholder; the control_request
+                                // will render the interactive prompt immediately after.
+                                if (lastToolName === 'AskUserQuestion' && input.questions) {
+                                    lastTool.remove();
                                 // TodoWrite: replace the tool block with a rendered checklist
-                                if (lastToolName === 'TodoWrite' && input.todos) {
+                                } else if (lastToolName === 'TodoWrite' && input.todos) {
                                     lastTool.remove();
                                     renderTodoList(currentBubble, input.todos);
                                 } else {
@@ -667,6 +739,11 @@
                 return input.url || '';
             case 'WebSearch':
                 return input.query || '';
+            case 'AskUserQuestion':
+                if (input.questions && input.questions.length > 0) {
+                    return input.questions[0].header || input.questions[0].question || '';
+                }
+                return 'Asking question';
             case 'TodoWrite':
                 if (input.todos) return input.todos.length + ' items';
                 return '';
@@ -702,6 +779,8 @@
                 return 'Fetching ' + (input.url || '');
             case 'WebSearch':
                 return 'Searching: ' + (input.query || '');
+            case 'AskUserQuestion':
+                return 'Waiting for answer...';
             case 'TodoWrite':
                 return 'Updating tasks...';
             case 'EnterPlanMode':
@@ -1072,11 +1151,18 @@
         // Build a map of tool_use_id → tool_result block across all messages
         // (tool_results live in user messages, tool_uses in assistant messages)
         var toolResults = {};
+        // Collect all Write-to-.md contents across messages for cross-turn plan lookup
+        var planWrites = [];
         for (const msg of messages) {
             if (msg.content) {
                 for (const block of msg.content) {
                     if (block.type === 'tool_result' && block.tool_use_id) {
                         toolResults[block.tool_use_id] = block;
+                    }
+                    if (block.type === 'tool_use' && block.name === 'Write' &&
+                        block.input && block.input.file_path &&
+                        isPlanFilePath(block.input.file_path) && block.input.content) {
+                        planWrites.push(block.input.content);
                     }
                 }
             }
@@ -1086,7 +1172,7 @@
             if (msg.role === 'user') {
                 renderUserMessage(msg);
             } else if (msg.role === 'assistant') {
-                renderAssistantMessage(msg, toolResults);
+                renderAssistantMessage(msg, toolResults, planWrites);
             }
         }
         scrollToBottom();
@@ -1112,7 +1198,7 @@
         messagesEl.appendChild(wrapper);
     }
 
-    function renderAssistantMessage(msg, toolResults) {
+    function renderAssistantMessage(msg, toolResults, planWrites) {
         if (!msg.content || msg.content.length === 0) return;
 
         const wrapper = document.createElement('div');
@@ -1126,11 +1212,11 @@
         for (var pi = 0; pi < msg.content.length; pi++) {
             var pb = msg.content[pi];
             if (pb.type === 'tool_use' && pb.name === 'ExitPlanMode') {
-                // Find the preceding Write to a plan file
+                // Find the preceding Write to a plan/markdown file
                 for (var pj = pi - 1; pj >= 0; pj--) {
                     var wb = msg.content[pj];
                     if (wb.type === 'tool_use' && wb.name === 'Write' && wb.input &&
-                        wb.input.file_path && wb.input.file_path.indexOf('/plans/') !== -1) {
+                        wb.input.file_path && isPlanFilePath(wb.input.file_path)) {
                         planWriteIds[wb.id] = true;
                         break;
                     }
@@ -1155,7 +1241,7 @@
                     textAcc = '';
                 }
                 // Render tool use block
-                renderStaticToolUse(bubble, block, msg.content, toolResults);
+                renderStaticToolUse(bubble, block, msg.content, toolResults, planWrites);
             } else if (block.type === 'tool_result') {
                 // Results are handled inside renderStaticToolUse
             }
@@ -1205,7 +1291,471 @@
         bubble.appendChild(container);
     }
 
-    function renderStaticToolUse(bubble, block, allBlocks, toolResults) {
+    // renderAskUserQuestion renders a question card.
+    // interactive: if true, options are clickable and a Submit button sends answers as a user message.
+    function renderAskUserQuestion(bubble, input, interactive) {
+        if (!input || !input.questions) return;
+        var questions = input.questions;
+        var container = document.createElement('div');
+        container.className = 'claude-ask-question';
+        if (interactive) container.classList.add('claude-ask-question-interactive');
+
+        var selections = {};
+        var submitBtn = null;
+
+        // Declared at function scope so click handlers in the loop can reach it.
+        var updateSubmitState = function() {
+            if (!submitBtn) return;
+            var allAnswered = true;
+            for (var k in selections) {
+                var val = selections[k];
+                if (Array.isArray(val) ? val.length === 0 : !val) {
+                    allAnswered = false;
+                    break;
+                }
+            }
+            submitBtn.disabled = !allAnswered;
+        };
+
+        for (var i = 0; i < questions.length; i++) {
+            (function(qi, q) {
+                var qDiv = document.createElement('div');
+                qDiv.className = 'claude-ask-question-item';
+
+                var header = document.createElement('div');
+                header.className = 'claude-ask-question-header';
+                if (q.header) {
+                    var badge = document.createElement('span');
+                    badge.className = 'claude-ask-question-badge';
+                    badge.textContent = q.header;
+                    header.appendChild(badge);
+                }
+                var qText = document.createElement('span');
+                qText.className = 'claude-ask-question-text';
+                qText.textContent = q.question || '';
+                header.appendChild(qText);
+                qDiv.appendChild(header);
+
+                if (q.options) {
+                    var optionsDiv = document.createElement('div');
+                    optionsDiv.className = 'claude-ask-question-options';
+
+                    if (interactive) {
+                        if (q.multiSelect) {
+                            selections[qi] = [];
+                        } else {
+                            selections[qi] = '';
+                        }
+                    }
+
+                    for (var j = 0; j < q.options.length; j++) {
+                        (function(oi, opt) {
+                            if (interactive) {
+                                var optBtn = document.createElement('button');
+                                optBtn.className = 'claude-ask-prompt-option';
+                                optBtn.type = 'button';
+                                var optLabel = document.createElement('div');
+                                optLabel.className = 'claude-ask-prompt-option-label';
+                                optLabel.textContent = opt.label || '';
+                                optBtn.appendChild(optLabel);
+                                if (opt.description) {
+                                    var optDesc = document.createElement('div');
+                                    optDesc.className = 'claude-ask-prompt-option-desc';
+                                    optDesc.textContent = opt.description;
+                                    optBtn.appendChild(optDesc);
+                                }
+                                optBtn.addEventListener('click', function() {
+                                    if (q.multiSelect) {
+                                        optBtn.classList.toggle('selected');
+                                        var idx = selections[qi].indexOf(opt.label);
+                                        if (idx >= 0) {
+                                            selections[qi].splice(idx, 1);
+                                        } else {
+                                            selections[qi].push(opt.label);
+                                        }
+                                    } else {
+                                        var siblings = optionsDiv.querySelectorAll('.claude-ask-prompt-option');
+                                        siblings.forEach(function(s) { s.classList.remove('selected'); });
+                                        optBtn.classList.add('selected');
+                                        selections[qi] = opt.label;
+                                        // Hide the Other text input
+                                        var otherInput = qDiv.querySelector('.claude-ask-prompt-other-input');
+                                        if (otherInput) {
+                                            otherInput.style.display = 'none';
+                                            otherInput.value = '';
+                                        }
+                                    }
+                                    updateSubmitState();
+                                });
+                                optionsDiv.appendChild(optBtn);
+                            } else {
+                                var optDiv = document.createElement('div');
+                                optDiv.className = 'claude-ask-question-option';
+                                var optLabel = document.createElement('div');
+                                optLabel.className = 'claude-ask-question-option-label';
+                                optLabel.textContent = opt.label || '';
+                                optDiv.appendChild(optLabel);
+                                if (opt.description) {
+                                    var optDesc = document.createElement('div');
+                                    optDesc.className = 'claude-ask-question-option-desc';
+                                    optDesc.textContent = opt.description;
+                                    optDiv.appendChild(optDesc);
+                                }
+                                optionsDiv.appendChild(optDiv);
+                            }
+                        })(j, q.options[j]);
+                    }
+
+                    // "Other" option for interactive mode
+                    if (interactive) {
+                        var otherBtn = document.createElement('button');
+                        otherBtn.className = 'claude-ask-prompt-option claude-ask-prompt-option-other';
+                        otherBtn.type = 'button';
+                        var otherLabel = document.createElement('div');
+                        otherLabel.className = 'claude-ask-prompt-option-label';
+                        otherLabel.textContent = 'Other';
+                        otherBtn.appendChild(otherLabel);
+
+                        var otherInput = document.createElement('input');
+                        otherInput.type = 'text';
+                        otherInput.className = 'claude-ask-prompt-other-input';
+                        otherInput.placeholder = 'Type your answer...';
+                        otherInput.style.display = 'none';
+
+                        (function(qi2) {
+                            otherBtn.addEventListener('click', function() {
+                                if (!q.multiSelect) {
+                                    var siblings = optionsDiv.querySelectorAll('.claude-ask-prompt-option');
+                                    siblings.forEach(function(s) { s.classList.remove('selected'); });
+                                    selections[qi2] = '';
+                                }
+                                otherBtn.classList.toggle('selected');
+                                if (otherBtn.classList.contains('selected')) {
+                                    otherInput.style.display = 'block';
+                                    otherInput.focus();
+                                } else {
+                                    otherInput.style.display = 'none';
+                                    otherInput.value = '';
+                                    updateSubmitState();
+                                }
+                            });
+                            otherInput.addEventListener('input', function() {
+                                if (q.multiSelect) {
+                                    selections[qi2] = selections[qi2].filter(function(v) {
+                                        return q.options.some(function(o) { return o.label === v; });
+                                    });
+                                    if (otherInput.value.trim()) {
+                                        selections[qi2].push(otherInput.value.trim());
+                                    }
+                                } else {
+                                    selections[qi2] = otherInput.value.trim();
+                                }
+                                updateSubmitState();
+                            });
+                        })(qi);
+
+                        optionsDiv.appendChild(otherBtn);
+                        qDiv.appendChild(optionsDiv);
+                        qDiv.appendChild(otherInput);
+                    } else {
+                        qDiv.appendChild(optionsDiv);
+                    }
+                }
+
+                container.appendChild(qDiv);
+            })(i, questions[i]);
+        }
+
+        // Submit button for interactive mode (send answers as a user message)
+        if (interactive) {
+            var actions = document.createElement('div');
+            actions.className = 'claude-ask-question-actions';
+
+            submitBtn = document.createElement('button');
+            submitBtn.className = 'btn btn-success btn-sm';
+            submitBtn.textContent = 'Submit';
+            submitBtn.disabled = true;
+            actions.appendChild(submitBtn);
+            container.appendChild(actions);
+
+            submitBtn.addEventListener('click', function() {
+                // Build answer text as a user message
+                var parts = [];
+                for (var k = 0; k < questions.length; k++) {
+                    var val = selections[k];
+                    var answer = Array.isArray(val) ? val.join(', ') : val;
+                    var label = questions[k].header || ('Question ' + (k + 1));
+                    parts.push(label + ': ' + answer);
+                }
+                var text = parts.join('\n');
+
+                // Send as a user message
+                var wrapper = document.createElement('div');
+                wrapper.className = 'claude-message claude-message-user';
+                var userBubble = document.createElement('div');
+                userBubble.className = 'claude-bubble claude-bubble-user';
+                userBubble.textContent = text;
+                wrapper.appendChild(userBubble);
+                messagesEl.appendChild(wrapper);
+                scrollToBottom();
+
+                sendWS({ type: 'message', content: text });
+                setGenerating(true);
+                showWorkingIndicator();
+
+                // Replace interactive card with static answered display
+                container.classList.remove('claude-ask-question-interactive');
+                var actionsEl = container.querySelector('.claude-ask-question-actions');
+                if (actionsEl) actionsEl.remove();
+                // Disable all buttons
+                var btns = container.querySelectorAll('.claude-ask-prompt-option');
+                btns.forEach(function(b) {
+                    b.disabled = true;
+                    if (!b.classList.contains('selected')) b.style.opacity = '0.4';
+                });
+                var otherInputs = container.querySelectorAll('.claude-ask-prompt-other-input');
+                otherInputs.forEach(function(inp) { inp.disabled = true; });
+            });
+        }
+
+        bubble.appendChild(container);
+    }
+
+    function showAskUserQuestionPrompt(requestId, request, input) {
+        // Hide any existing interactive question card from history rendering
+        // to avoid duplication (the control_request prompt supersedes it).
+        var existingCards = messagesEl.querySelectorAll('.claude-ask-question-interactive');
+        existingCards.forEach(function(card) { card.remove(); });
+
+        var div = document.createElement('div');
+        div.className = 'claude-permission claude-permission-question';
+        div.dataset.requestId = requestId;
+
+        var header = document.createElement('div');
+        header.className = 'claude-permission-header';
+        header.innerHTML =
+            '<i class="fa-solid fa-circle-question"></i> ' +
+            '<strong>Claude is asking a question</strong>';
+        div.appendChild(header);
+
+        var questions = input.questions || [];
+        var selections = {}; // questionIndex → selected label(s)
+
+        var questionsContainer = document.createElement('div');
+        questionsContainer.className = 'claude-ask-prompt-body';
+
+        for (var i = 0; i < questions.length; i++) {
+            (function(qi, q) {
+                var qDiv = document.createElement('div');
+                qDiv.className = 'claude-ask-prompt-question';
+
+                var qHeader = document.createElement('div');
+                qHeader.className = 'claude-ask-prompt-question-header';
+                if (q.header) {
+                    var badge = document.createElement('span');
+                    badge.className = 'claude-ask-question-badge';
+                    badge.textContent = q.header;
+                    qHeader.appendChild(badge);
+                }
+                var qText = document.createElement('span');
+                qText.className = 'claude-ask-prompt-question-text';
+                qText.textContent = q.question || '';
+                qHeader.appendChild(qText);
+                qDiv.appendChild(qHeader);
+
+                if (q.options) {
+                    var optionsDiv = document.createElement('div');
+                    optionsDiv.className = 'claude-ask-prompt-options';
+
+                    if (q.multiSelect) {
+                        selections[qi] = [];
+                    } else {
+                        selections[qi] = '';
+                    }
+
+                    for (var j = 0; j < q.options.length; j++) {
+                        (function(oi, opt) {
+                            var optBtn = document.createElement('button');
+                            optBtn.className = 'claude-ask-prompt-option';
+                            optBtn.type = 'button';
+                            var labelSpan = document.createElement('div');
+                            labelSpan.className = 'claude-ask-prompt-option-label';
+                            labelSpan.textContent = opt.label || '';
+                            optBtn.appendChild(labelSpan);
+                            if (opt.description) {
+                                var descSpan = document.createElement('div');
+                                descSpan.className = 'claude-ask-prompt-option-desc';
+                                descSpan.textContent = opt.description;
+                                optBtn.appendChild(descSpan);
+                            }
+
+                            optBtn.addEventListener('click', function() {
+                                if (q.multiSelect) {
+                                    optBtn.classList.toggle('selected');
+                                    var idx = selections[qi].indexOf(opt.label);
+                                    if (idx >= 0) {
+                                        selections[qi].splice(idx, 1);
+                                    } else {
+                                        selections[qi].push(opt.label);
+                                    }
+                                } else {
+                                    var siblings = optionsDiv.querySelectorAll('.claude-ask-prompt-option');
+                                    siblings.forEach(function(s) { s.classList.remove('selected'); });
+                                    optBtn.classList.add('selected');
+                                    selections[qi] = opt.label;
+                                    // Hide the Other text input if a button is selected
+                                    var otherInput = qDiv.querySelector('.claude-ask-prompt-other-input');
+                                    if (otherInput) {
+                                        otherInput.style.display = 'none';
+                                        otherInput.value = '';
+                                    }
+                                }
+                                updateSubmitState();
+                            });
+                            optionsDiv.appendChild(optBtn);
+                        })(j, q.options[j]);
+                    }
+
+                    // "Other" button with text input
+                    var otherBtn = document.createElement('button');
+                    otherBtn.className = 'claude-ask-prompt-option claude-ask-prompt-option-other';
+                    otherBtn.type = 'button';
+                    var otherLabel = document.createElement('div');
+                    otherLabel.className = 'claude-ask-prompt-option-label';
+                    otherLabel.textContent = 'Other';
+                    otherBtn.appendChild(otherLabel);
+
+                    var otherInput = document.createElement('input');
+                    otherInput.type = 'text';
+                    otherInput.className = 'claude-ask-prompt-other-input';
+                    otherInput.placeholder = 'Type your answer...';
+                    otherInput.style.display = 'none';
+
+                    (function(qi2) {
+                        otherBtn.addEventListener('click', function() {
+                            if (!q.multiSelect) {
+                                var siblings = optionsDiv.querySelectorAll('.claude-ask-prompt-option');
+                                siblings.forEach(function(s) { s.classList.remove('selected'); });
+                                selections[qi2] = '';
+                            }
+                            otherBtn.classList.toggle('selected');
+                            if (otherBtn.classList.contains('selected')) {
+                                otherInput.style.display = 'block';
+                                otherInput.focus();
+                            } else {
+                                otherInput.style.display = 'none';
+                                otherInput.value = '';
+                                updateSubmitState();
+                            }
+                        });
+                        otherInput.addEventListener('input', function() {
+                            if (q.multiSelect) {
+                                // Remove previous "other" value
+                                selections[qi2] = selections[qi2].filter(function(v) {
+                                    return q.options.some(function(o) { return o.label === v; });
+                                });
+                                if (otherInput.value.trim()) {
+                                    selections[qi2].push(otherInput.value.trim());
+                                }
+                            } else {
+                                selections[qi2] = otherInput.value.trim();
+                            }
+                            updateSubmitState();
+                        });
+                    })(qi);
+
+                    optionsDiv.appendChild(otherBtn);
+                    qDiv.appendChild(optionsDiv);
+                    qDiv.appendChild(otherInput);
+                }
+
+                questionsContainer.appendChild(qDiv);
+            })(i, questions[i]);
+        }
+        div.appendChild(questionsContainer);
+
+        // Actions
+        var actions = document.createElement('div');
+        actions.className = 'claude-permission-actions';
+
+        var submitBtn = document.createElement('button');
+        submitBtn.className = 'btn btn-success btn-sm';
+        submitBtn.textContent = 'Submit';
+        submitBtn.disabled = true;
+
+        function updateSubmitState() {
+            var allAnswered = true;
+            for (var k in selections) {
+                var val = selections[k];
+                if (Array.isArray(val) ? val.length === 0 : !val) {
+                    allAnswered = false;
+                    break;
+                }
+            }
+            submitBtn.disabled = !allAnswered;
+        }
+
+        submitBtn.addEventListener('click', function() {
+            // Build answers map
+            var answers = {};
+            for (var k in selections) {
+                var val = selections[k];
+                answers[k] = Array.isArray(val) ? val.join(', ') : val;
+            }
+            // Send control_response with answers in updatedInput
+            var updatedInput = JSON.parse(JSON.stringify(input));
+            updatedInput.answers = answers;
+            var response = {
+                type: 'control_response',
+                response: {
+                    subtype: 'success',
+                    request_id: requestId,
+                    response: {
+                        behavior: 'allow',
+                        updatedInput: updatedInput
+                    }
+                }
+            };
+            sendWS({ type: 'permission_response', data: response });
+            // Mark as handled
+            var actionsEl = div.querySelector('.claude-permission-actions');
+            if (actionsEl) {
+                var answeredHtml = '<span class="claude-permission-allowed"><i class="fa-solid fa-check"></i> Answered: ';
+                var answerParts = [];
+                for (var ak in answers) {
+                    answerParts.push(escapeHtml(answers[ak]));
+                }
+                answeredHtml += answerParts.join('; ') + '</span>';
+                actionsEl.innerHTML = answeredHtml;
+            }
+            showWorkingIndicator();
+        });
+
+        var denyBtn = document.createElement('button');
+        denyBtn.className = 'btn btn-outline-danger btn-sm';
+        denyBtn.textContent = 'Deny';
+        denyBtn.addEventListener('click', function() {
+            respondToPermission(requestId, false, request, false);
+            markPermissionHandled(div, false);
+        });
+
+        actions.appendChild(submitBtn);
+        actions.appendChild(denyBtn);
+        div.appendChild(actions);
+
+        messagesEl.appendChild(div);
+        scrollToBottom();
+    }
+
+    function renderStaticToolUse(bubble, block, allBlocks, toolResults, planWrites) {
+        // AskUserQuestion renders as an inline question card
+        // Interactive if there's no tool_result (unanswered question)
+        if (block.name === 'AskUserQuestion' && block.input && block.input.questions) {
+            var hasResult = block.id && toolResults[block.id];
+            renderAskUserQuestion(bubble, block.input, !hasResult);
+            return;
+        }
+
         // TodoWrite renders as an inline checklist
         if (block.name === 'TodoWrite' && block.input && block.input.todos) {
             renderTodoList(bubble, block.input.todos);
@@ -1216,19 +1766,24 @@
         if (isPlanModeTool(block.name)) {
             var planContent = '';
             if (block.name === 'ExitPlanMode') {
-                // The plan content is in the Write tool that wrote to .claude/plans/
-                // Search backwards from the current block for the most recent plan file write
+                // The plan content is in the Write tool that wrote a markdown file
+                // First search within this message's blocks
                 var blockIdx = allBlocks.indexOf(block);
                 for (var i = blockIdx - 1; i >= 0; i--) {
                     var b = allBlocks[i];
                     if (b.type === 'tool_use' && b.name === 'Write' && b.input &&
-                        b.input.file_path && b.input.file_path.indexOf('/plans/') !== -1) {
+                        b.input.file_path && isPlanFilePath(b.input.file_path)) {
                         planContent = b.input.content || '';
                         break;
                     }
                 }
+                // Fallback: use cross-message plan writes (Write was in a previous turn)
+                if (!planContent && planWrites && planWrites.length > 0) {
+                    planContent = planWrites[planWrites.length - 1];
+                }
             }
-            appendPlanModeBanner(bubble, block.name, block.input, block.id, planContent);
+            var hasResult = block.id && toolResults[block.id];
+            appendPlanModeBanner(bubble, block.name, block.input, block.id, planContent, !hasResult);
             return;
         }
 
@@ -1401,6 +1956,12 @@
             return;
         }
 
+        // AskUserQuestion gets interactive question UI
+        if (toolName === 'AskUserQuestion') {
+            showAskUserQuestionPrompt(requestId, request, input);
+            return;
+        }
+
         // Build description based on tool type
         var detail = '';
         var editDiffEl = null; // Rendered diff element for Edit blocks
@@ -1513,6 +2074,10 @@
     }
 
     function showPlanPermissionPrompt(requestId, request, input) {
+        // Hide any existing interactive plan banner from history rendering
+        var existingBanners = messagesEl.querySelectorAll('.claude-plan-mode-interactive');
+        existingBanners.forEach(function(b) { b.remove(); });
+
         var div = document.createElement('div');
         div.className = 'claude-permission claude-permission-plan';
         div.dataset.requestId = requestId;
@@ -1534,7 +2099,7 @@
                 var nameEl = toolDivs[i].querySelector('.claude-tool-name');
                 var subEl = toolDivs[i].querySelector('.claude-tool-subtitle');
                 if (nameEl && nameEl.textContent === 'Write' &&
-                    subEl && subEl.textContent.indexOf('/plans/') !== -1) {
+                    subEl && isPlanFilePath(subEl.textContent)) {
                     try {
                         var pre = toolDivs[i].querySelector('.claude-tool-body pre');
                         var writeInput = JSON.parse(pre.textContent);
