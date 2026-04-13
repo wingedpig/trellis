@@ -246,7 +246,10 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 
 		file := relevantFiles[i]
 		log.Printf("SSH ReadRange: processing rotated file %s", file.Path)
-		if err := s.grepRemoteFile(ctx, file, timestampPattern, grep, grepBefore, grepAfter, lineCh); err != nil {
+		fileCtx, fileCancel := fileContext(ctx)
+		err := s.grepRemoteFile(fileCtx, file, timestampPattern, grep, grepBefore, grepAfter, lineCh)
+		fileCancel()
+		if err != nil {
 			return fmt.Errorf("reading %s: %w", file.Name, err)
 		}
 	}
@@ -266,7 +269,10 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 			Path:       currentPath,
 			Compressed: false,
 		}
-		if err := s.grepRemoteFile(ctx, currentFile, timestampPattern, grep, grepBefore, grepAfter, lineCh); err != nil {
+		fileCtx, fileCancel := fileContext(ctx)
+		err = s.grepRemoteFile(fileCtx, currentFile, timestampPattern, grep, grepBefore, grepAfter, lineCh)
+		fileCancel()
+		if err != nil {
 			return fmt.Errorf("reading current file %s: %w", currentFile.Name, err)
 		}
 	}

@@ -640,7 +640,7 @@ func (s *Session) ClearPendingControlRequest() {
 func (s *Session) Subscribe() chan StreamEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ch := make(chan StreamEvent, 100)
+	ch := make(chan StreamEvent, 10000)
 	s.subscribers[ch] = struct{}{}
 	return ch
 }
@@ -1062,6 +1062,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	}
 	s.generating = true
 	s.currentBlocks = nil
+	s.hasStreamEvents = false
 
 	// Add user message to history
 	userMsg := Message{

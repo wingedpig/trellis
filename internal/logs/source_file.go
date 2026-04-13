@@ -183,7 +183,10 @@ func (s *FileSource) ReadRange(ctx context.Context, start, end time.Time, lineCh
 		}
 
 		file := relevantFiles[i]
-		if err := s.readFile(ctx, file, lineCh); err != nil {
+		fileCtx, fileCancel := fileContext(ctx)
+		err = s.readFile(fileCtx, file, lineCh)
+		fileCancel()
+		if err != nil {
 			return fmt.Errorf("reading %s: %w", file.Name, err)
 		}
 	}
@@ -200,7 +203,10 @@ func (s *FileSource) ReadRange(ctx context.Context, start, end time.Time, lineCh
 			Path:       currentPath,
 			Compressed: false,
 		}
-		if err := s.readFile(ctx, currentFile, lineCh); err != nil {
+		fileCtx, fileCancel := fileContext(ctx)
+		err = s.readFile(fileCtx, currentFile, lineCh)
+		fileCancel()
+		if err != nil {
 			return fmt.Errorf("reading current file %s: %w", currentFile.Name, err)
 		}
 	}

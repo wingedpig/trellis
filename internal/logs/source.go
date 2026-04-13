@@ -198,6 +198,18 @@ func DecompressCommand(filename string) string {
 	}
 }
 
+// perFileTimeout is the maximum time allowed for reading a single log file.
+const perFileTimeout = 60 * time.Second
+
+// fileContext creates a context with a per-file timeout that is independent of
+// the parent's deadline. This prevents a shared trace-level deadline from
+// starving later files. Parent cancellation (e.g. user cancel) still propagates.
+func fileContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), perFileTimeout)
+	stop := context.AfterFunc(parent, func() { cancel() })
+	return ctx, func() { stop(); cancel() }
+}
+
 // hasAnySuffix checks if s ends with any of the given suffixes.
 func hasAnySuffix(s string, suffixes ...string) bool {
 	for _, suffix := range suffixes {

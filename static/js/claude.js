@@ -498,6 +498,13 @@
                 if (inner.content_block) {
                     if (inner.content_block.type === 'text') {
                         ensureAssistantBubble();
+                        if (currentBubble && !currentTextEl) {
+                            var newTextEl = document.createElement('div');
+                            newTextEl.className = 'claude-text-content';
+                            currentBubble.appendChild(newTextEl);
+                            currentTextEl = newTextEl;
+                            accumulatedText = '';
+                        }
                     } else if (inner.content_block.type === 'tool_use') {
                         ensureAssistantBubble();
                         lastToolName = inner.content_block.name || 'Tool';
@@ -966,6 +973,7 @@
         currentTextEl = null;
         accumulatedText = '';
         streamingToolInput = '';
+        usingStreamEvents = false;
     }
 
     function appendToolUse(block) {
@@ -1142,6 +1150,7 @@
         currentBubble = null;
         currentTextEl = null;
         accumulatedText = '';
+        usingStreamEvents = false;
 
         if (messages.length === 0) {
             showEmptyState();
@@ -2256,6 +2265,7 @@
         currentTextEl = null;
         accumulatedText = '';
         streamingToolInput = '';
+        usingStreamEvents = false;
         inputTokens = 0;
         tokenBreakdown = { base: 0, cacheCreate: 0, cacheRead: 0, total: 0 };
         updateContextUsage();
