@@ -690,6 +690,7 @@ type LogBufferConfig struct {
 type TraceConfig struct {
 	ReportsDir string `json:"reports_dir"` // Directory for trace reports
 	MaxAge     string `json:"max_age"`     // How long to keep reports (e.g., "7d")
+	Timeout    string `json:"timeout"`     // Maximum time for a trace execution (e.g., "5m", default: "5m")
 }
 
 // TraceGroupConfig defines a named group of log viewers for tracing.

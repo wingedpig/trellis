@@ -99,6 +99,21 @@ func (h *TraceHandler) Execute(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, result)
 }
 
+// CancelTrace cancels a running trace.
+// POST /api/v1/trace/cancel/{name}
+func (h *TraceHandler) CancelTrace(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	name := vars["name"]
+
+	if h.manager.CancelTrace(name) {
+		WriteJSON(w, http.StatusOK, map[string]interface{}{
+			"cancelled": name,
+		})
+	} else {
+		WriteError(w, http.StatusNotFound, ErrTraceError, "trace not running: "+name)
+	}
+}
+
 // GetReport retrieves a saved trace report.
 // GET /api/v1/trace/reports/{name}
 func (h *TraceHandler) GetReport(w http.ResponseWriter, r *http.Request) {

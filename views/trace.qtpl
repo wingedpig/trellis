@@ -166,6 +166,7 @@ type TracePage struct {
                         <td>
                             {% if r.Status == "running" %}
                             <span class="badge bg-primary"><i class="fa-solid fa-sync fa-spin"></i> Running</span>
+                            <span class="trace-progress small text-muted ms-2" data-trace-name="{%s r.Name %}"></span>
                             {% elseif r.Status == "completed" %}
                             <span class="badge bg-success">Completed</span>
                             {% elseif r.Status == "failed" %}
@@ -178,6 +179,11 @@ type TracePage struct {
                         <td class="small text-muted created-time" data-time="{%s r.CreatedAt.Format(time.RFC3339) %}">
                         </td>
                         <td>
+                            {% if r.Status == "running" %}
+                            <button class="btn btn-sm btn-outline-warning me-1" onclick="cancelTrace('{%s JSAttr(r.Name) %}')" title="Cancel trace">
+                                <i class="fa-solid fa-stop"></i>
+                            </button>
+                            {% endif %}
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteReport('{%s JSAttr(r.Name) %}')">
                                 <i class="fa-solid fa-trash"></i>
                             </button>
@@ -368,6 +374,21 @@ function parseTimeInput(input, isEndTime) {
     return input;
 }
 
+function cancelTrace(name) {
+    fetch('/api/v1/trace/cancel/' + encodeURIComponent(name), { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                alert('Error: ' + data.error.message);
+            } else {
+                location.reload();
+            }
+        })
+        .catch(function(err) {
+            alert('Error: ' + err);
+        });
+}
+
 function deleteReport(name) {
     if (!confirm('Delete trace report "' + name + '"?')) {
         return;
@@ -463,14 +484,35 @@ function formatTimeRange(startISO, endISO) {
     });
 })();
 
-// Auto-refresh if there are running reports
+// Auto-refresh and live progress for running reports
 (function() {
     var runningReports = document.querySelectorAll('tr[data-status="running"]');
-    if (runningReports.length > 0) {
-        setTimeout(function() {
-            location.reload();
-        }, 3000);
-    }
+    if (runningReports.length === 0) return;
+
+    // Connect to events WebSocket for live progress updates
+    var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var ws = new WebSocket(wsProtocol + '//' + window.location.host + '/api/v1/events/ws');
+    ws.onmessage = function(e) {
+        try {
+            var event = JSON.parse(e.data);
+            if (event.type === 'trace.progress') {
+                var payload = event.payload || {};
+                var el = document.querySelector('.trace-progress[data-trace-name="' + payload.name + '"]');
+                if (el && payload.message) {
+                    el.textContent = payload.message;
+                }
+            } else if (event.type === 'trace.completed' || event.type === 'trace.failed') {
+                ws.close();
+                location.reload();
+            }
+        } catch (err) {}
+    };
+
+    // Fallback: reload after 30s if WebSocket doesn't report completion
+    setTimeout(function() {
+        ws.close();
+        location.reload();
+    }, 30000);
 })();
 </script>
 

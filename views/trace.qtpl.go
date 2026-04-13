@@ -5,43 +5,43 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line views/trace.qtpl:4
+//line trace.qtpl:4
 package views
 
-//line views/trace.qtpl:4
+//line trace.qtpl:4
 import "github.com/wingedpig/trellis/internal/trace"
 
-//line views/trace.qtpl:5
+//line trace.qtpl:5
 import "time"
 
-//line views/trace.qtpl:7
+//line trace.qtpl:7
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line views/trace.qtpl:7
+//line trace.qtpl:7
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line views/trace.qtpl:8
+//line trace.qtpl:8
 type TracePage struct {
 	BasePage
 	Groups  []trace.TraceGroup
 	Reports []trace.ReportSummary
 }
 
-//line views/trace.qtpl:15
+//line trace.qtpl:15
 func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/trace.qtpl:15
+//line trace.qtpl:15
 	qw422016.N().S(`
 `)
-//line views/trace.qtpl:16
+//line trace.qtpl:16
 	p.StreamHeader(qw422016)
-//line views/trace.qtpl:16
+//line trace.qtpl:16
 	qw422016.N().S(`
 
 <h2 class="mb-4"><i class="fa-solid fa-magnifying-glass-location"></i> Distributed Trace</h2>
@@ -51,17 +51,17 @@ func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="fa-solid fa-plus"></i> Start New Trace</span>
         `)
-//line views/trace.qtpl:24
+//line trace.qtpl:24
 	if len(p.Groups) > 0 {
-//line views/trace.qtpl:24
+//line trace.qtpl:24
 		qw422016.N().S(`
         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#traceGroups">
             <i class="fa-solid fa-layer-group"></i> Groups
         </button>
         `)
-//line views/trace.qtpl:28
+//line trace.qtpl:28
 	}
-//line views/trace.qtpl:28
+//line trace.qtpl:28
 	qw422016.N().S(`
     </div>
     <div class="card-body">
@@ -79,44 +79,44 @@ func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
                     <div class="position-relative">
                         <select class="form-select" id="traceGroup" name="group" required style="padding-right: 2.5rem;">
                             `)
-//line views/trace.qtpl:44
+//line trace.qtpl:44
 	if len(p.Groups) == 0 {
-//line views/trace.qtpl:44
+//line trace.qtpl:44
 		qw422016.N().S(`
                             <option value="" disabled selected>No trace groups configured</option>
                             `)
-//line views/trace.qtpl:46
+//line trace.qtpl:46
 	} else {
-//line views/trace.qtpl:46
+//line trace.qtpl:46
 		qw422016.N().S(`
                             <option value="" disabled selected>Select a trace group...</option>
                             `)
-//line views/trace.qtpl:48
+//line trace.qtpl:48
 		for _, g := range p.Groups {
-//line views/trace.qtpl:48
+//line trace.qtpl:48
 			qw422016.N().S(`
                             <option value="`)
-//line views/trace.qtpl:49
+//line trace.qtpl:49
 			qw422016.E().S(g.Name)
-//line views/trace.qtpl:49
+//line trace.qtpl:49
 			qw422016.N().S(`">`)
-//line views/trace.qtpl:49
+//line trace.qtpl:49
 			qw422016.E().S(g.Name)
-//line views/trace.qtpl:49
+//line trace.qtpl:49
 			qw422016.N().S(` (`)
-//line views/trace.qtpl:49
+//line trace.qtpl:49
 			qw422016.N().D(len(g.LogViewers))
-//line views/trace.qtpl:49
+//line trace.qtpl:49
 			qw422016.N().S(` log viewers)</option>
                             `)
-//line views/trace.qtpl:50
+//line trace.qtpl:50
 		}
-//line views/trace.qtpl:50
+//line trace.qtpl:50
 		qw422016.N().S(`
                             `)
-//line views/trace.qtpl:51
+//line trace.qtpl:51
 	}
-//line views/trace.qtpl:51
+//line trace.qtpl:51
 	qw422016.N().S(`
                         </select>
                         <i class="fa-solid fa-caret-down position-absolute" style="right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #6c757d;"></i>
@@ -162,13 +162,13 @@ func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
                 </div>
                 <div class="col-md-2 mb-3 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary w-100" id="submitBtn" `)
-//line views/trace.qtpl:95
+//line trace.qtpl:95
 	if len(p.Groups) == 0 {
-//line views/trace.qtpl:95
+//line trace.qtpl:95
 		qw422016.N().S(`disabled`)
-//line views/trace.qtpl:95
+//line trace.qtpl:95
 	}
-//line views/trace.qtpl:95
+//line trace.qtpl:95
 	qw422016.N().S(`>
                         <i class="fa-solid fa-magnifying-glass"></i> Execute
                     </button>
@@ -177,59 +177,59 @@ func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
         </form>
 
         `)
-//line views/trace.qtpl:102
+//line trace.qtpl:102
 	if len(p.Groups) > 0 {
-//line views/trace.qtpl:102
+//line trace.qtpl:102
 		qw422016.N().S(`
         <div class="collapse mt-3" id="traceGroups">
             <div class="card card-body bg-dark">
                 <strong class="mb-2">Configured Trace Groups:</strong>
                 `)
-//line views/trace.qtpl:106
+//line trace.qtpl:106
 		for _, g := range p.Groups {
-//line views/trace.qtpl:106
+//line trace.qtpl:106
 			qw422016.N().S(`
                 <div class="mb-2">
                     <span class="text-accent">`)
-//line views/trace.qtpl:108
+//line trace.qtpl:108
 			qw422016.E().S(g.Name)
-//line views/trace.qtpl:108
+//line trace.qtpl:108
 			qw422016.N().S(`</span>:
                     <span class="text-muted">
                         `)
-//line views/trace.qtpl:110
+//line trace.qtpl:110
 			for i, lv := range g.LogViewers {
-//line views/trace.qtpl:110
+//line trace.qtpl:110
 				qw422016.N().S(`
                         `)
-//line views/trace.qtpl:111
+//line trace.qtpl:111
 				qw422016.E().S(lv)
-//line views/trace.qtpl:111
+//line trace.qtpl:111
 				if i < len(g.LogViewers)-1 {
-//line views/trace.qtpl:111
+//line trace.qtpl:111
 					qw422016.N().S(`, `)
-//line views/trace.qtpl:111
+//line trace.qtpl:111
 				}
-//line views/trace.qtpl:111
+//line trace.qtpl:111
 				qw422016.N().S(`
                         `)
-//line views/trace.qtpl:112
+//line trace.qtpl:112
 			}
-//line views/trace.qtpl:112
+//line trace.qtpl:112
 			qw422016.N().S(`
                     </span>
                 </div>
                 `)
-//line views/trace.qtpl:115
+//line trace.qtpl:115
 		}
-//line views/trace.qtpl:115
+//line trace.qtpl:115
 		qw422016.N().S(`
             </div>
         </div>
         `)
-//line views/trace.qtpl:118
+//line trace.qtpl:118
 	}
-//line views/trace.qtpl:118
+//line trace.qtpl:118
 	qw422016.N().S(`
     </div>
 </div>
@@ -244,17 +244,17 @@ func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
     </div>
     <div class="card-body p-0">
         `)
-//line views/trace.qtpl:131
+//line trace.qtpl:131
 	if len(p.Reports) == 0 {
-//line views/trace.qtpl:131
+//line trace.qtpl:131
 		qw422016.N().S(`
         <div class="p-3 text-muted">
             <i class="fa-solid fa-info-circle"></i> No trace reports yet. Execute a trace to create one.
         </div>
         `)
-//line views/trace.qtpl:135
+//line trace.qtpl:135
 	} else {
-//line views/trace.qtpl:135
+//line trace.qtpl:135
 		qw422016.N().S(`
         <div class="table-responsive">
             <table class="table table-dark table-hover mb-0">
@@ -272,140 +272,162 @@ func (p *TracePage) StreamRender(qw422016 *qt422016.Writer) {
                 </thead>
                 <tbody id="reportsTable">
                     `)
-//line views/trace.qtpl:151
+//line trace.qtpl:151
 		for _, r := range p.Reports {
-//line views/trace.qtpl:151
+//line trace.qtpl:151
 			qw422016.N().S(`
                     <tr data-report="`)
-//line views/trace.qtpl:152
+//line trace.qtpl:152
 			qw422016.E().S(r.Name)
-//line views/trace.qtpl:152
+//line trace.qtpl:152
 			qw422016.N().S(`" data-status="`)
-//line views/trace.qtpl:152
+//line trace.qtpl:152
 			qw422016.E().S(r.Status)
-//line views/trace.qtpl:152
+//line trace.qtpl:152
 			qw422016.N().S(`">
                         <td>
                             `)
-//line views/trace.qtpl:154
+//line trace.qtpl:154
 			if r.Status == "completed" {
-//line views/trace.qtpl:154
+//line trace.qtpl:154
 				qw422016.N().S(`
                             <a href="/trace/report/`)
-//line views/trace.qtpl:155
+//line trace.qtpl:155
 				qw422016.E().S(r.Name)
-//line views/trace.qtpl:155
+//line trace.qtpl:155
 				qw422016.N().S(`">`)
-//line views/trace.qtpl:155
+//line trace.qtpl:155
 				qw422016.E().S(r.Name)
-//line views/trace.qtpl:155
+//line trace.qtpl:155
 				qw422016.N().S(`</a>
                             `)
-//line views/trace.qtpl:156
+//line trace.qtpl:156
 			} else {
-//line views/trace.qtpl:156
+//line trace.qtpl:156
 				qw422016.N().S(`
                             `)
-//line views/trace.qtpl:157
+//line trace.qtpl:157
 				qw422016.E().S(r.Name)
-//line views/trace.qtpl:157
+//line trace.qtpl:157
 				qw422016.N().S(`
                             `)
-//line views/trace.qtpl:158
+//line trace.qtpl:158
 			}
-//line views/trace.qtpl:158
+//line trace.qtpl:158
 			qw422016.N().S(`
                         </td>
                         <td><code class="small">`)
-//line views/trace.qtpl:160
+//line trace.qtpl:160
 			qw422016.E().S(r.TraceID)
-//line views/trace.qtpl:160
+//line trace.qtpl:160
 			qw422016.N().S(`</code></td>
                         <td>`)
-//line views/trace.qtpl:161
+//line trace.qtpl:161
 			qw422016.E().S(r.Group)
-//line views/trace.qtpl:161
+//line trace.qtpl:161
 			qw422016.N().S(`</td>
                         <td class="small text-muted time-range"
                             data-start="`)
-//line views/trace.qtpl:163
+//line trace.qtpl:163
 			qw422016.E().S(r.TimeStart.Format(time.RFC3339))
-//line views/trace.qtpl:163
+//line trace.qtpl:163
 			qw422016.N().S(`"
                             data-end="`)
-//line views/trace.qtpl:164
+//line trace.qtpl:164
 			qw422016.E().S(r.TimeEnd.Format(time.RFC3339))
-//line views/trace.qtpl:164
+//line trace.qtpl:164
 			qw422016.N().S(`">
                         </td>
                         <td>
                             `)
-//line views/trace.qtpl:167
+//line trace.qtpl:167
 			if r.Status == "running" {
-//line views/trace.qtpl:167
+//line trace.qtpl:167
 				qw422016.N().S(`
                             <span class="badge bg-primary"><i class="fa-solid fa-sync fa-spin"></i> Running</span>
+                            <span class="trace-progress small text-muted ms-2" data-trace-name="`)
+//line trace.qtpl:169
+				qw422016.E().S(r.Name)
+//line trace.qtpl:169
+				qw422016.N().S(`"></span>
                             `)
-//line views/trace.qtpl:169
+//line trace.qtpl:170
 			} else if r.Status == "completed" {
-//line views/trace.qtpl:169
+//line trace.qtpl:170
 				qw422016.N().S(`
                             <span class="badge bg-success">Completed</span>
                             `)
-//line views/trace.qtpl:171
+//line trace.qtpl:172
 			} else if r.Status == "failed" {
-//line views/trace.qtpl:171
+//line trace.qtpl:172
 				qw422016.N().S(`
                             <span class="badge bg-danger">Failed</span>
                             `)
-//line views/trace.qtpl:173
+//line trace.qtpl:174
 			} else {
-//line views/trace.qtpl:173
+//line trace.qtpl:174
 				qw422016.N().S(`
                             <span class="badge bg-secondary">`)
-//line views/trace.qtpl:174
+//line trace.qtpl:175
 				qw422016.E().S(r.Status)
-//line views/trace.qtpl:174
+//line trace.qtpl:175
 				qw422016.N().S(`</span>
                             `)
-//line views/trace.qtpl:175
+//line trace.qtpl:176
 			}
-//line views/trace.qtpl:175
+//line trace.qtpl:176
 			qw422016.N().S(`
                         </td>
                         <td>`)
-//line views/trace.qtpl:177
+//line trace.qtpl:178
 			qw422016.N().D(r.EntryCount)
-//line views/trace.qtpl:177
+//line trace.qtpl:178
 			qw422016.N().S(`</td>
                         <td class="small text-muted created-time" data-time="`)
-//line views/trace.qtpl:178
+//line trace.qtpl:179
 			qw422016.E().S(r.CreatedAt.Format(time.RFC3339))
-//line views/trace.qtpl:178
+//line trace.qtpl:179
 			qw422016.N().S(`">
                         </td>
                         <td>
+                            `)
+//line trace.qtpl:182
+			if r.Status == "running" {
+//line trace.qtpl:182
+				qw422016.N().S(`
+                            <button class="btn btn-sm btn-outline-warning me-1" onclick="cancelTrace('`)
+//line trace.qtpl:183
+				qw422016.E().S(JSAttr(r.Name))
+//line trace.qtpl:183
+				qw422016.N().S(`')" title="Cancel trace">
+                                <i class="fa-solid fa-stop"></i>
+                            </button>
+                            `)
+//line trace.qtpl:186
+			}
+//line trace.qtpl:186
+			qw422016.N().S(`
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteReport('`)
-//line views/trace.qtpl:181
+//line trace.qtpl:187
 			qw422016.E().S(JSAttr(r.Name))
-//line views/trace.qtpl:181
+//line trace.qtpl:187
 			qw422016.N().S(`')">
                                 <i class="fa-solid fa-trash"></i>
                             </button>
                         </td>
                     </tr>
                     `)
-//line views/trace.qtpl:186
+//line trace.qtpl:192
 		}
-//line views/trace.qtpl:186
+//line trace.qtpl:192
 		qw422016.N().S(`
                 </tbody>
             </table>
         </div>
         `)
-//line views/trace.qtpl:190
+//line trace.qtpl:196
 	}
-//line views/trace.qtpl:190
+//line trace.qtpl:196
 	qw422016.N().S(`
     </div>
 </div>
@@ -587,6 +609,21 @@ function parseTimeInput(input, isEndTime) {
     return input;
 }
 
+function cancelTrace(name) {
+    fetch('/api/v1/trace/cancel/' + encodeURIComponent(name), { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                alert('Error: ' + data.error.message);
+            } else {
+                location.reload();
+            }
+        })
+        .catch(function(err) {
+            alert('Error: ' + err);
+        });
+}
+
 function deleteReport(name) {
     if (!confirm('Delete trace report "' + name + '"?')) {
         return;
@@ -682,48 +719,69 @@ function formatTimeRange(startISO, endISO) {
     });
 })();
 
-// Auto-refresh if there are running reports
+// Auto-refresh and live progress for running reports
 (function() {
     var runningReports = document.querySelectorAll('tr[data-status="running"]');
-    if (runningReports.length > 0) {
-        setTimeout(function() {
-            location.reload();
-        }, 3000);
-    }
+    if (runningReports.length === 0) return;
+
+    // Connect to events WebSocket for live progress updates
+    var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var ws = new WebSocket(wsProtocol + '//' + window.location.host + '/api/v1/events/ws');
+    ws.onmessage = function(e) {
+        try {
+            var event = JSON.parse(e.data);
+            if (event.type === 'trace.progress') {
+                var payload = event.payload || {};
+                var el = document.querySelector('.trace-progress[data-trace-name="' + payload.name + '"]');
+                if (el && payload.message) {
+                    el.textContent = payload.message;
+                }
+            } else if (event.type === 'trace.completed' || event.type === 'trace.failed') {
+                ws.close();
+                location.reload();
+            }
+        } catch (err) {}
+    };
+
+    // Fallback: reload after 30s if WebSocket doesn't report completion
+    setTimeout(function() {
+        ws.close();
+        location.reload();
+    }, 30000);
 })();
 </script>
 
 `)
-//line views/trace.qtpl:477
+//line trace.qtpl:519
 	p.StreamFooter(qw422016)
-//line views/trace.qtpl:477
+//line trace.qtpl:519
 	qw422016.N().S(`
 `)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 }
 
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 func (p *TracePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	p.StreamRender(qw422016)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	qt422016.ReleaseWriter(qw422016)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 }
 
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 func (p *TracePage) Render() string {
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	p.WriteRender(qb422016)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	qs422016 := string(qb422016.B)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 	return qs422016
-//line views/trace.qtpl:478
+//line trace.qtpl:520
 }

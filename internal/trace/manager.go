@@ -26,10 +26,14 @@ type Manager struct {
 	logViewerConfig map[string]config.LogViewerConfig // Map of viewer name to config (for ID field access)
 	reportsDir      string
 	retention       time.Duration
+	timeout         time.Duration
 	bus             events.EventBus
 	storage         *Storage
 	done            chan struct{} // signals shutdown to background goroutines
 	closeOnce       sync.Once
+
+	activeMu     sync.Mutex
+	activeTraces map[string]context.CancelFunc // reportName -> cancel function
 }
 
 // NewManager creates a new trace manager.
@@ -60,15 +64,27 @@ func NewManager(logManager *logs.Manager, cfg *config.Config, bus events.EventBu
 		logViewerConfig[lvc.Name] = lvc
 	}
 
+	// Parse timeout duration
+	timeout := 5 * time.Minute // Default 5 minutes
+	if cfg.Trace.Timeout != "" {
+		d, err := parseDuration(cfg.Trace.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid timeout duration: %w", err)
+		}
+		timeout = d
+	}
+
 	m := &Manager{
 		logManager:      logManager,
 		traceGroups:     cfg.TraceGroups,
 		logViewerConfig: logViewerConfig,
 		reportsDir:      reportsDir,
 		retention:       retention,
+		timeout:         timeout,
 		bus:             bus,
 		storage:         storage,
 		done:            make(chan struct{}),
+		activeTraces:    make(map[string]context.CancelFunc),
 	}
 
 	// Start background cleanup goroutine
@@ -105,6 +121,20 @@ func (m *Manager) Close() error {
 		close(m.done)
 	})
 	return nil
+}
+
+// CancelTrace cancels a running trace by report name.
+// Returns true if the trace was found and cancelled, false if not running.
+func (m *Manager) CancelTrace(name string) bool {
+	m.activeMu.Lock()
+	cancel, ok := m.activeTraces[name]
+	m.activeMu.Unlock()
+	if ok {
+		cancel()
+		log.Printf("Trace: cancelled %s", name)
+		return true
+	}
+	return false
 }
 
 // UpdateConfigs updates the trace configuration when switching worktrees.
@@ -208,8 +238,37 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 func (m *Manager) executeAsync(reportName string, req TraceRequest, viewerNames []string, createdAt time.Time) {
 	startTime := time.Now()
 
-	// Use a background context since we're running async
-	ctx := context.Background()
+	// Create context with timeout and cancellation
+	ctx, cancel := context.WithTimeout(context.Background(), m.timeout)
+	defer cancel()
+
+	// Also cancel on shutdown
+	go func() {
+		select {
+		case <-m.done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	// Register this trace so it can be cancelled
+	m.activeMu.Lock()
+	m.activeTraces[reportName] = cancel
+	m.activeMu.Unlock()
+	defer func() {
+		m.activeMu.Lock()
+		delete(m.activeTraces, reportName)
+		m.activeMu.Unlock()
+	}()
+
+	// Emit progress: starting Pass 1
+	m.emitEvent("trace.progress", map[string]any{
+		"name":     reportName,
+		"trace_id": req.TraceID,
+		"group":    req.Group,
+		"phase":    "pass1",
+		"message":  fmt.Sprintf("Searching %d log viewers for %q", len(viewerNames), req.TraceID),
+	})
 
 	// Execute Pass 1: search for the trace pattern
 	results, err := m.searchParallel(ctx, viewerNames, req.TraceID, req)
@@ -227,25 +286,56 @@ func (m *Manager) executeAsync(reportName string, req TraceRequest, viewerNames 
 		ids := m.extractIDs(pass1Entries)
 		log.Printf("Trace: Pass 1 found %d entries, extracted %d unique IDs", len(pass1Entries), len(ids))
 
+		// Emit progress: starting Pass 2
+		m.emitEvent("trace.progress", map[string]any{
+			"name":      reportName,
+			"trace_id":  req.TraceID,
+			"group":     req.Group,
+			"phase":     "pass2",
+			"message":   fmt.Sprintf("Expanding %d entries → %d unique IDs across %d viewers", len(pass1Entries), len(ids), len(viewerNames)),
+			"pass1_entries": len(pass1Entries),
+			"unique_ids":   len(ids),
+		})
+
 		if len(ids) > 0 {
 			// Batch IDs to avoid command line length limits
 			// Each batch creates a grep pattern; ~50 IDs keeps commands reasonable
 			const maxIDsPerBatch = 50
 			var allPass2Entries []TraceEntry
+			totalBatches := (len(ids) + maxIDsPerBatch - 1) / maxIDsPerBatch
 
 			for batchStart := 0; batchStart < len(ids); batchStart += maxIDsPerBatch {
-				batchEnd := batchStart + maxIDsPerBatch
-				if batchEnd > len(ids) {
-					batchEnd = len(ids)
+				// Check for cancellation between batches
+				if ctx.Err() != nil {
+					m.updateReportFailed(reportName, req, createdAt, fmt.Errorf("trace cancelled: %w", ctx.Err()))
+					return
 				}
+
+				batchEnd := min(batchStart+maxIDsPerBatch, len(ids))
 				batchIDs := ids[batchStart:batchEnd]
 				idPattern := m.buildIDPattern(batchIDs)
+				batchNum := batchStart/maxIDsPerBatch + 1
 
-				log.Printf("Trace: Pass 2 batch %d-%d of %d IDs", batchStart, batchEnd, len(ids))
+				log.Printf("Trace: Pass 2 batch %d/%d (%d-%d of %d IDs)", batchNum, totalBatches, batchStart, batchEnd, len(ids))
+
+				// Emit progress for each batch
+				m.emitEvent("trace.progress", map[string]any{
+					"name":          reportName,
+					"trace_id":      req.TraceID,
+					"group":         req.Group,
+					"phase":         "pass2_batch",
+					"message":       fmt.Sprintf("Pass 2: batch %d/%d (%d IDs)", batchNum, totalBatches, len(batchIDs)),
+					"batch":         batchNum,
+					"total_batches": totalBatches,
+				})
 
 				// Execute Pass 2: search for this batch of IDs
 				pass2Results, err := m.searchParallel(ctx, viewerNames, idPattern, req)
 				if err != nil {
+					if ctx.Err() != nil {
+						m.updateReportFailed(reportName, req, createdAt, fmt.Errorf("trace cancelled: %w", ctx.Err()))
+						return
+					}
 					log.Printf("Trace: Pass 2 batch failed: %v", err)
 					continue // Skip this batch but try others
 				}

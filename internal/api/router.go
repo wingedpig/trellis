@@ -137,6 +137,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 	if deps.TraceManager != nil {
 		traceHandler := handlers.NewTraceHandler(deps.TraceManager)
 		api.HandleFunc("/trace", traceHandler.Execute).Methods("POST")
+		api.HandleFunc("/trace/cancel/{name:.+}", traceHandler.CancelTrace).Methods("POST")
 		api.HandleFunc("/trace/groups", traceHandler.ListGroups).Methods("GET")
 		api.HandleFunc("/trace/reports", traceHandler.ListReports).Methods("GET")
 		api.HandleFunc("/trace/reports/{name:.+}", traceHandler.GetReport).Methods("GET")
@@ -329,6 +330,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	if deps.TraceManager != nil {
 		traceHandler := handlers.NewTraceHandler(deps.TraceManager)
 		api.HandleFunc("/trace", traceHandler.Execute).Methods("POST")
+		api.HandleFunc("/trace/cancel/{name:.+}", traceHandler.CancelTrace).Methods("POST")
 		api.HandleFunc("/trace/groups", traceHandler.ListGroups).Methods("GET")
 		api.HandleFunc("/trace/reports", traceHandler.ListReports).Methods("GET")
 		api.HandleFunc("/trace/reports/{name:.+}", traceHandler.GetReport).Methods("GET")
