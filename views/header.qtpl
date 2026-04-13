@@ -176,6 +176,26 @@ window.TrellisNav = (function() {
         sessionStorage.setItem('trellis-nav-history', JSON.stringify(navHistory));
     }
 
+    function fuzzyMatcher(params, data) {
+        if ($.trim(params.term) === '') return data;
+        if (data.children && data.children.length > 0) {
+            var match = $.extend(true, {}, data);
+            for (var c = data.children.length - 1; c >= 0; c--) {
+                if (fuzzyMatcher(params, data.children[c]) == null) {
+                    match.children.splice(c, 1);
+                }
+            }
+            return match.children.length > 0 ? match : null;
+        }
+        var text = (data.text || '').toLowerCase();
+        var term = params.term.toLowerCase();
+        var ti = 0;
+        for (var i = 0; i < text.length && ti < term.length; i++) {
+            if (text[i] === term[ti]) ti++;
+        }
+        return ti === term.length ? data : null;
+    }
+
     function formatNavOption(option) {
         if (!option.element) return option.text;
         const el = option.element;
@@ -300,6 +320,7 @@ window.TrellisNav = (function() {
             placeholder: 'Select from history...',
             allowClear: false,
             width: '300px',
+            matcher: fuzzyMatcher,
             templateResult: formatNavOption,
                     templateSelection: formatNavOption
         }).on('select2:select', function() {
@@ -338,6 +359,7 @@ window.TrellisNav = (function() {
         $('#navSelect').select2('destroy').select2({
             placeholder: 'Navigate...',
             width: '280px',
+            matcher: fuzzyMatcher,
             templateResult: formatNavOption,
                     templateSelection: formatNavOption
         }).on('select2:select', handleNavSelection);
@@ -622,6 +644,7 @@ window.TrellisNav = (function() {
                 $('#navSelect').select2({
                     placeholder: 'Navigate...',
                     width: '280px',
+                    matcher: fuzzyMatcher,
                     templateResult: formatNavOption,
                     templateSelection: formatNavOption
                 }).on('select2:select', handleNavSelection);
@@ -650,7 +673,8 @@ window.TrellisNav = (function() {
                 }));
                 $('#navSelect').select2({
                     placeholder: 'Navigate...',
-                    width: '280px'
+                    width: '280px',
+                    matcher: fuzzyMatcher
                 }).on('select2:select', handleNavSelection);
                 $('#navSelect').val(window.location.pathname).trigger('change.select2');
             });
@@ -810,6 +834,7 @@ window.TrellisNav = (function() {
         getOriginalOptions: function() { return originalNavOptions; },
         isHistoryMode: function() { return navHistoryMode; },
         setHistoryMode: function(mode) { navHistoryMode = mode; },
+        fuzzyMatcher: fuzzyMatcher,
         NAV_PAGES: NAV_PAGES
     };
 })();

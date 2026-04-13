@@ -1185,6 +1185,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         $('#navSelect').select2('destroy').select2({
             placeholder: 'Select terminal...',
             width: '300px',
+            matcher: TrellisNav.fuzzyMatcher,
             templateResult: formatPickerOption,
             templateSelection: formatPickerOption
         }).on('select2:select', handleNormalSelection);
@@ -1582,6 +1583,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 $('#navSelect').select2('destroy').select2({
                     placeholder: 'Select terminal...',
                     width: '300px',
+                    matcher: TrellisNav.fuzzyMatcher,
                     templateResult: formatPickerOption,
                     templateSelection: formatPickerOption
                 }).on('select2:select', handleNormalSelection);
@@ -1711,6 +1713,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 $('#navSelect').select2('destroy').select2({
                     placeholder: 'Select terminal...',
                     width: '300px',
+                    matcher: TrellisNav.fuzzyMatcher,
                     templateResult: formatPickerOption,
                     templateSelection: formatPickerOption
                 }).on('select2:select', handleNormalSelection);
@@ -1762,6 +1765,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             $('#navSelect').select2('destroy').select2({
                 placeholder: 'Select terminal...',
                 width: '300px',
+                matcher: TrellisNav.fuzzyMatcher,
                 templateResult: formatPickerOption,
                 templateSelection: formatPickerOption
             }).on('select2:select', handleNormalSelection).val(currentVal).trigger('change');
@@ -2422,6 +2426,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             $('#navSelect').select2({
                 placeholder: 'Select terminal...',
                 width: '300px',
+                matcher: TrellisNav.fuzzyMatcher,
                 templateResult: formatPickerOption,
                 templateSelection: formatPickerOption
             }).on('select2:select', handleNormalSelection);

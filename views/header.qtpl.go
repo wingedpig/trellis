@@ -219,6 +219,26 @@ window.TrellisNav = (function() {
         sessionStorage.setItem('trellis-nav-history', JSON.stringify(navHistory));
     }
 
+    function fuzzyMatcher(params, data) {
+        if ($.trim(params.term) === '') return data;
+        if (data.children && data.children.length > 0) {
+            var match = $.extend(true, {}, data);
+            for (var c = data.children.length - 1; c >= 0; c--) {
+                if (fuzzyMatcher(params, data.children[c]) == null) {
+                    match.children.splice(c, 1);
+                }
+            }
+            return match.children.length > 0 ? match : null;
+        }
+        var text = (data.text || '').toLowerCase();
+        var term = params.term.toLowerCase();
+        var ti = 0;
+        for (var i = 0; i < text.length && ti < term.length; i++) {
+            if (text[i] === term[ti]) ti++;
+        }
+        return ti === term.length ? data : null;
+    }
+
     function formatNavOption(option) {
         if (!option.element) return option.text;
         const el = option.element;
@@ -343,6 +363,7 @@ window.TrellisNav = (function() {
             placeholder: 'Select from history...',
             allowClear: false,
             width: '300px',
+            matcher: fuzzyMatcher,
             templateResult: formatNavOption,
                     templateSelection: formatNavOption
         }).on('select2:select', function() {
@@ -381,6 +402,7 @@ window.TrellisNav = (function() {
         $('#navSelect').select2('destroy').select2({
             placeholder: 'Navigate...',
             width: '280px',
+            matcher: fuzzyMatcher,
             templateResult: formatNavOption,
                     templateSelection: formatNavOption
         }).on('select2:select', handleNavSelection);
@@ -665,6 +687,7 @@ window.TrellisNav = (function() {
                 $('#navSelect').select2({
                     placeholder: 'Navigate...',
                     width: '280px',
+                    matcher: fuzzyMatcher,
                     templateResult: formatNavOption,
                     templateSelection: formatNavOption
                 }).on('select2:select', handleNavSelection);
@@ -693,7 +716,8 @@ window.TrellisNav = (function() {
                 }));
                 $('#navSelect').select2({
                     placeholder: 'Navigate...',
-                    width: '280px'
+                    width: '280px',
+                    matcher: fuzzyMatcher
                 }).on('select2:select', handleNavSelection);
                 $('#navSelect').val(window.location.pathname).trigger('change.select2');
             });
@@ -853,6 +877,7 @@ window.TrellisNav = (function() {
         getOriginalOptions: function() { return originalNavOptions; },
         isHistoryMode: function() { return navHistoryMode; },
         setHistoryMode: function(mode) { navHistoryMode = mode; },
+        fuzzyMatcher: fuzzyMatcher,
         NAV_PAGES: NAV_PAGES
     };
 })();
@@ -861,38 +886,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 }
 
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 }
 
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 	return qs422016
-//line views/header.qtpl:820
+//line views/header.qtpl:845
 }
 
-//line views/header.qtpl:822
+//line views/header.qtpl:847
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:822
+//line views/header.qtpl:847
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -900,9 +925,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:828
+//line views/header.qtpl:853
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:828
+//line views/header.qtpl:853
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -966,25 +991,25 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:890
+//line views/header.qtpl:915
 	if p.Worktree != nil {
-//line views/header.qtpl:890
+//line views/header.qtpl:915
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:892
+//line views/header.qtpl:917
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:892
+//line views/header.qtpl:917
 		qw422016.N().S(` (`)
-//line views/header.qtpl:892
+//line views/header.qtpl:917
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:892
+//line views/header.qtpl:917
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:894
+//line views/header.qtpl:919
 	}
-//line views/header.qtpl:894
+//line views/header.qtpl:919
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -1041,74 +1066,74 @@ function showShortcutHelp() {
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="/static/js/logviewer.js"></script>
 `)
-//line views/header.qtpl:949
+//line views/header.qtpl:974
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:949
+//line views/header.qtpl:974
 	qw422016.N().S(`
 `)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 }
 
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 }
 
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 func (p *BasePage) Header() string {
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 	return qs422016
-//line views/header.qtpl:950
+//line views/header.qtpl:975
 }
 
-//line views/header.qtpl:952
+//line views/header.qtpl:977
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:952
+//line views/header.qtpl:977
 	qw422016.N().S(`
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 `)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 }
 
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 }
 
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 	return qs422016
-//line views/header.qtpl:957
+//line views/header.qtpl:982
 }

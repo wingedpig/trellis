@@ -1678,6 +1678,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         $('#navSelect').select2('destroy').select2({
             placeholder: 'Select terminal...',
             width: '300px',
+            matcher: TrellisNav.fuzzyMatcher,
             templateResult: formatPickerOption,
             templateSelection: formatPickerOption
         }).on('select2:select', handleNormalSelection);
@@ -2075,6 +2076,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 $('#navSelect').select2('destroy').select2({
                     placeholder: 'Select terminal...',
                     width: '300px',
+                    matcher: TrellisNav.fuzzyMatcher,
                     templateResult: formatPickerOption,
                     templateSelection: formatPickerOption
                 }).on('select2:select', handleNormalSelection);
@@ -2204,6 +2206,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 $('#navSelect').select2('destroy').select2({
                     placeholder: 'Select terminal...',
                     width: '300px',
+                    matcher: TrellisNav.fuzzyMatcher,
                     templateResult: formatPickerOption,
                     templateSelection: formatPickerOption
                 }).on('select2:select', handleNormalSelection);
@@ -2255,6 +2258,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             $('#navSelect').select2('destroy').select2({
                 placeholder: 'Select terminal...',
                 width: '300px',
+                matcher: TrellisNav.fuzzyMatcher,
                 templateResult: formatPickerOption,
                 templateSelection: formatPickerOption
             }).on('select2:select', handleNormalSelection).val(currentVal).trigger('change');
@@ -2915,6 +2919,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             $('#navSelect').select2({
                 placeholder: 'Select terminal...',
                 width: '300px',
+                matcher: TrellisNav.fuzzyMatcher,
                 templateResult: formatPickerOption,
                 templateSelection: formatPickerOption
             }).on('select2:select', handleNormalSelection);
@@ -5682,36 +5687,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5119
+//line views/terminal.qtpl:5124
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5119
+//line views/terminal.qtpl:5124
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 }
 
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 }
 
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 	return qs422016
-//line views/terminal.qtpl:5120
+//line views/terminal.qtpl:5125
 }
