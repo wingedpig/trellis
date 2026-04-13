@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -340,6 +341,17 @@ func (m *Manager) ListSessions(worktreeName string) []*SessionInfo {
 			result = append(result, &info)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		ti := result[i].LastUserInput
+		if ti.IsZero() {
+			ti = result[i].CreatedAt
+		}
+		tj := result[j].LastUserInput
+		if tj.IsZero() {
+			tj = result[j].CreatedAt
+		}
+		return ti.After(tj)
+	})
 	return result
 }
 
