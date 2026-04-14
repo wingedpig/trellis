@@ -26,7 +26,6 @@ type Manager struct {
 	logViewerConfig map[string]config.LogViewerConfig // Map of viewer name to config (for ID field access)
 	reportsDir      string
 	retention       time.Duration
-	timeout         time.Duration
 	bus             events.EventBus
 	storage         *Storage
 	done            chan struct{} // signals shutdown to background goroutines
@@ -64,23 +63,12 @@ func NewManager(logManager *logs.Manager, cfg *config.Config, bus events.EventBu
 		logViewerConfig[lvc.Name] = lvc
 	}
 
-	// Parse timeout duration
-	timeout := 5 * time.Minute // Default 5 minutes
-	if cfg.Trace.Timeout != "" {
-		d, err := parseDuration(cfg.Trace.Timeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid timeout duration: %w", err)
-		}
-		timeout = d
-	}
-
 	m := &Manager{
 		logManager:      logManager,
 		traceGroups:     cfg.TraceGroups,
 		logViewerConfig: logViewerConfig,
 		reportsDir:      reportsDir,
 		retention:       retention,
-		timeout:         timeout,
 		bus:             bus,
 		storage:         storage,
 		done:            make(chan struct{}),
@@ -238,8 +226,10 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 func (m *Manager) executeAsync(reportName string, req TraceRequest, viewerNames []string, createdAt time.Time) {
 	startTime := time.Now()
 
-	// Create context with timeout and cancellation
-	ctx, cancel := context.WithTimeout(context.Background(), m.timeout)
+	// Create cancellable context — no global timeout since each file has
+	// its own per-file timeout. This context is cancelled on shutdown or
+	// explicit user cancellation.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Also cancel on shutdown

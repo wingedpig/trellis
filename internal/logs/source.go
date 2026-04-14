@@ -203,10 +203,20 @@ const perFileTimeout = 60 * time.Second
 
 // fileContext creates a context with a per-file timeout that is independent of
 // the parent's deadline. This prevents a shared trace-level deadline from
-// starving later files. Parent cancellation (e.g. user cancel) still propagates.
+// starving later files. Explicit cancellation (e.g. user cancel, shutdown)
+// still propagates, but deadline expiration does not.
 func fileContext(parent context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), perFileTimeout)
-	stop := context.AfterFunc(parent, func() { cancel() })
+	stop := context.AfterFunc(parent, func() {
+		// Only propagate explicit cancellation, not deadline expiration.
+		// DeadlineExceeded means the parent's timeout fired — each file
+		// has its own timeout so we don't need to inherit that.
+		// Canceled means an explicit cancel() call (user cancel, shutdown,
+		// limit reached, errgroup failure) which we do want to propagate.
+		if parent.Err() == context.Canceled {
+			cancel()
+		}
+	})
 	return ctx, func() { stop(); cancel() }
 }
 
