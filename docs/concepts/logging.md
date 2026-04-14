@@ -174,6 +174,16 @@ trellis-ctl logs backend -grep "error" -B 5 -A 10
 
 Multiple terms are AND-ed together. All matching is case-insensitive.
 
+**Trace Report Filters:**
+
+Trace reports support all the log viewer filter syntax above, plus:
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `trace:text` | Show all entries sharing a trace ID with entries matching `text` | `trace:/api/users` |
+
+The `trace:` prefix performs a three-pass filter: first it finds entries matching the search text, then collects their trace ID values, and finally shows all entries that share any of those trace IDs. This is useful for seeing the full request context across services when you know part of a request (e.g., a URL path or error message).
+
 ## Distributed Tracing
 
 Search for a trace ID across multiple log sources:

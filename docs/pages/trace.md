@@ -63,7 +63,7 @@ Reports are saved and listed in the **Trace Reports** table. Click a report name
 
 When viewing a trace report:
 
-- **Filter** — Search within the results
+- **Filter** — Search within the results (supports `trace:text` to expand matches by trace ID)
 - **Timestamp toggle** — Switch between absolute and relative timestamps
 - **Entry details** — Click any row to see all fields with copy buttons
 - **Delete** — Remove the report when done

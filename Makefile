@@ -1,4 +1,4 @@
-.PHONY: build clean test generate api-docs
+.PHONY: build clean test generate api-docs site
 
 # Find all .qtpl files
 QTPL_FILES := $(wildcard views/*.qtpl)
@@ -34,6 +34,10 @@ deps:
 # Run the application
 run: build
 	./trellis
+
+# Build the Hugo documentation site
+site:
+	hugo --minify -s site
 
 # Generate API documentation with Trellis theme and navbar
 # Base theme uses dark colors for light mode; dark mode overrides in template.hbs

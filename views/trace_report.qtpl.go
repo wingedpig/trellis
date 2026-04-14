@@ -180,7 +180,7 @@ func (p *TraceReportPage) StreamRender(qw422016 *qt422016.Writer) {
 		qw422016.N().S(`
         <div class="trace-filter-bar">
             <i class="fa-solid fa-search text-muted"></i>
-            <input type="text" id="filterInput" placeholder="Filter: source:api level:error message text..."
+            <input type="text" id="filterInput" placeholder="Filter: trace:text source:api level:error message text..."
                    onkeyup="filterEntries(event)">
             <button class="btn btn-sm btn-outline-secondary" onclick="clearFilter()" title="Clear filter">
                 <i class="fa-solid fa-times"></i>
@@ -259,13 +259,57 @@ function renderEntries() {
     }
 }
 
+function getIDField(source) {
+    var cfg = logViewerMap[source];
+    return cfg && cfg.id_field || '';
+}
+
 function filterEntries(event) {
     if (event && event.key === 'Escape') {
         clearFilter();
         return;
     }
     var query = document.getElementById('filterInput').value;
-    filteredEntries = allEntries.filter(function(e) { return matchesLogFilter(e, query); });
+    if (!query) {
+        filteredEntries = allEntries.slice();
+        renderEntries();
+        return;
+    }
+
+    // Check for trace: prefix
+    var traceMatch = query.match(/^trace:(.+)/i);
+    if (traceMatch) {
+        var searchText = traceMatch[1];
+        // Pass 1: find entries matching the search text
+        var matchedEntries = allEntries.filter(function(e) {
+            return matchesLogFilter(e, searchText);
+        });
+        // Pass 2: collect trace_ids from matched entries
+        var traceIds = {};
+        matchedEntries.forEach(function(e) {
+            if (e.fields) {
+                var idField = getIDField(e.source);
+                if (idField) {
+                    var id = e.fields[idField];
+                    if (id && String(id).indexOf('..') === -1) {
+                        traceIds[String(id)] = true;
+                    }
+                }
+            }
+        });
+        // Pass 3: show all entries with matching trace_ids
+        filteredEntries = allEntries.filter(function(e) {
+            if (!e.fields) return false;
+            var idField = getIDField(e.source);
+            if (!idField) return false;
+            var id = e.fields[idField];
+            return id && traceIds[String(id)];
+        });
+    } else {
+        filteredEntries = allEntries.filter(function(e) {
+            return matchesLogFilter(e, query);
+        });
+    }
     renderEntries();
 }
 
@@ -309,9 +353,9 @@ function toggleTimestampFormat() {
 function deleteAndGoBack() {
     if (!confirm('Delete this trace report?')) return;
     fetch('/api/v1/trace/reports/`)
-//line views/trace_report.qtpl:220
+//line views/trace_report.qtpl:264
 	qw422016.E().S(p.Report.Name)
-//line views/trace_report.qtpl:220
+//line views/trace_report.qtpl:264
 	qw422016.N().S(`', { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -425,9 +469,9 @@ function formatTimeRange(startISO, endISO) {
 
 <script>
 var TRACE_REPORT_NAME = '`)
-//line views/trace_report.qtpl:332
+//line views/trace_report.qtpl:376
 	qw422016.E().S(JSAttr(p.Report.Name))
-//line views/trace_report.qtpl:332
+//line views/trace_report.qtpl:376
 	qw422016.N().S(`';
 
 function showSaveToCase() {
@@ -535,41 +579,41 @@ function doLinkTrace(worktree, caseId) {
 </script>
 
 `)
-//line views/trace_report.qtpl:438
+//line views/trace_report.qtpl:482
 	p.StreamFooter(qw422016)
-//line views/trace_report.qtpl:438
+//line views/trace_report.qtpl:482
 	qw422016.N().S(`
 `)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 }
 
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 func (p *TraceReportPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	p.StreamRender(qw422016)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	qt422016.ReleaseWriter(qw422016)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 }
 
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 func (p *TraceReportPage) Render() string {
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	p.WriteRender(qb422016)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	qs422016 := string(qb422016.B)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 	return qs422016
-//line views/trace_report.qtpl:439
+//line views/trace_report.qtpl:483
 }
 
-//line views/trace_report.qtpl:442
+//line views/trace_report.qtpl:486
 func levelBadgeClass(level string) string {
 	switch level {
 	case "ERROR", "error", "ERR":

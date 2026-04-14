@@ -107,6 +107,7 @@ type LogViewerInfo struct {
 	MessageField   string         `json:"message_field"`        // Parser's message field name
 	FileField      string         `json:"file_field,omitempty"` // Parser's file field name
 	LineField      string         `json:"line_field,omitempty"` // Parser's line field name
+	IDField        string         `json:"id_field,omitempty"`   // Parser's ID field name for trace expansion
 }
 
 type TerminalWindowPage struct {
@@ -128,58 +129,58 @@ type TerminalWindowPage struct {
 
 // ShortcutsJSON streams the shortcuts as JSON for JavaScript (raw, unescaped).
 
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 func (p *TerminalWindowPage) StreamShortcutsJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	if len(p.Shortcuts) == 0 {
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 		qw422016.N().S(`[]`)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	} else {
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 		b, _ := json.Marshal(p.Shortcuts)
 
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 		qw422016.N().Z(b)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	}
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 }
 
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 func (p *TerminalWindowPage) WriteShortcutsJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 }
 
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 func (p *TerminalWindowPage) ShortcutsJSON() string {
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	p.WriteShortcutsJSON(qb422016)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 	return qs422016
-//line views/terminal.qtpl:107
+//line views/terminal.qtpl:108
 }
 
 // shortcutKeyDisplay formats a shortcut key like "cmd+l" as "<kbd>Cmd</kbd> + <kbd>L</kbd>".
 
-//line views/terminal.qtpl:110
+//line views/terminal.qtpl:111
 func streamshortcutKeyDisplay(qw422016 *qt422016.Writer, key string) {
-//line views/terminal.qtpl:110
+//line views/terminal.qtpl:111
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:112
+//line views/terminal.qtpl:113
 	parts := strings.Split(key, "+")
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
@@ -202,212 +203,212 @@ func streamshortcutKeyDisplay(qw422016 *qt422016.Writer, key string) {
 		}
 	}
 
-//line views/terminal.qtpl:133
+//line views/terminal.qtpl:134
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 	for i, part := range parts {
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 		if i > 0 {
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 			qw422016.N().S(` + `)
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 		}
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 		qw422016.N().S(`<kbd>`)
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 		qw422016.E().S(part)
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 		qw422016.N().S(`</kbd>`)
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 	}
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:135
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 }
 
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 func writeshortcutKeyDisplay(qq422016 qtio422016.Writer, key string) {
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	streamshortcutKeyDisplay(qw422016, key)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 }
 
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 func shortcutKeyDisplay(key string) string {
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	writeshortcutKeyDisplay(qb422016, key)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 	return qs422016
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:136
 }
 
 // NotificationsJSON streams the notification settings as JSON for JavaScript.
 
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 func (p *TerminalWindowPage) StreamNotificationsJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	b, _ := json.Marshal(p.Notifications)
 
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 }
 
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 func (p *TerminalWindowPage) WriteNotificationsJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 }
 
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 func (p *TerminalWindowPage) NotificationsJSON() string {
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	p.WriteNotificationsJSON(qb422016)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 	return qs422016
-//line views/terminal.qtpl:138
+//line views/terminal.qtpl:139
 }
 
 // ServicesJSON streams the services list as JSON for JavaScript.
 
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 func (p *TerminalWindowPage) StreamServicesJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	b, _ := json.Marshal(p.Services)
 
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 }
 
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 func (p *TerminalWindowPage) WriteServicesJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 }
 
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 func (p *TerminalWindowPage) ServicesJSON() string {
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	p.WriteServicesJSON(qb422016)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 	return qs422016
-//line views/terminal.qtpl:141
+//line views/terminal.qtpl:142
 }
 
 // LinksJSON streams the links list as JSON for JavaScript.
 
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 func (p *TerminalWindowPage) StreamLinksJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	b, _ := json.Marshal(p.Links)
 
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 }
 
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 func (p *TerminalWindowPage) WriteLinksJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 }
 
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 func (p *TerminalWindowPage) LinksJSON() string {
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	p.WriteLinksJSON(qb422016)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 	return qs422016
-//line views/terminal.qtpl:144
+//line views/terminal.qtpl:145
 }
 
 // LogViewersJSON streams the log viewers list as JSON for JavaScript.
 
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 func (p *TerminalWindowPage) StreamLogViewersJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	b, _ := json.Marshal(p.LogViewers)
 
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 }
 
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 func (p *TerminalWindowPage) WriteLogViewersJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 }
 
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 func (p *TerminalWindowPage) LogViewersJSON() string {
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	p.WriteLogViewersJSON(qb422016)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 	return qs422016
-//line views/terminal.qtpl:147
+//line views/terminal.qtpl:148
 }
 
 // SessionDisplayName returns the branch name for display (e.g., "main", "demovideos")
 //
-//line views/terminal.qtpl:151
+//line views/terminal.qtpl:152
 func (p *TerminalWindowPage) SessionDisplayName() string {
 	if p.ProjectName == "" {
 		return p.Session
@@ -424,14 +425,14 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
 	return p.Session
 }
 
-//line views/terminal.qtpl:169
+//line views/terminal.qtpl:170
 func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:169
+//line views/terminal.qtpl:170
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:170
+//line views/terminal.qtpl:171
 	p.StreamHeader(qw422016)
-//line views/terminal.qtpl:170
+//line views/terminal.qtpl:171
 	qw422016.N().S(`
 
 <div class="row">
@@ -442,9 +443,9 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
             </div>
             <div class="card-body p-0">
                 `)
-//line views/terminal.qtpl:179
+//line views/terminal.qtpl:180
 	if len(p.Terminals) > 0 {
-//line views/terminal.qtpl:179
+//line views/terminal.qtpl:180
 		qw422016.N().S(`
                 <table class="table table-dark table-hover mb-0">
                     <thead>
@@ -456,12 +457,12 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
                     </thead>
                     <tbody>
                         `)
-//line views/terminal.qtpl:189
+//line views/terminal.qtpl:190
 		for _, term := range p.Terminals {
-//line views/terminal.qtpl:189
+//line views/terminal.qtpl:190
 			qw422016.N().S(`
                         `)
-//line views/terminal.qtpl:191
+//line views/terminal.qtpl:192
 			var termURL string
 			if term.IsRemote {
 				termURL = "/terminal/remote/" + term.Window
@@ -469,78 +470,78 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
 				termURL = "/terminal/local/" + term.Worktree + "/" + term.Window
 			}
 
-//line views/terminal.qtpl:197
+//line views/terminal.qtpl:198
 			qw422016.N().S(`
                         <tr>
                             <td>
                                 <a href="`)
-//line views/terminal.qtpl:200
+//line views/terminal.qtpl:201
 			qw422016.E().S(termURL)
-//line views/terminal.qtpl:200
+//line views/terminal.qtpl:201
 			qw422016.N().S(`" class="text-decoration-none text-accent">
                                     `)
-//line views/terminal.qtpl:201
+//line views/terminal.qtpl:202
 			qw422016.E().S(term.Window)
-//line views/terminal.qtpl:201
+//line views/terminal.qtpl:202
 			qw422016.N().S(`
                                 </a>
                             </td>
                             <td>
                                 <small class="text-muted">
                                     `)
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 			if term.IsRemote {
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 				qw422016.N().S(`!`)
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 			} else {
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 				qw422016.N().S(`@`)
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 			}
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 			qw422016.E().S(term.Worktree)
-//line views/terminal.qtpl:206
+//line views/terminal.qtpl:207
 			qw422016.N().S(`
                                 </small>
                             </td>
                             <td>
                                 `)
-//line views/terminal.qtpl:210
+//line views/terminal.qtpl:211
 			if term.IsRemote {
-//line views/terminal.qtpl:210
+//line views/terminal.qtpl:211
 				qw422016.N().S(`
                                 <span class="badge bg-warning text-dark"><i class="fa-solid fa-globe"></i> Remote</span>
                                 `)
-//line views/terminal.qtpl:212
+//line views/terminal.qtpl:213
 			} else {
-//line views/terminal.qtpl:212
+//line views/terminal.qtpl:213
 				qw422016.N().S(`
                                 <span class="badge bg-secondary"><i class="fa-solid fa-terminal"></i> Local</span>
                                 `)
-//line views/terminal.qtpl:214
+//line views/terminal.qtpl:215
 			}
-//line views/terminal.qtpl:214
+//line views/terminal.qtpl:215
 			qw422016.N().S(`
                             </td>
                         </tr>
                         `)
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:218
 		}
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:218
 		qw422016.N().S(`
                     </tbody>
                 </table>
                 `)
-//line views/terminal.qtpl:220
+//line views/terminal.qtpl:221
 	} else {
-//line views/terminal.qtpl:220
+//line views/terminal.qtpl:221
 		qw422016.N().S(`
                 <div class="p-3 text-muted">No terminal sessions available</div>
                 `)
-//line views/terminal.qtpl:222
+//line views/terminal.qtpl:223
 	}
-//line views/terminal.qtpl:222
+//line views/terminal.qtpl:223
 	qw422016.N().S(`
             </div>
         </div>
@@ -580,43 +581,43 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 `)
-//line views/terminal.qtpl:260
+//line views/terminal.qtpl:261
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:260
+//line views/terminal.qtpl:261
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 }
 
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 func (p *TerminalPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 }
 
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 func (p *TerminalPage) Render() string {
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 	return qs422016
-//line views/terminal.qtpl:261
+//line views/terminal.qtpl:262
 }
 
-//line views/terminal.qtpl:263
+//line views/terminal.qtpl:264
 func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:263
+//line views/terminal.qtpl:264
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -624,9 +625,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/terminal.qtpl:269
+//line views/terminal.qtpl:270
 	qw422016.E().S(p.Title)
-//line views/terminal.qtpl:269
+//line views/terminal.qtpl:270
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -657,32 +658,32 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             <div class="d-flex align-items-center gap-2 ms-3">
                 <select id="navSelect" class="form-select form-select-sm">
                     <option value="`)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.E().S(p.Session)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.N().S(`/`)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.E().S(p.Window)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.N().S(`" selected>@`)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.E().S(p.SessionDisplayName())
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.N().S(` - `)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.E().S(p.Window)
-//line views/terminal.qtpl:298
+//line views/terminal.qtpl:299
 	qw422016.N().S(`</option>
                 </select>
 
                 <div class="btn-group" role="group"`)
-//line views/terminal.qtpl:301
+//line views/terminal.qtpl:302
 	if p.ViewType != "local" {
-//line views/terminal.qtpl:301
+//line views/terminal.qtpl:302
 		qw422016.N().S(` style="display:none"`)
-//line views/terminal.qtpl:301
+//line views/terminal.qtpl:302
 	}
-//line views/terminal.qtpl:301
+//line views/terminal.qtpl:302
 	qw422016.N().S(`>
                     <button id="showTerminalBtn" class="btn btn-sm btn-terminal active" onclick="showTerminal()">
                         <i class="fa-solid fa-terminal"></i>
@@ -693,13 +694,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 </div>
 
                 <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;`)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:311
 	if p.ViewType != "local" && p.ViewType != "output" {
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:311
 		qw422016.N().S(` display:none;`)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:311
 	}
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:311
 	qw422016.N().S(`">
                     <option value="">Workflow...</option>
                 </select>
@@ -707,25 +708,25 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/terminal.qtpl:316
+//line views/terminal.qtpl:317
 	if p.Worktree != nil {
-//line views/terminal.qtpl:316
+//line views/terminal.qtpl:317
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/terminal.qtpl:318
+//line views/terminal.qtpl:319
 		qw422016.E().S(p.Worktree.Name())
-//line views/terminal.qtpl:318
+//line views/terminal.qtpl:319
 		qw422016.N().S(` (`)
-//line views/terminal.qtpl:318
+//line views/terminal.qtpl:319
 		qw422016.E().S(p.Worktree.Branch)
-//line views/terminal.qtpl:318
+//line views/terminal.qtpl:319
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/terminal.qtpl:320
+//line views/terminal.qtpl:321
 	}
-//line views/terminal.qtpl:320
+//line views/terminal.qtpl:321
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-terminal" onclick="showHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+?)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -1377,37 +1378,37 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                         <td>Show this help</td>
                     </tr>
                     `)
-//line views/terminal.qtpl:970
+//line views/terminal.qtpl:971
 	if len(p.Shortcuts) > 0 {
-//line views/terminal.qtpl:970
+//line views/terminal.qtpl:971
 		qw422016.N().S(`
                     <tr><td colspan="2" style="padding-top: 12px;"><strong>Custom Shortcuts</strong></td></tr>
                     `)
-//line views/terminal.qtpl:972
+//line views/terminal.qtpl:973
 		for _, sc := range p.Shortcuts {
-//line views/terminal.qtpl:972
+//line views/terminal.qtpl:973
 			qw422016.N().S(`
                     <tr>
                         <td>`)
-//line views/terminal.qtpl:974
+//line views/terminal.qtpl:975
 			streamshortcutKeyDisplay(qw422016, sc.Key)
-//line views/terminal.qtpl:974
+//line views/terminal.qtpl:975
 			qw422016.N().S(`</td>
                         <td>Jump to `)
-//line views/terminal.qtpl:975
+//line views/terminal.qtpl:976
 			qw422016.E().S(sc.Window)
-//line views/terminal.qtpl:975
+//line views/terminal.qtpl:976
 			qw422016.N().S(`</td>
                     </tr>
                     `)
-//line views/terminal.qtpl:977
+//line views/terminal.qtpl:978
 		}
-//line views/terminal.qtpl:977
+//line views/terminal.qtpl:978
 		qw422016.N().S(`
                     `)
-//line views/terminal.qtpl:978
+//line views/terminal.qtpl:979
 	}
-//line views/terminal.qtpl:978
+//line views/terminal.qtpl:979
 	qw422016.N().S(`
                 </table>
             </div>
@@ -1534,9 +1535,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 `)
-//line views/terminal.qtpl:1103
+//line views/terminal.qtpl:1104
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "terminal")
-//line views/terminal.qtpl:1103
+//line views/terminal.qtpl:1104
 	qw422016.N().S(`
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1544,69 +1545,69 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="/static/js/logviewer.js"></script>
 <script>
     const initialSession = '`)
-//line views/terminal.qtpl:1109
+//line views/terminal.qtpl:1110
 	qw422016.E().S(JSAttr(p.Session))
-//line views/terminal.qtpl:1109
+//line views/terminal.qtpl:1110
 	qw422016.N().S(`';
     const initialWindow = '`)
-//line views/terminal.qtpl:1110
+//line views/terminal.qtpl:1111
 	qw422016.E().S(JSAttr(p.Window))
-//line views/terminal.qtpl:1110
+//line views/terminal.qtpl:1111
 	qw422016.N().S(`';
     const initialIsRemote = `)
-//line views/terminal.qtpl:1111
+//line views/terminal.qtpl:1112
 	qw422016.E().V(p.IsRemote)
-//line views/terminal.qtpl:1111
+//line views/terminal.qtpl:1112
 	qw422016.N().S(`;
     const initialViewType = '`)
-//line views/terminal.qtpl:1112
+//line views/terminal.qtpl:1113
 	qw422016.E().S(JSAttr(p.ViewType))
-//line views/terminal.qtpl:1112
+//line views/terminal.qtpl:1113
 	qw422016.N().S(`';
     const initialServiceName = '`)
-//line views/terminal.qtpl:1113
+//line views/terminal.qtpl:1114
 	qw422016.E().S(JSAttr(p.ServiceName))
-//line views/terminal.qtpl:1113
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`';
     const initialLogViewerName = '`)
-//line views/terminal.qtpl:1114
+//line views/terminal.qtpl:1115
 	qw422016.E().S(JSAttr(p.LogViewerName))
-//line views/terminal.qtpl:1114
+//line views/terminal.qtpl:1115
 	qw422016.N().S(`';
     const initialWorktree = '`)
-//line views/terminal.qtpl:1115
+//line views/terminal.qtpl:1116
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/terminal.qtpl:1115
+//line views/terminal.qtpl:1116
 	qw422016.N().S(`';
     const projectName = '`)
-//line views/terminal.qtpl:1116
+//line views/terminal.qtpl:1117
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/terminal.qtpl:1116
+//line views/terminal.qtpl:1117
 	qw422016.N().S(`';
     const customShortcuts = `)
-//line views/terminal.qtpl:1117
+//line views/terminal.qtpl:1118
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:1117
+//line views/terminal.qtpl:1118
 	qw422016.N().S(`;
     const notificationSettings = `)
-//line views/terminal.qtpl:1118
+//line views/terminal.qtpl:1119
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:1118
+//line views/terminal.qtpl:1119
 	qw422016.N().S(`;
     const initialServices = `)
-//line views/terminal.qtpl:1119
+//line views/terminal.qtpl:1120
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:1119
+//line views/terminal.qtpl:1120
 	qw422016.N().S(`;
     const initialLinks = `)
-//line views/terminal.qtpl:1120
+//line views/terminal.qtpl:1121
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:1120
+//line views/terminal.qtpl:1121
 	qw422016.N().S(`;
     const initialLogViewers = `)
-//line views/terminal.qtpl:1121
+//line views/terminal.qtpl:1122
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:1121
+//line views/terminal.qtpl:1122
 	qw422016.N().S(`;
 
     // Map of terminalKey -> {term, fitAddon, ws, container, isRemote}
@@ -1625,9 +1626,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
     // Clear history if server was restarted (session ID changed)
     const currentSessionID = '`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.E().S(JSAttr(p.SessionID()))
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`';
     const storedSessionID = sessionStorage.getItem('trellis-session-id');
     if (storedSessionID !== currentSessionID) {
@@ -5492,13 +5493,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         throw new Error(`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`Invalid time format: ${input}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`);
     }
 
@@ -5534,63 +5535,63 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         try {
             // Build query URL
             let url = `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`/api/v1/logs/${encodeURIComponent(currentLogViewerName)}/history`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`?start=${encodeURIComponent(startTime)}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`&end=${encodeURIComponent(endTime)}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             if (grep) {
                 url += `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`&grep=${encodeURIComponent(grep)}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             }
             if (before > 0) {
                 url += `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`&before=${before}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             }
             if (after > 0) {
                 url += `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`&after=${after}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             }
 
@@ -5598,13 +5599,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`HTTP ${response.status}`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`);
             }
 
@@ -5641,13 +5642,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             // Update connection status
             const statusEl = document.getElementById('logviewer-status');
             statusEl.textContent = `)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`${data.entries?.length || 0} results`)
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1138
+//line views/terminal.qtpl:1139
 	qw422016.N().S(`;
             statusEl.className = 'logviewer-connection-status text-info';
 
@@ -5687,36 +5688,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5124
+//line views/terminal.qtpl:5125
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5124
+//line views/terminal.qtpl:5125
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 }
 
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 }
 
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 	return qs422016
-//line views/terminal.qtpl:5125
+//line views/terminal.qtpl:5126
 }

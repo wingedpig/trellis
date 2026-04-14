@@ -82,6 +82,7 @@ type LogViewerInfo struct {
     MessageField   string         `json:"message_field"`   // Parser's message field name
     FileField      string         `json:"file_field,omitempty"`  // Parser's file field name
     LineField      string         `json:"line_field,omitempty"`  // Parser's line field name
+    IDField        string         `json:"id_field,omitempty"`    // Parser's ID field name for trace expansion
 }
 
 type TerminalWindowPage struct {

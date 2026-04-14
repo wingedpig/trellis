@@ -101,7 +101,7 @@ func (p *TraceReportPage) LogViewersJSON() string {
         {% else %}
         <div class="trace-filter-bar">
             <i class="fa-solid fa-search text-muted"></i>
-            <input type="text" id="filterInput" placeholder="Filter: source:api level:error message text..."
+            <input type="text" id="filterInput" placeholder="Filter: trace:text source:api level:error message text..."
                    onkeyup="filterEntries(event)">
             <button class="btn btn-sm btn-outline-secondary" onclick="clearFilter()" title="Clear filter">
                 <i class="fa-solid fa-times"></i>
@@ -168,13 +168,57 @@ function renderEntries() {
     }
 }
 
+function getIDField(source) {
+    var cfg = logViewerMap[source];
+    return cfg && cfg.id_field || '';
+}
+
 function filterEntries(event) {
     if (event && event.key === 'Escape') {
         clearFilter();
         return;
     }
     var query = document.getElementById('filterInput').value;
-    filteredEntries = allEntries.filter(function(e) { return matchesLogFilter(e, query); });
+    if (!query) {
+        filteredEntries = allEntries.slice();
+        renderEntries();
+        return;
+    }
+
+    // Check for trace: prefix
+    var traceMatch = query.match(/^trace:(.+)/i);
+    if (traceMatch) {
+        var searchText = traceMatch[1];
+        // Pass 1: find entries matching the search text
+        var matchedEntries = allEntries.filter(function(e) {
+            return matchesLogFilter(e, searchText);
+        });
+        // Pass 2: collect trace_ids from matched entries
+        var traceIds = {};
+        matchedEntries.forEach(function(e) {
+            if (e.fields) {
+                var idField = getIDField(e.source);
+                if (idField) {
+                    var id = e.fields[idField];
+                    if (id && String(id).indexOf('..') === -1) {
+                        traceIds[String(id)] = true;
+                    }
+                }
+            }
+        });
+        // Pass 3: show all entries with matching trace_ids
+        filteredEntries = allEntries.filter(function(e) {
+            if (!e.fields) return false;
+            var idField = getIDField(e.source);
+            if (!idField) return false;
+            var id = e.fields[idField];
+            return id && traceIds[String(id)];
+        });
+    } else {
+        filteredEntries = allEntries.filter(function(e) {
+            return matchesLogFilter(e, query);
+        });
+    }
     renderEntries();
 }
 

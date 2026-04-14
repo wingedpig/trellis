@@ -376,6 +376,7 @@ func (h *PageHandler) buildLogViewerList() []views.LogViewerInfo {
 			info.MessageField = cfg.Parser.Message
 			info.FileField = cfg.Parser.File
 			info.LineField = cfg.Parser.Line
+			info.IDField = cfg.Parser.ID
 		}
 		logViewers = append(logViewers, info)
 	}

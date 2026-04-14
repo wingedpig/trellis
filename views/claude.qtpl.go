@@ -5,23 +5,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line claude.qtpl:4
+//line views/claude.qtpl:4
 package views
 
-//line claude.qtpl:4
+//line views/claude.qtpl:4
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line claude.qtpl:4
+//line views/claude.qtpl:4
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line claude.qtpl:5
+//line views/claude.qtpl:5
 type ClaudePage struct {
 	BasePage
 	WorktreeName     string
@@ -29,14 +29,14 @@ type ClaudePage struct {
 	SessionCreatedAt string // ISO 8601 timestamp
 }
 
-//line claude.qtpl:13
+//line views/claude.qtpl:13
 func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
-//line claude.qtpl:13
+//line views/claude.qtpl:13
 	qw422016.N().S(`
 `)
-//line claude.qtpl:14
+//line views/claude.qtpl:14
 	p.StreamHeader(qw422016)
-//line claude.qtpl:14
+//line views/claude.qtpl:14
 	qw422016.N().S(`
 
 <link href="/static/css/claude.css" rel="stylesheet">
@@ -81,14 +81,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script>
 const CLAUDE_WORKTREE = '`)
-//line claude.qtpl:57
+//line views/claude.qtpl:57
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line claude.qtpl:57
+//line views/claude.qtpl:57
 	qw422016.N().S(`';
 const CLAUDE_SESSION = '`)
-//line claude.qtpl:58
+//line views/claude.qtpl:58
 	qw422016.E().S(JSAttr(p.SessionID))
-//line claude.qtpl:58
+//line views/claude.qtpl:58
 	qw422016.N().S(`';
 
 function showSaveToCaseModal() {
@@ -210,9 +210,9 @@ function doSaveTranscript(caseId, title) {
 const WRAPUP_WORKTREE = CLAUDE_WORKTREE;
 const WRAPUP_SESSION_ID = CLAUDE_SESSION;
 const WRAPUP_SESSION_CREATED = '`)
-//line claude.qtpl:178
+//line views/claude.qtpl:178
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line claude.qtpl:178
+//line views/claude.qtpl:178
 	qw422016.N().S(`';
 let WRAPUP_CASE = null;
 </script>
@@ -303,36 +303,36 @@ let WRAPUP_CASE = null;
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line claude.qtpl:267
+//line views/claude.qtpl:267
 	p.StreamFooter(qw422016)
-//line claude.qtpl:267
+//line views/claude.qtpl:267
 	qw422016.N().S(`
 `)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 }
 
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	p.StreamRender(qw422016)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	qt422016.ReleaseWriter(qw422016)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 }
 
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 func (p *ClaudePage) Render() string {
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	qb422016 := qt422016.AcquireByteBuffer()
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	p.WriteRender(qb422016)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	qs422016 := string(qb422016.B)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	qt422016.ReleaseByteBuffer(qb422016)
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 	return qs422016
-//line claude.qtpl:268
+//line views/claude.qtpl:268
 }
