@@ -521,6 +521,8 @@ func (m *Manager) buildSummary(entries []TraceEntry, duration time.Duration) Tra
 }
 
 // extractIDs extracts unique ID values from trace entries using each log viewer's configured ID field.
+// IDs that look like default/uninitialized values (e.g., "..0.-6795364578871345152")
+// are filtered out to prevent Pass 2 from matching nearly every log entry.
 func (m *Manager) extractIDs(entries []TraceEntry) []string {
 	// Take a snapshot of logViewerConfig under lock
 	m.mu.RLock()
@@ -538,7 +540,7 @@ func (m *Manager) extractIDs(entries []TraceEntry) []string {
 
 		// Look up the ID field value in the entry's fields
 		if idValue, ok := entry.Fields[cfg.Parser.ID]; ok {
-			if s, ok := idValue.(string); ok && s != "" {
+			if s, ok := idValue.(string); ok && s != "" && !isDefaultID(s) {
 				idSet[s] = struct{}{}
 			}
 		}
@@ -550,6 +552,14 @@ func (m *Manager) extractIDs(entries []TraceEntry) []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// isDefaultID returns true if the ID looks like a default/uninitialized trace ID
+// rather than a real request-specific one. Default IDs have empty components
+// (consecutive dots like "..0.-6795364578871345152") and would match far too
+// many log entries if used as a grep pattern.
+func isDefaultID(id string) bool {
+	return strings.Contains(id, "..")
 }
 
 // buildIDPattern builds a regex alternation pattern for multiple IDs.
