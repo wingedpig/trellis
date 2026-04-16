@@ -922,6 +922,10 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		s.fanOut(event)
 	}
 
+	if err := scanner.Err(); err != nil {
+		log.Printf("claude [%s]: scanner error: %v", s.id, err)
+	}
+
 	// Process exited - wait for it and clean up
 	cmd.Wait()
 
