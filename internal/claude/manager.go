@@ -410,6 +410,57 @@ func (m *Manager) DeleteSession(sessionID string) {
 	m.persist()
 }
 
+// MoveSession rebinds a session to a new worktree and working directory.
+// Any running claude process is stopped; the next Send will restart it in newWorkDir.
+// The session's conversation history and claudeSID are preserved.
+func (m *Manager) MoveSession(sessionID, newWorktreeName, newWorkDir string) error {
+	if newWorktreeName == "" {
+		return fmt.Errorf("newWorktreeName is required")
+	}
+	if newWorkDir == "" {
+		return fmt.Errorf("newWorkDir is required")
+	}
+
+	m.mu.Lock()
+	s, ok := m.sessions[sessionID]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("session not found")
+	}
+	oldWt := s.worktreeName
+	if oldWt != newWorktreeName {
+		ids := m.worktreeIndex[oldWt]
+		for i, id := range ids {
+			if id == sessionID {
+				m.worktreeIndex[oldWt] = append(ids[:i], ids[i+1:]...)
+				break
+			}
+		}
+		if len(m.worktreeIndex[oldWt]) == 0 {
+			delete(m.worktreeIndex, oldWt)
+		}
+		m.worktreeIndex[newWorktreeName] = append(m.worktreeIndex[newWorktreeName], sessionID)
+	}
+	m.mu.Unlock()
+
+	s.mu.Lock()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.closeAllSubscribers()
+	s.started = false
+	s.generating = false
+	s.stdin = nil
+	s.cmd = nil
+	s.cancel = nil
+	s.worktreeName = newWorktreeName
+	s.workDir = newWorkDir
+	s.mu.Unlock()
+
+	m.persist()
+	return nil
+}
+
 // TrashSession soft-deletes a session by setting its trashedAt timestamp.
 // The process is killed and subscribers closed, but the session data is preserved.
 func (m *Manager) TrashSession(sessionID string) error {

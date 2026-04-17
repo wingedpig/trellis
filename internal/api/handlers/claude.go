@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
@@ -30,15 +32,17 @@ type ClaudeHandler struct {
 	worktreeMgr worktree.Manager
 	caseMgr     *cases.Manager
 	traceMgr    *trace.Manager
+	bus         events.EventBus
 }
 
 // NewClaudeHandler creates a new Claude handler.
-func NewClaudeHandler(manager *claude.Manager, worktreeMgr worktree.Manager, caseMgr *cases.Manager, traceMgr *trace.Manager) *ClaudeHandler {
+func NewClaudeHandler(manager *claude.Manager, worktreeMgr worktree.Manager, caseMgr *cases.Manager, traceMgr *trace.Manager, bus events.EventBus) *ClaudeHandler {
 	return &ClaudeHandler{
 		manager:     manager,
 		worktreeMgr: worktreeMgr,
 		caseMgr:     caseMgr,
 		traceMgr:    traceMgr,
+		bus:         bus,
 	}
 }
 
@@ -352,6 +356,213 @@ func (h *ClaudeHandler) DeleteSessionAPI(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// MoveSessionAPI moves a Claude session to a fresh worktree along with selected
+// uncommitted files from the source worktree. The source worktree is reverted
+// for tracked files and untracked selected files are removed.
+func (h *ClaudeHandler) MoveSessionAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["session"]
+
+	var body struct {
+		Branch string   `json:"branch"`
+		Files  []string `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.Branch == "" {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "branch is required")
+		return
+	}
+
+	// Resolve the session and its source worktree.
+	session := h.manager.GetSession(sessionID)
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	sourceWorktreeName := session.WorktreeName()
+	sourceWT, ok := h.worktreeMgr.GetByName(sourceWorktreeName)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "source worktree not found")
+		return
+	}
+
+	// Validate selected file paths stay within the source worktree and exist.
+	type selectedFile struct {
+		rel       string // forward-slash relative path (git-style)
+		srcAbs    string
+		untracked bool
+	}
+	selected := make([]selectedFile, 0, len(body.Files))
+	for _, f := range body.Files {
+		if f == "" {
+			continue
+		}
+		abs, err := safeJoinInsideRoot(sourceWT.Path, f)
+		if err != nil {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("invalid file %q: %s", f, err.Error()))
+			return
+		}
+		info, err := os.Lstat(abs)
+		if err != nil {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("file %q not found", f))
+			return
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("file %q is a symlink (unsupported)", f))
+			return
+		}
+		if info.IsDir() {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("file %q is a directory (unsupported)", f))
+			return
+		}
+		selected = append(selected, selectedFile{
+			rel:    filepath.ToSlash(filepath.Clean(f)),
+			srcAbs: abs,
+		})
+	}
+
+	// Classify each selected file as tracked or untracked via the source git status.
+	ctx := r.Context()
+	git := worktree.NewRealGitExecutor()
+	status, err := git.Status(ctx, sourceWT.Path)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git status failed: "+err.Error())
+		return
+	}
+	untrackedSet := make(map[string]struct{}, len(status.Untracked))
+	for _, u := range status.Untracked {
+		untrackedSet[filepath.ToSlash(filepath.Clean(u))] = struct{}{}
+	}
+	for i := range selected {
+		if _, ok := untrackedSet[selected[i].rel]; ok {
+			selected[i].untracked = true
+		}
+	}
+
+	// Create the new worktree.
+	if err := h.worktreeMgr.Create(ctx, body.Branch, false); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, "create worktree: "+err.Error())
+		return
+	}
+	newWorktreeName := h.worktreeMgr.ProjectName() + "-" + strings.ReplaceAll(body.Branch, "/", "-")
+	newWT, ok := h.worktreeMgr.GetByName(newWorktreeName)
+	if !ok {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, "new worktree not found after create")
+		return
+	}
+
+	// Copy selected files into the new worktree, preserving relative paths and mode.
+	for _, sf := range selected {
+		dstAbs := filepath.Join(newWT.Path, filepath.FromSlash(sf.rel))
+		if err := copyFilePreserveMode(sf.srcAbs, dstAbs); err != nil {
+			WriteError(w, http.StatusInternalServerError, ErrInternalError,
+				fmt.Sprintf("copy %q: %s", sf.rel, err.Error()))
+			return
+		}
+	}
+
+	// Revert each selected file in the source: tracked → git checkout --; untracked → remove.
+	var revertErrs []string
+	for _, sf := range selected {
+		if sf.untracked {
+			if err := os.Remove(sf.srcAbs); err != nil {
+				revertErrs = append(revertErrs, fmt.Sprintf("%s: %s", sf.rel, err.Error()))
+			}
+			continue
+		}
+		if out, err := worktree.RunCommand(ctx, "-C", sourceWT.Path, "checkout", "--", sf.rel); err != nil {
+			revertErrs = append(revertErrs, fmt.Sprintf("%s: %s %s", sf.rel, err.Error(), strings.TrimSpace(out)))
+		}
+	}
+
+	// Rebind the session to the new worktree.
+	if err := h.manager.MoveSession(sessionID, newWorktreeName, newWT.Path); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, "move session: "+err.Error())
+		return
+	}
+
+	movedFiles := make([]string, len(selected))
+	for i, sf := range selected {
+		movedFiles[i] = sf.rel
+	}
+
+	// Emit event for UI refresh.
+	if h.bus != nil {
+		h.bus.Publish(ctx, events.Event{
+			Type:     events.EventClaudeSessionMoved,
+			Worktree: newWorktreeName,
+			Payload: map[string]interface{}{
+				"session_id":       sessionID,
+				"from_worktree":    sourceWorktreeName,
+				"to_worktree":      newWorktreeName,
+				"to_worktree_path": newWT.Path,
+				"to_branch":        newWT.Branch,
+				"files":            movedFiles,
+				"revert_errors":    revertErrs,
+			},
+		})
+	}
+
+	resp := map[string]interface{}{
+		"session_id":    sessionID,
+		"worktree":      newWorktreeName,
+		"branch":        newWT.Branch,
+		"path":          newWT.Path,
+		"revert_errors": revertErrs,
+	}
+	WriteJSON(w, http.StatusOK, resp)
+}
+
+// safeJoinInsideRoot validates that relPath, when joined with root, stays inside root.
+// Rejects absolute paths and paths that escape via "..".
+func safeJoinInsideRoot(root, relPath string) (string, error) {
+	if relPath == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	if filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("absolute path not allowed")
+	}
+	cleanedRoot := filepath.Clean(root)
+	joined := filepath.Clean(filepath.Join(cleanedRoot, relPath))
+	rel, err := filepath.Rel(cleanedRoot, joined)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes worktree")
+	}
+	return joined, nil
+}
+
+// copyFilePreserveMode copies a regular file from src to dst, creating parent
+// directories as needed and preserving the source file mode.
+func copyFilePreserveMode(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // ListTrashedSessionsAPI returns all trashed Claude sessions for a worktree.

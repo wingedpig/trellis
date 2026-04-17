@@ -248,24 +248,35 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
-                <button class="btn btn-outline-danger btn-sm" onclick="deleteClaudeSession('`)
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Move to new worktree" onclick="showMoveSessionModal('`)
 //line views/worktree_home.qtpl:112
 			qw422016.E().S(JSAttr(sess.ID))
 //line views/worktree_home.qtpl:112
+			qw422016.N().S(`', '`)
+//line views/worktree_home.qtpl:112
+			qw422016.E().S(JSAttr(sess.DisplayName))
+//line views/worktree_home.qtpl:112
+			qw422016.N().S(`')">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteClaudeSession('`)
+//line views/worktree_home.qtpl:115
+			qw422016.E().S(JSAttr(sess.ID))
+//line views/worktree_home.qtpl:115
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:116
+//line views/worktree_home.qtpl:119
 		}
-//line views/worktree_home.qtpl:116
+//line views/worktree_home.qtpl:119
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:118
+//line views/worktree_home.qtpl:121
 	}
-//line views/worktree_home.qtpl:118
+//line views/worktree_home.qtpl:121
 	qw422016.N().S(`
 
         <div id="trashedSessionsContainer" style="display:none;" class="mt-3">
@@ -284,66 +295,66 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:135
+//line views/worktree_home.qtpl:138
 	if len(p.Terminals) == 0 {
-//line views/worktree_home.qtpl:135
+//line views/worktree_home.qtpl:138
 		qw422016.N().S(`
         <div class="empty-state">
             <p class="text-muted">No terminal windows. Create one to get started.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:139
+//line views/worktree_home.qtpl:142
 	} else {
-//line views/worktree_home.qtpl:139
+//line views/worktree_home.qtpl:142
 		qw422016.N().S(`
         <div class="list-group">
             `)
-//line views/worktree_home.qtpl:141
+//line views/worktree_home.qtpl:144
 		for _, win := range p.Terminals {
-//line views/worktree_home.qtpl:141
+//line views/worktree_home.qtpl:144
 			qw422016.N().S(`
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="/terminal/local/`)
-//line views/worktree_home.qtpl:143
+//line views/worktree_home.qtpl:146
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:143
+//line views/worktree_home.qtpl:146
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:143
+//line views/worktree_home.qtpl:146
 			qw422016.E().S(win.Name)
-//line views/worktree_home.qtpl:143
+//line views/worktree_home.qtpl:146
 			qw422016.N().S(`" class="text-decoration-none flex-grow-1">
                     <i class="fa-solid fa-terminal"></i>
                     `)
-//line views/worktree_home.qtpl:145
+//line views/worktree_home.qtpl:148
 			qw422016.E().S(win.Name)
-//line views/worktree_home.qtpl:145
+//line views/worktree_home.qtpl:148
 			qw422016.N().S(`
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameTerminal('`)
-//line views/worktree_home.qtpl:147
+//line views/worktree_home.qtpl:150
 			qw422016.E().S(JSAttr(win.Name))
-//line views/worktree_home.qtpl:147
+//line views/worktree_home.qtpl:150
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
                 <button class="btn btn-outline-danger btn-sm" onclick="deleteTerminal('`)
-//line views/worktree_home.qtpl:150
+//line views/worktree_home.qtpl:153
 			qw422016.E().S(JSAttr(win.Name))
-//line views/worktree_home.qtpl:150
+//line views/worktree_home.qtpl:153
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:154
+//line views/worktree_home.qtpl:157
 		}
-//line views/worktree_home.qtpl:154
+//line views/worktree_home.qtpl:157
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:156
+//line views/worktree_home.qtpl:159
 	}
-//line views/worktree_home.qtpl:156
+//line views/worktree_home.qtpl:159
 	qw422016.N().S(`
     </div>
 
@@ -437,6 +448,35 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
     </div>
 </div>
 
+<!-- Move Claude Session Modal -->
+<div class="modal fade" id="moveSessionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-arrow-right-from-bracket"></i> Move Session to New Worktree</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2" id="moveSessionSubtitle"></p>
+                <div class="mb-3">
+                    <label for="moveSessionBranch" class="form-label">New branch name</label>
+                    <input type="text" class="form-control" id="moveSessionBranch" placeholder="feature/my-branch">
+                    <div class="form-text">A fresh git worktree will be created for this branch.</div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label mb-1">Files to move (from source worktree)</label>
+                    <div id="moveSessionFilesStatus" class="text-muted small">Loading…</div>
+                    <div id="moveSessionFilesList" class="border rounded p-2" style="max-height: 250px; overflow-y: auto;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="moveSessionConfirmBtn">Move</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- New Case Modal -->
 <div class="modal fade" id="newCaseModal" tabindex="-1">
     <div class="modal-dialog">
@@ -470,15 +510,21 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script>
 const WORKTREE_NAME = '`)
-//line views/worktree_home.qtpl:281
+//line views/worktree_home.qtpl:313
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/worktree_home.qtpl:281
+//line views/worktree_home.qtpl:313
 	qw422016.N().S(`';
 
-let newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal;
+let newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
 let renameConfirmCallback = null;
+let moveSessionState = { sessionId: null };
 document.addEventListener('DOMContentLoaded', function() {
     importTranscriptModal = new bootstrap.Modal(document.getElementById('importTranscriptModal'));
+    moveSessionModal = new bootstrap.Modal(document.getElementById('moveSessionModal'));
+    document.getElementById('moveSessionConfirmBtn').addEventListener('click', submitMoveSession);
+    document.getElementById('moveSessionModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('moveSessionBranch').focus();
+    });
 
     newCaseModal = new bootstrap.Modal(document.getElementById('newCaseModal'));
     document.getElementById('newCaseModal').addEventListener('shown.bs.modal', function() {
@@ -650,6 +696,103 @@ function deleteTerminal(windowName) {
     })
     .then(() => window.location.reload())
     .catch(err => alert('Failed to delete terminal: ' + err));
+}
+
+function showMoveSessionModal(sessionId, sessionName) {
+    moveSessionState.sessionId = sessionId;
+    document.getElementById('moveSessionSubtitle').textContent = 'Moving "' + sessionName + '" from ' + WORKTREE_NAME;
+    document.getElementById('moveSessionBranch').value = '';
+    const listEl = document.getElementById('moveSessionFilesList');
+    const statusEl = document.getElementById('moveSessionFilesStatus');
+    listEl.innerHTML = '';
+    statusEl.textContent = 'Loading…';
+    statusEl.style.display = '';
+    fetch('/api/v1/claude/' + encodeURIComponent(WORKTREE_NAME) + '/git-status')
+    .then(r => r.json())
+    .then(payload => {
+        const data = payload.data || payload;
+        const groups = [
+            { label: 'Modified', files: data.modified || [] },
+            { label: 'Added', files: data.added || [] },
+            { label: 'Renamed', files: data.renamed || [] },
+            { label: 'Untracked', files: data.untracked || [] }
+        ];
+        const total = groups.reduce((n, g) => n + g.files.length, 0);
+        if (total === 0) {
+            statusEl.textContent = 'No uncommitted files in the source worktree.';
+            return;
+        }
+        statusEl.style.display = 'none';
+        groups.forEach(g => {
+            if (g.files.length === 0) return;
+            const heading = document.createElement('div');
+            heading.className = 'text-muted small mt-1';
+            heading.textContent = g.label;
+            listEl.appendChild(heading);
+            g.files.forEach(f => {
+                const id = 'move-file-' + Math.random().toString(36).slice(2);
+                const row = document.createElement('div');
+                row.className = 'form-check';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'form-check-input move-session-file';
+                input.id = id;
+                input.value = f;
+                input.checked = true;
+                const label = document.createElement('label');
+                label.className = 'form-check-label';
+                label.htmlFor = id;
+                label.textContent = f;
+                row.appendChild(input);
+                row.appendChild(label);
+                listEl.appendChild(row);
+            });
+        });
+    })
+    .catch(err => {
+        statusEl.textContent = 'Failed to load git status: ' + err;
+    });
+    moveSessionModal.show();
+}
+
+function submitMoveSession() {
+    const sessionId = moveSessionState.sessionId;
+    if (!sessionId) return;
+    const branch = document.getElementById('moveSessionBranch').value.trim();
+    if (!branch) {
+        alert('Enter a branch name.');
+        return;
+    }
+    const files = Array.from(document.querySelectorAll('.move-session-file'))
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+    const btn = document.getElementById('moveSessionConfirmBtn');
+    btn.disabled = true;
+    fetch('/api/v1/claude/sessions/' + encodeURIComponent(sessionId) + '/move', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ branch: branch, files: files })
+    })
+    .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Move failed'); });
+        return r.json();
+    })
+    .then(payload => {
+        const data = payload.data || payload;
+        const errs = data.revert_errors || [];
+        moveSessionModal.hide();
+        if (errs.length > 0) {
+            alert('Session moved, but some source files could not be reverted:\n' + errs.join('\n'));
+        }
+        const target = data.worktree;
+        if (target) {
+            window.location.href = '/worktree/' + encodeURIComponent(target);
+        } else {
+            window.location.reload();
+        }
+    })
+    .catch(err => alert('Failed to move session: ' + err))
+    .finally(() => { btn.disabled = false; });
 }
 
 function renameClaudeSession(sessionId, currentName) {
@@ -827,36 +970,36 @@ function reopenCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:634
+//line views/worktree_home.qtpl:769
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:634
+//line views/worktree_home.qtpl:769
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 }
 
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 }
 
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 	return qs422016
-//line views/worktree_home.qtpl:635
+//line views/worktree_home.qtpl:770
 }

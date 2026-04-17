@@ -295,7 +295,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 
 	// Claude Code handlers
 	if deps.ClaudeManager != nil {
-		claudeHandler := handlers.NewClaudeHandler(deps.ClaudeManager, deps.WorktreeManager, deps.CaseManager, deps.TraceManager)
+		claudeHandler := handlers.NewClaudeHandler(deps.ClaudeManager, deps.WorktreeManager, deps.CaseManager, deps.TraceManager, deps.EventBus)
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.ListSessions).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.CreateSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}", claudeHandler.RenameSessionAPI).Methods("PATCH")
@@ -304,6 +304,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/sessions/{session}/export", claudeHandler.ExportSessionAPI).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/restore", claudeHandler.RestoreSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}/permanent", claudeHandler.PermanentDeleteSessionAPI).Methods("DELETE")
+		api.HandleFunc("/claude/sessions/{session}/move", claudeHandler.MoveSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/sessions/import", claudeHandler.ImportSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/sessions/trash", claudeHandler.ListTrashedSessionsAPI).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/git-status", claudeHandler.GitStatus).Methods("GET")

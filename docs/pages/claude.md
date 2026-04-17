@@ -29,6 +29,23 @@ Click the pencil icon next to a session on the worktree home page to rename it.
 
 Click the trash icon next to a session on the worktree home page. This moves the session to trash — the process is stopped but the session data is preserved.
 
+### Moving Sessions to a New Worktree
+
+Click the move icon (arrow leaving a box) next to a session on the worktree home page to move the session — and optionally some of the source worktree's uncommitted files — into a fresh git worktree.
+
+The move modal:
+
+1. **Branch name** — Supply a branch name for the new worktree. A fresh worktree is created via the same flow as the regular "New Worktree" action (the branch must not already exist; `/` in names is converted to `-` for the worktree directory).
+2. **Files** — Lists the source worktree's modified, added, renamed, and untracked files as checkboxes. All are checked by default; uncheck any you want to leave behind. Directories and symlinks are not supported.
+3. **Move** — Submits to the server, which:
+   - Creates the new worktree
+   - Copies the selected files into the new worktree (preserving mode and relative paths)
+   - Reverts the source worktree — tracked files via `git checkout --`, untracked files via delete
+   - Stops the running Claude process and rebinds the session to the new worktree; the process restarts in the new working directory on the next message
+   - Emits a `claude.session.moved` event
+
+After completion, you're redirected to the new worktree's home page. If any source files could not be reverted, the session move itself still succeeds and the per-file errors are shown.
+
 ### Show Trash
 
 Click **Show Trash** on the worktree home page to view trashed sessions. Each trashed session has:

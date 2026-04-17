@@ -1898,6 +1898,74 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /claude/sessions/{session}/move:
+    post:
+      tags: [Claude]
+      summary: Move a session to a fresh worktree
+      description: |
+        Creates a new git worktree on the given branch, copies the selected
+        uncommitted files from the source worktree into it, reverts those files
+        in the source (via `git checkout --` for tracked files or delete for
+        untracked files), and rebinds the Claude session to the new worktree.
+        The running Claude process is stopped; it will restart in the new
+        working directory on the next message.
+      operationId: moveClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [branch]
+              properties:
+                branch:
+                  type: string
+                  description: Branch name for the new worktree (must not already exist)
+                files:
+                  type: array
+                  description: |
+                    Relative paths (from the source worktree root) of files to
+                    move. May include modified, added, or untracked files.
+                    Directories and symlinks are not supported.
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Session moved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      session_id:
+                        type: string
+                      worktree:
+                        type: string
+                        description: Name of the new worktree
+                      branch:
+                        type: string
+                      path:
+                        type: string
+                        description: Filesystem path of the new worktree
+                      revert_errors:
+                        type: array
+                        description: Per-file errors encountered when reverting the source worktree (the move itself still succeeded)
+                        items:
+                          type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /claude/{worktree}/ws:
     get:
       tags: [Claude]

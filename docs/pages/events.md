@@ -22,6 +22,7 @@ Events are color-coded by type:
 | `workflow.started` | Gray | A workflow began execution |
 | `workflow.finished` | Blue | A workflow completed |
 | `worktree.activated` | Blue | The active worktree was changed |
+| `claude.session.moved` | Blue | A Claude session was moved to a new worktree |
 
 ## Event Details
 

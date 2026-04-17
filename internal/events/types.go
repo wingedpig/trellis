@@ -86,6 +86,9 @@ const (
 	EventTraceCompleted = "trace.completed"
 	EventTraceFailed    = "trace.failed"
 
+	// Claude session events
+	EventClaudeSessionMoved = "claude.session.moved"
+
 	// Notification events (for AI assistants and external tools)
 	EventNotifyDone    = "notify.done"    // Task completed
 	EventNotifyBlocked = "notify.blocked" // Waiting for user input
