@@ -305,11 +305,17 @@
         };
 
         ws.onmessage = function(e) {
+            if (typeof e.data !== 'string' || e.data.length === 0) {
+                console.warn('Ignoring WS frame: typeof=', typeof e.data,
+                    'length=', (e.data && e.data.length) || 0,
+                    'ctor=', e.data && e.data.constructor && e.data.constructor.name);
+                return;
+            }
             try {
                 const msg = JSON.parse(e.data);
                 handleServerMessage(msg);
             } catch (err) {
-                console.error('Failed to parse WS message:', err);
+                console.error('Failed to parse WS message:', err, 'data:', e.data);
             }
         };
 
@@ -459,6 +465,9 @@
                         }
                     }
                 }
+                break;
+            case 'rate_limit_event':
+                // Claude CLI emits these as you approach rate limits; not surfaced in UI.
                 break;
             default:
                 console.log('claude: unhandled event type:', event.type, event);

@@ -635,11 +635,19 @@ func (s *Session) MessagesWithPending() []Message {
 	if s.generating && len(s.currentBlocks) > 0 {
 		pending := make([]ContentBlock, len(s.currentBlocks))
 		copy(pending, s.currentBlocks)
-		// Include partially-built block if mid-stream
+		// Sanitize any block whose Input RawMessage isn't currently valid JSON —
+		// otherwise the outer Marshal fails when the client reconnects mid-turn.
+		for i := range pending {
+			pending[i].Input = safeRawInput(pending[i].Input)
+		}
+		// Include partially-built block if mid-stream. Its Input is the
+		// streaming buffer which may be partial JSON; include only if valid.
 		if s.currentStreamBlock != nil {
 			partial := *s.currentStreamBlock
 			if partial.Type == "tool_use" && s.streamPartialJSON != "" {
-				partial.Input = json.RawMessage(s.streamPartialJSON)
+				partial.Input = safeRawInput(json.RawMessage(s.streamPartialJSON))
+			} else {
+				partial.Input = safeRawInput(partial.Input)
 			}
 			pending = append(pending, partial)
 		}
@@ -651,6 +659,19 @@ func (s *Session) MessagesWithPending() []Message {
 	}
 
 	return result
+}
+
+// safeRawInput returns input if it is nil or valid JSON, otherwise nil. This
+// prevents json.Marshal from failing when a tool_use block holds streaming-
+// partial JSON that hasn't accumulated into a valid value yet.
+func safeRawInput(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return nil
+	}
+	if !json.Valid(input) {
+		return nil
+	}
+	return input
 }
 
 // SlashCommands returns the cached slash commands and skills.
@@ -803,11 +824,17 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 
 // readLoop reads NDJSON events from claude's stdout continuously.
 func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+	// bufio.Reader has no fixed token cap — unlike bufio.Scanner which dies
+	// with "token too long" on large events (big tool results, file contents).
+	reader := bufio.NewReaderSize(stdout, 1024*1024)
+	var readErr error
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	for {
+		line, err := readLine(reader)
+		if err != nil {
+			readErr = err
+			break
+		}
 		if len(line) == 0 {
 			continue
 		}
@@ -973,17 +1000,30 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		s.fanOut(event)
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Printf("claude [%s]: scanner error: %v", s.id, err)
+	if readErr != nil && readErr != io.EOF {
+		log.Printf("claude [%s]: read error: %v", s.id, readErr)
 	}
 
-	// Process exited - wait for it and clean up
+	// Process exited (or read errored) - wait for it and clean up.
 	cmd.Wait()
 
 	s.mu.Lock()
 	// Only clean up session state if we're still the current generation.
 	// A newer process may have already been started by ensureProcess.
 	if s.processGen == gen {
+		// If the stream died mid-turn (no "result" event ever arrived), commit
+		// any accumulated in-progress blocks as a completed assistant message
+		// so reconnecting clients can still see what was generated.
+		if len(s.currentBlocks) > 0 {
+			msg := Message{
+				Role:      "assistant",
+				Content:   s.currentBlocks,
+				Timestamp: time.Now(),
+			}
+			s.messages = append(s.messages, msg)
+			s.persistMessage(msg)
+			s.currentBlocks = nil
+		}
 		s.started = false
 		s.generating = false
 		s.stdin = nil
@@ -991,6 +1031,37 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		s.cancel = nil
 	}
 	s.mu.Unlock()
+}
+
+// readLine reads a single newline-terminated line from r, returning the line
+// without the trailing newline. It handles arbitrarily large lines by growing
+// as needed (unlike bufio.Scanner). Returns io.EOF with any remaining bytes
+// on end-of-stream.
+func readLine(r *bufio.Reader) ([]byte, error) {
+	var buf []byte
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if err == bufio.ErrBufferFull {
+			buf = append(buf, chunk...)
+			continue
+		}
+		if err != nil {
+			if len(buf) == 0 && len(chunk) == 0 {
+				return nil, err
+			}
+			buf = append(buf, chunk...)
+			return buf, err
+		}
+		buf = append(buf, chunk...)
+		// Strip trailing newline (and optional \r).
+		if n := len(buf); n > 0 && buf[n-1] == '\n' {
+			buf = buf[:n-1]
+			if n := len(buf); n > 0 && buf[n-1] == '\r' {
+				buf = buf[:n-1]
+			}
+		}
+		return buf, nil
+	}
 }
 
 // handleStreamEvent processes an inner event from a stream_event wrapper,

@@ -138,11 +138,15 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 		}
 //line views/worktrees.qtpl:51
 		qw422016.N().S(`
-                `)
+                <a href="/worktree/`)
 //line views/worktrees.qtpl:52
 		qw422016.E().S(wt.Name())
 //line views/worktrees.qtpl:52
-		qw422016.N().S(`
+		qw422016.N().S(`" class="text-decoration-none" style="color: inherit;">`)
+//line views/worktrees.qtpl:52
+		qw422016.E().S(wt.Name())
+//line views/worktrees.qtpl:52
+		qw422016.N().S(`</a>
                 `)
 //line views/worktrees.qtpl:53
 		if isActive {

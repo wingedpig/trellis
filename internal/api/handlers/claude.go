@@ -105,13 +105,22 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 	}
 	defer conn.Close()
 
-	// Write mutex for thread-safe WebSocket writes
+	// Write mutex for thread-safe WebSocket writes. We marshal to bytes before
+	// acquiring the lock and use WriteMessage rather than WriteJSON so a failed
+	// encode cannot leave an empty TextMessage frame on the wire — gorilla's
+	// streaming encoder closes (and therefore flushes) its frame even when
+	// json.Encoder errors out partway.
 	var writeMu sync.Mutex
 	writeJSON := func(msg serverMessage) error {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("claude: failed to marshal server message (type=%s): %v", msg.Type, err)
+			return err
+		}
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		return conn.WriteJSON(msg)
+		return conn.WriteMessage(websocket.TextMessage, data)
 	}
 
 	// Send conversation history (including any in-progress assistant turn) and cached slash commands
