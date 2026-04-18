@@ -1,6 +1,7 @@
 // Copyright © 2026 Groups.io, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+{% import "strings" %}
 {% import "github.com/wingedpig/trellis/internal/worktree" %}
 
 {% code
@@ -41,6 +42,8 @@ type WorktreesPage struct {
     {% for _, wt := range p.Worktrees %}
     {% code isActive := p.Active != nil && p.Active.Path == wt.Path %}
     {% code isMain := wt.Name() == p.ProjectName %}
+    {% code displayName := wt.Name() %}
+    {% code if !isMain && p.ProjectName != "" { displayName = strings.TrimPrefix(displayName, p.ProjectName + "-") } %}
     <div class="list-group-item {% if isActive %}active{% endif %}" data-worktree-path="{%s wt.Path %}">
         <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -49,7 +52,7 @@ type WorktreesPage struct {
                 {% else %}
                 <i class="fa-solid fa-code-branch"></i>
                 {% endif %}
-                <a href="/worktree/{%s wt.Name() %}" class="text-decoration-none" style="color: inherit;">{%s wt.Name() %}</a>
+                <a href="/worktree/{%s displayName %}" class="text-decoration-none" style="color: inherit;">{%s displayName %}</a>
                 {% if isActive %} (current){% endif %}
                 <span class="wt-status">
                 {% if wt.Dirty %}

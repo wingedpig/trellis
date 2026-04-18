@@ -958,6 +958,12 @@
         bubble.appendChild(textEl);
 
         wrapper.appendChild(bubble);
+        // Live-streaming bubble: copy button reflects the accumulated text
+        // during streaming, or the snapshot stashed on the wrapper after the
+        // turn finishes (since accumulatedText is cleared at that point).
+        attachCopyButton(wrapper, function() {
+            return wrapper.__markdownSource || accumulatedText;
+        });
         messagesEl.appendChild(wrapper);
 
         currentBubble = bubble;
@@ -977,6 +983,11 @@
         removeWorkingIndicator();
         if (currentTextEl) {
             renderAssistantMarkdown();
+        }
+        // Snapshot the final markdown on the streaming wrapper so its copy
+        // button still works after accumulatedText is cleared.
+        if (currentBubble && currentBubble.parentElement) {
+            currentBubble.parentElement.__markdownSource = accumulatedText;
         }
         currentBubble = null;
         currentTextEl = null;
@@ -1212,8 +1223,48 @@
         }
         bubble.textContent = text;
 
+        // Button goes BEFORE the bubble in the DOM — flex-end right-aligns the
+        // row, so the button appears to the left of the bubble.
+        attachCopyButton(wrapper, function() { return text; });
         wrapper.appendChild(bubble);
         messagesEl.appendChild(wrapper);
+    }
+
+    // Extract an assistant message as markdown by concatenating its text
+    // blocks in order. Non-text blocks (tool_use, tool_result) are skipped
+    // since they have no natural markdown representation.
+    function assistantMessageMarkdown(msg) {
+        if (!msg || !msg.content) return '';
+        var parts = [];
+        for (var i = 0; i < msg.content.length; i++) {
+            var block = msg.content[i];
+            if (block.type === 'text' && block.text) parts.push(block.text);
+        }
+        return parts.join('\n\n');
+    }
+
+    // attachCopyButton creates an icon button that copies getText() to the
+    // clipboard and inserts it into wrapper. Positioned via CSS so it aligns
+    // with the adjacent bubble.
+    function attachCopyButton(wrapper, getText) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'claude-message-copy';
+        btn.title = 'Copy message as markdown';
+        btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var text = getText();
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(function() {
+                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                setTimeout(function() {
+                    btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+                }, 1500);
+            });
+        });
+        wrapper.appendChild(btn);
     }
 
     function renderAssistantMessage(msg, toolResults, planWrites) {
@@ -1224,6 +1275,7 @@
 
         const bubble = document.createElement('div');
         bubble.className = 'claude-bubble claude-bubble-assistant';
+        const markdownSource = assistantMessageMarkdown(msg);
 
         // Identify Write tool blocks that wrote plan files (will be shown in ExitPlanMode banner instead)
         var planWriteIds = {};
@@ -1275,6 +1327,9 @@
         }
 
         wrapper.appendChild(bubble);
+        if (markdownSource) {
+            attachCopyButton(wrapper, function() { return markdownSource; });
+        }
         messagesEl.appendChild(wrapper);
     }
 

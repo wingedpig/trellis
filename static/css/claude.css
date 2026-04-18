@@ -50,6 +50,8 @@
 .claude-message {
     margin-bottom: 1rem;
     display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
 }
 
 .claude-message-user {
@@ -58,6 +60,31 @@
 
 .claude-message-assistant {
     justify-content: flex-start;
+}
+
+.claude-message-copy {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.8rem;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    color: var(--trellis-text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+    flex: 0 0 auto;
+    align-self: flex-start;
+    margin-top: 0.25rem;
+}
+
+.claude-message:hover .claude-message-copy {
+    opacity: 1;
+}
+
+.claude-message-copy:hover {
+    color: var(--bs-body-color);
+    background: var(--trellis-hover-bg, var(--trellis-input-bg));
+    border-color: var(--trellis-card-border);
 }
 
 .claude-bubble {

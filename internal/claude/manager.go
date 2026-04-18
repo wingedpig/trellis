@@ -632,7 +632,12 @@ func (s *Session) MessagesWithPending() []Message {
 	result := make([]Message, len(s.messages))
 	copy(result, s.messages)
 
-	if s.generating && len(s.currentBlocks) > 0 {
+	// Include the in-progress assistant turn whenever there's anything to show —
+	// either previously-completed blocks in currentBlocks OR a block currently
+	// streaming. Requiring currentBlocks>0 loses partial text whenever the turn
+	// starts with a block type we don't track (e.g., thinking), since that
+	// leaves currentBlocks empty while text accumulates on currentStreamBlock.
+	if s.generating && (len(s.currentBlocks) > 0 || s.currentStreamBlock != nil) {
 		pending := make([]ContentBlock, len(s.currentBlocks))
 		copy(pending, s.currentBlocks)
 		// Sanitize any block whose Input RawMessage isn't currently valid JSON —
@@ -1013,16 +1018,28 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 	if s.processGen == gen {
 		// If the stream died mid-turn (no "result" event ever arrived), commit
 		// any accumulated in-progress blocks as a completed assistant message
-		// so reconnecting clients can still see what was generated.
-		if len(s.currentBlocks) > 0 {
+		// so reconnecting clients can still see what was generated. Include
+		// the partial currentStreamBlock too — otherwise text accumulating on
+		// it (e.g., when the turn started with a thinking block) is lost.
+		pending := s.currentBlocks
+		if s.currentStreamBlock != nil {
+			partial := *s.currentStreamBlock
+			if partial.Type == "tool_use" && s.streamPartialJSON != "" && json.Valid([]byte(s.streamPartialJSON)) {
+				partial.Input = json.RawMessage(s.streamPartialJSON)
+			}
+			pending = append(pending, partial)
+		}
+		if len(pending) > 0 {
 			msg := Message{
 				Role:      "assistant",
-				Content:   s.currentBlocks,
+				Content:   pending,
 				Timestamp: time.Now(),
 			}
 			s.messages = append(s.messages, msg)
 			s.persistMessage(msg)
 			s.currentBlocks = nil
+			s.currentStreamBlock = nil
+			s.streamPartialJSON = ""
 		}
 		s.started = false
 		s.generating = false
