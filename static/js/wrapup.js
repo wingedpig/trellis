@@ -8,6 +8,15 @@
 //   WRAPUP_SESSION_CREATED — ISO 8601 timestamp of session creation (string)
 //   WRAPUP_CASE      — {id, title, kind} or null
 
+// Shared helper: set every checkbox inside #<containerId> to `checked`.
+// Used by select-all/none links above file/trace lists.
+window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var boxes = container.querySelectorAll('input[type="checkbox"]');
+    boxes.forEach(function(cb) { cb.checked = !!checked; });
+};
+
 function showWrapUpModal() {
     var modal = document.getElementById('wrapUpModal');
     if (!modal) return;

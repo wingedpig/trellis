@@ -723,7 +723,14 @@ const WRAPUP_CASE = {id: CASE_ID, title: `)
 
                 <!-- Files -->
                 <div class="mb-3">
-                    <label class="form-label">Files to commit</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Files to commit</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpFileList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpFileList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="wrapUpFileList" class="wrap-up-file-list"></div>
                 </div>
 
@@ -760,43 +767,43 @@ const WRAPUP_CASE = {id: CASE_ID, title: `)
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/case_detail.qtpl:487
+//line views/case_detail.qtpl:494
 	p.StreamFooter(qw422016)
-//line views/case_detail.qtpl:487
+//line views/case_detail.qtpl:494
 	qw422016.N().S(`
 `)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 }
 
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 func (p *CaseDetailPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	p.StreamRender(qw422016)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	qt422016.ReleaseWriter(qw422016)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 }
 
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 func (p *CaseDetailPage) Render() string {
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	p.WriteRender(qb422016)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	qs422016 := string(qb422016.B)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 	return qs422016
-//line views/case_detail.qtpl:488
+//line views/case_detail.qtpl:495
 }
 
 // notesJSONSafe returns the notes as a JSON-encoded string safe for embedding in a <script> tag.
 //
-//line views/case_detail.qtpl:491
+//line views/case_detail.qtpl:498
 func notesJSONSafe(s string) string {
 	// JSON encode the string (handles escaping quotes, newlines, etc.)
 	b, _ := json.Marshal(s)

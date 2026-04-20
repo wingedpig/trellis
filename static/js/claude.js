@@ -340,7 +340,7 @@
     function handleServerMessage(msg) {
         switch (msg.type) {
             case 'history':
-                renderHistory(msg.messages || []);
+                renderHistory(msg.messages || [], !!msg.generating);
                 if (msg.generating) {
                     setGenerating(true);
                 } else {
@@ -419,11 +419,11 @@
                 }
                 if (event.subtype === 'status') {
                     if (event.status === 'compacting') {
-                        // Insert permanent compaction marker in timeline
+                        // Reset in-progress bubble state; the completion marker
+                        // is inserted when compact_boundary arrives.
                         currentBubble = null;
                         currentTextEl = null;
                         accumulatedText = '';
-                        insertCompactionMarker();
                     }
                     if (event.status) {
                         var statusLabels = {
@@ -435,6 +435,9 @@
                     } else {
                         removeWorkingIndicator();
                     }
+                }
+                if (event.subtype === 'compact_boundary') {
+                    insertCompactionMarker(event.compact_metadata);
                 }
                 break;
             case 'control_request':
@@ -827,13 +830,33 @@
         if (indicator) indicator.remove();
     }
 
-    function insertCompactionMarker() {
+    function insertCompactionMarker(metadata) {
         var marker = document.createElement('div');
         marker.className = 'claude-compaction-marker';
-        marker.innerHTML =
-            '<div class="claude-compaction-line"></div>' +
-            '<span class="claude-compaction-label"><i class="fa-solid fa-compress"></i> Context compacted</span>' +
-            '<div class="claude-compaction-line"></div>';
+        var detail = '';
+        if (metadata && typeof metadata === 'object') {
+            var pre = metadata.pre_tokens;
+            var post = metadata.post_tokens;
+            if (typeof pre === 'number' && typeof post === 'number') {
+                detail = ' (' + pre.toLocaleString() + ' → ' + post.toLocaleString() + ' tokens)';
+            }
+        }
+        var label = document.createElement('span');
+        label.className = 'claude-compaction-label';
+        label.innerHTML = '<i class="fa-solid fa-compress"></i> Context compacted';
+        if (detail) {
+            var extra = document.createElement('span');
+            extra.className = 'claude-compaction-detail';
+            extra.textContent = detail;
+            label.appendChild(extra);
+        }
+        var lineLeft = document.createElement('div');
+        lineLeft.className = 'claude-compaction-line';
+        var lineRight = document.createElement('div');
+        lineRight.className = 'claude-compaction-line';
+        marker.appendChild(lineLeft);
+        marker.appendChild(label);
+        marker.appendChild(lineRight);
         messagesEl.appendChild(marker);
         scrollToBottom();
     }
@@ -1165,7 +1188,7 @@
         }
     }
 
-    function renderHistory(messages) {
+    function renderHistory(messages, generating) {
         messagesEl.innerHTML = '';
         currentBubble = null;
         currentTextEl = null;
@@ -1197,11 +1220,16 @@
             }
         }
 
-        for (const msg of messages) {
+        for (var mi = 0; mi < messages.length; mi++) {
+            var msg = messages[mi];
+            var isLast = mi === messages.length - 1;
             if (msg.role === 'user') {
                 renderUserMessage(msg);
             } else if (msg.role === 'assistant') {
-                renderAssistantMessage(msg, toolResults, planWrites);
+                // The server synthesizes an in-progress assistant message as the
+                // trailing entry when generating=true. Treat that one as pending
+                // so subsequent stream deltas append to its bubble.
+                renderAssistantMessage(msg, toolResults, planWrites, generating && isLast);
             }
         }
         scrollToBottom();
@@ -1267,7 +1295,7 @@
         wrapper.appendChild(btn);
     }
 
-    function renderAssistantMessage(msg, toolResults, planWrites) {
+    function renderAssistantMessage(msg, toolResults, planWrites, pending) {
         if (!msg.content || msg.content.length === 0) return;
 
         const wrapper = document.createElement('div');
@@ -1317,20 +1345,33 @@
             }
         }
 
-        // Render remaining text
+        // Render remaining text. In pending mode, hand the trailing text
+        // element off to the streaming state so new deltas append to the same
+        // bubble instead of spawning a new one.
+        var trailingTextEl = null;
         if (textAcc) {
-            const textEl = document.createElement('div');
-            textEl.className = 'claude-text-content';
-            textEl.innerHTML = marked.parse(textAcc);
-            addCopyButtons(textEl);
-            bubble.appendChild(textEl);
+            trailingTextEl = document.createElement('div');
+            trailingTextEl.className = 'claude-text-content';
+            trailingTextEl.innerHTML = marked.parse(textAcc);
+            if (!pending) addCopyButtons(trailingTextEl);
+            bubble.appendChild(trailingTextEl);
         }
 
         wrapper.appendChild(bubble);
-        if (markdownSource) {
+        if (markdownSource && !pending) {
             attachCopyButton(wrapper, function() { return markdownSource; });
         }
         messagesEl.appendChild(wrapper);
+
+        if (pending) {
+            currentBubble = bubble;
+            currentTextEl = trailingTextEl; // may be null if last block was tool_use
+            accumulatedText = textAcc || '';
+            usingStreamEvents = true;
+            attachCopyButton(wrapper, function() {
+                return wrapper.__markdownSource || accumulatedText || markdownSource;
+            });
+        }
     }
 
     function renderTodoList(bubble, todos) {

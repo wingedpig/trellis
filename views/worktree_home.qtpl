@@ -265,7 +265,14 @@ type WorktreeHomePage struct {
                     <div class="form-text">A fresh git worktree will be created for this branch.</div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-1">Files to move (from source worktree)</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Files to move (from source worktree)</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionFilesList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionFilesList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="moveSessionFilesStatus" class="text-muted small">Loading…</div>
                     <div id="moveSessionFilesList" class="border rounded p-2" style="max-height: 250px; overflow-y: auto;"></div>
                 </div>
@@ -315,6 +322,15 @@ const WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
 let newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
 let renameConfirmCallback = null;
 let moveSessionState = { sessionId: null };
+
+// Shared helper for select-all/none checkbox toggles.
+window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+        cb.checked = !!checked;
+    });
+};
 document.addEventListener('DOMContentLoaded', function() {
     importTranscriptModal = new bootstrap.Modal(document.getElementById('importTranscriptModal'));
     moveSessionModal = new bootstrap.Modal(document.getElementById('moveSessionModal'));

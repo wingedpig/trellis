@@ -43,7 +43,11 @@ type WorktreesPage struct {
     {% code isActive := p.Active != nil && p.Active.Path == wt.Path %}
     {% code isMain := wt.Name() == p.ProjectName %}
     {% code displayName := wt.Name() %}
-    {% code if !isMain && p.ProjectName != "" { displayName = strings.TrimPrefix(displayName, p.ProjectName + "-") } %}
+    {% code if isMain && wt.Branch != "" {
+        displayName = wt.Branch
+    } else if p.ProjectName != "" {
+        displayName = strings.TrimPrefix(displayName, p.ProjectName + "-")
+    } %}
     <div class="list-group-item {% if isActive %}active{% endif %}" data-worktree-path="{%s wt.Path %}">
         <div class="d-flex justify-content-between align-items-center">
             <div>

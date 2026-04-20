@@ -117,196 +117,198 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 		qw422016.N().S(`
     `)
 //line views/worktrees.qtpl:46
-		if !isMain && p.ProjectName != "" {
+		if isMain && wt.Branch != "" {
+			displayName = wt.Branch
+		} else if p.ProjectName != "" {
 			displayName = strings.TrimPrefix(displayName, p.ProjectName+"-")
 		}
 
-//line views/worktrees.qtpl:46
+//line views/worktrees.qtpl:50
 		qw422016.N().S(`
     <div class="list-group-item `)
-//line views/worktrees.qtpl:47
+//line views/worktrees.qtpl:51
 		if isActive {
-//line views/worktrees.qtpl:47
+//line views/worktrees.qtpl:51
 			qw422016.N().S(`active`)
-//line views/worktrees.qtpl:47
+//line views/worktrees.qtpl:51
 		}
-//line views/worktrees.qtpl:47
+//line views/worktrees.qtpl:51
 		qw422016.N().S(`" data-worktree-path="`)
-//line views/worktrees.qtpl:47
+//line views/worktrees.qtpl:51
 		qw422016.E().S(wt.Path)
-//line views/worktrees.qtpl:47
+//line views/worktrees.qtpl:51
 		qw422016.N().S(`">
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 `)
-//line views/worktrees.qtpl:50
+//line views/worktrees.qtpl:54
 		if isActive {
-//line views/worktrees.qtpl:50
+//line views/worktrees.qtpl:54
 			qw422016.N().S(`
                 <i class="fa-solid fa-check"></i>
                 `)
-//line views/worktrees.qtpl:52
+//line views/worktrees.qtpl:56
 		} else {
-//line views/worktrees.qtpl:52
+//line views/worktrees.qtpl:56
 			qw422016.N().S(`
                 <i class="fa-solid fa-code-branch"></i>
                 `)
-//line views/worktrees.qtpl:54
+//line views/worktrees.qtpl:58
 		}
-//line views/worktrees.qtpl:54
+//line views/worktrees.qtpl:58
 		qw422016.N().S(`
                 <a href="/worktree/`)
-//line views/worktrees.qtpl:55
+//line views/worktrees.qtpl:59
 		qw422016.E().S(displayName)
-//line views/worktrees.qtpl:55
+//line views/worktrees.qtpl:59
 		qw422016.N().S(`" class="text-decoration-none" style="color: inherit;">`)
-//line views/worktrees.qtpl:55
+//line views/worktrees.qtpl:59
 		qw422016.E().S(displayName)
-//line views/worktrees.qtpl:55
+//line views/worktrees.qtpl:59
 		qw422016.N().S(`</a>
                 `)
-//line views/worktrees.qtpl:56
+//line views/worktrees.qtpl:60
 		if isActive {
-//line views/worktrees.qtpl:56
+//line views/worktrees.qtpl:60
 			qw422016.N().S(` (current)`)
-//line views/worktrees.qtpl:56
+//line views/worktrees.qtpl:60
 		}
-//line views/worktrees.qtpl:56
+//line views/worktrees.qtpl:60
 		qw422016.N().S(`
                 <span class="wt-status">
                 `)
-//line views/worktrees.qtpl:58
+//line views/worktrees.qtpl:62
 		if wt.Dirty {
-//line views/worktrees.qtpl:58
+//line views/worktrees.qtpl:62
 			qw422016.N().S(`
                 <span class="badge bg-danger ms-2" title="Uncommitted changes">
                     <i class="fa-solid fa-pencil"></i> dirty
                 </span>
                 `)
-//line views/worktrees.qtpl:62
+//line views/worktrees.qtpl:66
 		}
-//line views/worktrees.qtpl:62
+//line views/worktrees.qtpl:66
 		qw422016.N().S(`
                 `)
-//line views/worktrees.qtpl:63
+//line views/worktrees.qtpl:67
 		if wt.Ahead > 0 || wt.Behind > 0 {
-//line views/worktrees.qtpl:63
+//line views/worktrees.qtpl:67
 			qw422016.N().S(`
                 <span class="badge bg-info text-dark ms-2" title="Commits ahead/behind main">
                     `)
-//line views/worktrees.qtpl:65
+//line views/worktrees.qtpl:69
 			if wt.Ahead > 0 {
-//line views/worktrees.qtpl:65
+//line views/worktrees.qtpl:69
 				qw422016.N().S(`<i class="fa-solid fa-arrow-up"></i>`)
-//line views/worktrees.qtpl:65
+//line views/worktrees.qtpl:69
 				qw422016.N().D(wt.Ahead)
-//line views/worktrees.qtpl:65
+//line views/worktrees.qtpl:69
 			}
-//line views/worktrees.qtpl:65
+//line views/worktrees.qtpl:69
 			qw422016.N().S(`
                     `)
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:70
 			if wt.Behind > 0 {
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:70
 				qw422016.N().S(`<i class="fa-solid fa-arrow-down"></i>`)
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:70
 				qw422016.N().D(wt.Behind)
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:70
 			}
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:70
 			qw422016.N().S(`
                 </span>
                 `)
-//line views/worktrees.qtpl:68
+//line views/worktrees.qtpl:72
 		}
-//line views/worktrees.qtpl:68
+//line views/worktrees.qtpl:72
 		qw422016.N().S(`
                 `)
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:73
 		if wt.Detached {
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:73
 			qw422016.N().S(`
                 <span class="badge bg-secondary ms-2">Detached</span>
                 `)
-//line views/worktrees.qtpl:71
+//line views/worktrees.qtpl:75
 		}
-//line views/worktrees.qtpl:71
+//line views/worktrees.qtpl:75
 		qw422016.N().S(`
                 </span>
                 <br>
                 <small class="text-muted">Branch: `)
-//line views/worktrees.qtpl:74
+//line views/worktrees.qtpl:78
 		qw422016.E().S(wt.Branch)
-//line views/worktrees.qtpl:74
+//line views/worktrees.qtpl:78
 		qw422016.N().S(`</small>
             </div>
             <div>
                 `)
-//line views/worktrees.qtpl:77
+//line views/worktrees.qtpl:81
 		if !isActive {
-//line views/worktrees.qtpl:77
+//line views/worktrees.qtpl:81
 			qw422016.N().S(`
                 <a href="#" class="btn btn-sm btn-primary" onclick="promptSwitchWorktree('`)
-//line views/worktrees.qtpl:78
+//line views/worktrees.qtpl:82
 			qw422016.E().S(JSAttr(wt.Name()))
-//line views/worktrees.qtpl:78
+//line views/worktrees.qtpl:82
 			qw422016.N().S(`'); return false;">
                     <i class="fa-solid fa-sign-in-alt"></i> Switch
                 </a>
                 `)
-//line views/worktrees.qtpl:81
+//line views/worktrees.qtpl:85
 			if !isMain {
-//line views/worktrees.qtpl:81
+//line views/worktrees.qtpl:85
 				qw422016.N().S(`
                 <button class="btn btn-sm btn-danger" onclick="showRemoveModal('`)
-//line views/worktrees.qtpl:82
+//line views/worktrees.qtpl:86
 				qw422016.E().S(JSAttr(wt.Name()))
-//line views/worktrees.qtpl:82
+//line views/worktrees.qtpl:86
 				qw422016.N().S(`', '`)
-//line views/worktrees.qtpl:82
+//line views/worktrees.qtpl:86
 				qw422016.E().S(JSAttr(wt.Branch))
-//line views/worktrees.qtpl:82
+//line views/worktrees.qtpl:86
 				qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i> Remove
                 </button>
                 `)
-//line views/worktrees.qtpl:85
+//line views/worktrees.qtpl:89
 			}
-//line views/worktrees.qtpl:85
+//line views/worktrees.qtpl:89
 			qw422016.N().S(`
                 `)
-//line views/worktrees.qtpl:86
+//line views/worktrees.qtpl:90
 		} else {
-//line views/worktrees.qtpl:86
+//line views/worktrees.qtpl:90
 			qw422016.N().S(`
                 <span class="text-muted">Cannot remove current worktree</span>
                 `)
-//line views/worktrees.qtpl:88
+//line views/worktrees.qtpl:92
 		}
-//line views/worktrees.qtpl:88
+//line views/worktrees.qtpl:92
 		qw422016.N().S(`
             </div>
         </div>
     </div>
     `)
-//line views/worktrees.qtpl:92
+//line views/worktrees.qtpl:96
 	}
-//line views/worktrees.qtpl:92
+//line views/worktrees.qtpl:96
 	qw422016.N().S(`
 </div>
 
 `)
-//line views/worktrees.qtpl:95
+//line views/worktrees.qtpl:99
 	if len(p.Worktrees) == 0 {
-//line views/worktrees.qtpl:95
+//line views/worktrees.qtpl:99
 		qw422016.N().S(`
 <div class="alert alert-info">
     <i class="fa-solid fa-info-circle"></i> No git worktrees found.
 </div>
 `)
-//line views/worktrees.qtpl:99
+//line views/worktrees.qtpl:103
 	}
-//line views/worktrees.qtpl:99
+//line views/worktrees.qtpl:103
 	qw422016.N().S(`
 
 <div class="card mb-4">
@@ -327,9 +329,9 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
                     <ul class="mb-0">
                         <li>New branch: <code><span id="branchPreview">feature-x</span></code></li>
                         <li>New worktree directory: <code>../<span id="dirPreview">`)
-//line views/worktrees.qtpl:118
+//line views/worktrees.qtpl:122
 	qw422016.E().S(p.ProjectName)
-//line views/worktrees.qtpl:118
+//line views/worktrees.qtpl:122
 	qw422016.N().S(`-feature-x</span></code></li>
                     </ul>
                 </div>
@@ -348,22 +350,22 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 `)
-//line views/worktrees.qtpl:135
+//line views/worktrees.qtpl:139
 	if p.BinariesDir != "" {
-//line views/worktrees.qtpl:135
+//line views/worktrees.qtpl:139
 		qw422016.N().S(`
 <div class="alert alert-info">
     <h6><i class="fa-solid fa-folder"></i> Binary Locations</h6>
     <p class="mb-0">Each worktree has its own binary directory. Current: <code>`)
-//line views/worktrees.qtpl:138
+//line views/worktrees.qtpl:142
 		qw422016.E().S(p.BinariesDir)
-//line views/worktrees.qtpl:138
+//line views/worktrees.qtpl:142
 		qw422016.N().S(`</code></p>
 </div>
 `)
-//line views/worktrees.qtpl:140
+//line views/worktrees.qtpl:144
 	}
-//line views/worktrees.qtpl:140
+//line views/worktrees.qtpl:144
 	qw422016.N().S(`
 
 <!-- Generic Alert Modal -->
@@ -472,9 +474,9 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 var currentRemoveWorktree = '';
 var currentRemoveBranch = '';
 var projectName = '`)
-//line views/worktrees.qtpl:247
+//line views/worktrees.qtpl:251
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/worktrees.qtpl:247
+//line views/worktrees.qtpl:251
 	qw422016.N().S(`';
 var pendingConfirmCallback = null;
 
@@ -807,36 +809,36 @@ fetch('/api/v1/worktrees')
 </script>
 
 `)
-//line views/worktrees.qtpl:578
+//line views/worktrees.qtpl:582
 	p.StreamFooter(qw422016)
-//line views/worktrees.qtpl:578
+//line views/worktrees.qtpl:582
 	qw422016.N().S(`
 `)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 }
 
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 func (p *WorktreesPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	p.StreamRender(qw422016)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 }
 
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 func (p *WorktreesPage) Render() string {
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	p.WriteRender(qb422016)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	qs422016 := string(qb422016.B)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 	return qs422016
-//line views/worktrees.qtpl:579
+//line views/worktrees.qtpl:583
 }

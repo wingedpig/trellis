@@ -67,6 +67,10 @@ type StreamEvent struct {
 	Skills        []string `json:"skills,omitempty"`
 	// system status events (e.g. compacting)
 	Status string `json:"status,omitempty"`
+	// system status result for completed operations (e.g. compact_result: "success")
+	CompactResult string `json:"compact_result,omitempty"`
+	// system compact_boundary metadata (pre/post tokens, duration, trigger)
+	CompactMetadata json.RawMessage `json:"compact_metadata,omitempty"`
 	// stream_event inner event (from --include-partial-messages)
 	Event json.RawMessage `json:"event,omitempty"`
 }

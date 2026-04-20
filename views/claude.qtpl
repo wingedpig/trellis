@@ -221,13 +221,27 @@ let WRAPUP_CASE = null;
 
                 <!-- Files -->
                 <div class="mb-3">
-                    <label class="form-label">Files to commit</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Files to commit</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpFileList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpFileList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="wrapUpFileList" class="wrap-up-file-list"></div>
                 </div>
 
                 <!-- Traces -->
                 <div class="mb-3" id="wrapUpTraceSection" style="display:none">
-                    <label class="form-label">Traces to include</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Traces to include</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpTraceList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpTraceList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="wrapUpTraceList" class="wrap-up-file-list"></div>
                 </div>
 

@@ -464,7 +464,14 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
                     <div class="form-text">A fresh git worktree will be created for this branch.</div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-1">Files to move (from source worktree)</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Files to move (from source worktree)</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionFilesList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionFilesList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="moveSessionFilesStatus" class="text-muted small">Loading…</div>
                     <div id="moveSessionFilesList" class="border rounded p-2" style="max-height: 250px; overflow-y: auto;"></div>
                 </div>
@@ -510,14 +517,23 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script>
 const WORKTREE_NAME = '`)
-//line views/worktree_home.qtpl:313
+//line views/worktree_home.qtpl:320
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/worktree_home.qtpl:313
+//line views/worktree_home.qtpl:320
 	qw422016.N().S(`';
 
 let newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
 let renameConfirmCallback = null;
 let moveSessionState = { sessionId: null };
+
+// Shared helper for select-all/none checkbox toggles.
+window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+        cb.checked = !!checked;
+    });
+};
 document.addEventListener('DOMContentLoaded', function() {
     importTranscriptModal = new bootstrap.Modal(document.getElementById('importTranscriptModal'));
     moveSessionModal = new bootstrap.Modal(document.getElementById('moveSessionModal'));
@@ -970,36 +986,36 @@ function reopenCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:769
+//line views/worktree_home.qtpl:785
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:769
+//line views/worktree_home.qtpl:785
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 }
 
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 }
 
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 	return qs422016
-//line views/worktree_home.qtpl:770
+//line views/worktree_home.qtpl:786
 }

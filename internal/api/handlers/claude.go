@@ -458,12 +458,17 @@ func (h *ClaudeHandler) MoveSessionAPI(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, "create worktree: "+err.Error())
 		return
 	}
-	newWorktreeName := h.worktreeMgr.ProjectName() + "-" + strings.ReplaceAll(body.Branch, "/", "-")
-	newWT, ok := h.worktreeMgr.GetByName(newWorktreeName)
+	newWorktreeDir := h.worktreeMgr.ProjectName() + "-" + strings.ReplaceAll(body.Branch, "/", "-")
+	newWT, ok := h.worktreeMgr.GetByName(newWorktreeDir)
 	if !ok {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, "new worktree not found after create")
 		return
 	}
+	// The rest of the app (claude sessions, terminals, cases) keys worktrees
+	// by whatever string the homepage uses in its URL — the project-prefix-
+	// stripped form. Key the moved session the same way so it shows up on the
+	// new worktree's home page.
+	newWorktreeKey := strings.TrimPrefix(newWT.Name(), h.worktreeMgr.ProjectName()+"-")
 
 	// Copy selected files into the new worktree, preserving relative paths and mode.
 	for _, sf := range selected {
@@ -489,8 +494,8 @@ func (h *ClaudeHandler) MoveSessionAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Rebind the session to the new worktree.
-	if err := h.manager.MoveSession(sessionID, newWorktreeName, newWT.Path); err != nil {
+	// Rebind the session to the new worktree using the stripped key.
+	if err := h.manager.MoveSession(sessionID, newWorktreeKey, newWT.Path); err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, "move session: "+err.Error())
 		return
 	}
@@ -504,11 +509,11 @@ func (h *ClaudeHandler) MoveSessionAPI(w http.ResponseWriter, r *http.Request) {
 	if h.bus != nil {
 		h.bus.Publish(ctx, events.Event{
 			Type:     events.EventClaudeSessionMoved,
-			Worktree: newWorktreeName,
+			Worktree: newWorktreeKey,
 			Payload: map[string]interface{}{
 				"session_id":       sessionID,
 				"from_worktree":    sourceWorktreeName,
-				"to_worktree":      newWorktreeName,
+				"to_worktree":      newWorktreeKey,
 				"to_worktree_path": newWT.Path,
 				"to_branch":        newWT.Branch,
 				"files":            movedFiles,
@@ -519,7 +524,7 @@ func (h *ClaudeHandler) MoveSessionAPI(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]interface{}{
 		"session_id":    sessionID,
-		"worktree":      newWorktreeName,
+		"worktree":      newWorktreeKey,
 		"branch":        newWT.Branch,
 		"path":          newWT.Path,
 		"revert_errors": revertErrs,

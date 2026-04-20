@@ -720,16 +720,6 @@ func (h *PageHandler) WorktreeHome(w http.ResponseWriter, r *http.Request) {
 	var branch string
 	if h.worktrees != nil {
 		activeWorktree = h.worktrees.Active()
-		// Accept both the full directory name (e.g. "groups.io-feature-x") and
-		// the project-stripped form (e.g. "feature-x") that homepage links use.
-		// Normalize to the full directory name for everything downstream.
-		if _, ok := h.worktrees.GetByName(name); !ok {
-			if projectName := h.worktrees.ProjectName(); projectName != "" {
-				if wt, ok := h.worktrees.GetByName(projectName + "-" + name); ok {
-					name = wt.Name()
-				}
-			}
-		}
 		if wt, ok := h.worktrees.GetByName(name); ok {
 			branch = wt.Branch
 		}

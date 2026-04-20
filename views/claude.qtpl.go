@@ -259,13 +259,27 @@ let WRAPUP_CASE = null;
 
                 <!-- Files -->
                 <div class="mb-3">
-                    <label class="form-label">Files to commit</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Files to commit</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpFileList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpFileList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="wrapUpFileList" class="wrap-up-file-list"></div>
                 </div>
 
                 <!-- Traces -->
                 <div class="mb-3" id="wrapUpTraceSection" style="display:none">
-                    <label class="form-label">Traces to include</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Traces to include</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpTraceList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpTraceList', false); return false;">none</a>
+                        </span>
+                    </div>
                     <div id="wrapUpTraceList" class="wrap-up-file-list"></div>
                 </div>
 
@@ -303,36 +317,36 @@ let WRAPUP_CASE = null;
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:267
+//line views/claude.qtpl:281
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:267
+//line views/claude.qtpl:281
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 }
 
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 }
 
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 	return qs422016
-//line views/claude.qtpl:268
+//line views/claude.qtpl:282
 }
