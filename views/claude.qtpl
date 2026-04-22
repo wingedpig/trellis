@@ -54,10 +54,16 @@ type ClaudePage struct {
 </div>
 
 <script>
-const CLAUDE_WORKTREE = '{%s JSAttr(p.WorktreeName) %}';
-const CLAUDE_SESSION = '{%s JSAttr(p.SessionID) %}';
+(function() {
+'use strict';
+// Expose on window so external scripts (claude.js, wrapup.js) and inline
+// onclick handlers can reach these values.
+window.CLAUDE_WORKTREE = '{%s JSAttr(p.WorktreeName) %}';
+window.CLAUDE_SESSION = '{%s JSAttr(p.SessionID) %}';
+var CLAUDE_WORKTREE = window.CLAUDE_WORKTREE;
+var CLAUDE_SESSION = window.CLAUDE_SESSION;
 
-function showSaveToCaseModal() {
+window.showSaveToCaseModal = function showSaveToCaseModal() {
     // Fetch open cases for this worktree
     fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE))
     .then(r => r.json())
@@ -77,14 +83,14 @@ function showSaveToCaseModal() {
         modal.show();
     })
     .catch(err => alert('Failed to load cases: ' + err));
-}
+};
 
-function onSaveToCaseSelectChange() {
+window.onSaveToCaseSelectChange = function onSaveToCaseSelectChange() {
     const val = document.getElementById('saveToCaseSelect').value;
     document.getElementById('saveToCaseNewFields').style.display = (val === '__new__') ? 'block' : 'none';
-}
+};
 
-function saveToCaseConfirm() {
+window.saveToCaseConfirm = function saveToCaseConfirm() {
     const selectVal = document.getElementById('saveToCaseSelect').value;
     const title = document.getElementById('saveToCaseTitle').value.trim();
 
@@ -112,7 +118,7 @@ function saveToCaseConfirm() {
     } else {
         alert('Please select a case');
     }
-}
+};
 
 function doSaveTranscript(caseId, title) {
     fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE) + '/' + encodeURIComponent(caseId) + '/transcript', {
@@ -130,6 +136,7 @@ function doSaveTranscript(caseId, title) {
     })
     .catch(err => alert('Save failed: ' + err));
 }
+})();
 </script>
 
 <!-- Save to Case Modal -->
@@ -173,10 +180,13 @@ function doSaveTranscript(caseId, title) {
     </div>
 </div>
 <script>
-const WRAPUP_WORKTREE = CLAUDE_WORKTREE;
-const WRAPUP_SESSION_ID = CLAUDE_SESSION;
-const WRAPUP_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
-let WRAPUP_CASE = null;
+(function() {
+'use strict';
+window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
+window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
+window.WRAPUP_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
+window.WRAPUP_CASE = null;
+})();
 </script>
 
 <!-- Wrap Up Modal -->

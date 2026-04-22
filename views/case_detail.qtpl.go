@@ -444,31 +444,45 @@ func (p *CaseDetailPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 <script>
-const WORKTREE_NAME = '`)
-//line views/case_detail.qtpl:196
+// `)
+//line views/case_detail.qtpl:167
+	qw422016.N().S("`")
+//line views/case_detail.qtpl:167
+	qw422016.N().S(`var`)
+//line views/case_detail.qtpl:167
+	qw422016.N().S("`")
+//line views/case_detail.qtpl:167
+	qw422016.N().S(` so the script can be re-executed cleanly when the SPA re-fetches.
+var WORKTREE_NAME = '`)
+//line views/case_detail.qtpl:197
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/case_detail.qtpl:196
-	qw422016.N().S(`';
-const CASE_ID = '`)
 //line views/case_detail.qtpl:197
+	qw422016.N().S(`';
+var CASE_ID = '`)
+//line views/case_detail.qtpl:198
 	qw422016.E().S(JSAttr(p.Case.ID))
-//line views/case_detail.qtpl:197
+//line views/case_detail.qtpl:198
 	qw422016.N().S(`';
-let CASE_NOTES_RAW = `)
-//line views/case_detail.qtpl:198
+var CASE_NOTES_RAW = `)
+//line views/case_detail.qtpl:199
 	qw422016.N().S(notesJSONSafe(p.Notes))
-//line views/case_detail.qtpl:198
+//line views/case_detail.qtpl:199
 	qw422016.N().S(`;
-let CASE_LINKS = `)
-//line views/case_detail.qtpl:199
+var CASE_LINKS = `)
+//line views/case_detail.qtpl:200
 	qw422016.N().S(linksJSONSafe(p.Case.Links))
-//line views/case_detail.qtpl:199
+//line views/case_detail.qtpl:200
 	qw422016.N().S(`;
 
-document.addEventListener('DOMContentLoaded', function() {
+function initCaseDetailPage() {
     renderNotes();
     renderLinks();
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCaseDetailPage);
+} else {
+    initCaseDetailPage();
+}
 
 function renderNotes() {
     var el = document.getElementById('case-notes');
@@ -668,16 +682,16 @@ function continueTranscript(claudeId) {
 </script>
 
 <script>
-const WRAPUP_WORKTREE = WORKTREE_NAME;
-const WRAPUP_SESSION_ID = null;
-const WRAPUP_CASE = {id: CASE_ID, title: `)
-//line views/case_detail.qtpl:406
+var WRAPUP_WORKTREE = WORKTREE_NAME;
+var WRAPUP_SESSION_ID = null;
+var WRAPUP_CASE = {id: CASE_ID, title: `)
+//line views/case_detail.qtpl:412
 	qw422016.N().S(notesJSONSafe(p.Case.Title))
-//line views/case_detail.qtpl:406
+//line views/case_detail.qtpl:412
 	qw422016.N().S(`, kind: '`)
-//line views/case_detail.qtpl:406
+//line views/case_detail.qtpl:412
 	qw422016.E().S(p.Case.Kind)
-//line views/case_detail.qtpl:406
+//line views/case_detail.qtpl:412
 	qw422016.N().S(`'};
 </script>
 
@@ -767,43 +781,43 @@ const WRAPUP_CASE = {id: CASE_ID, title: `)
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/case_detail.qtpl:494
+//line views/case_detail.qtpl:500
 	p.StreamFooter(qw422016)
-//line views/case_detail.qtpl:494
+//line views/case_detail.qtpl:500
 	qw422016.N().S(`
 `)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 }
 
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 func (p *CaseDetailPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	p.StreamRender(qw422016)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	qt422016.ReleaseWriter(qw422016)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 }
 
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 func (p *CaseDetailPage) Render() string {
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	p.WriteRender(qb422016)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	qs422016 := string(qb422016.B)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 	return qs422016
-//line views/case_detail.qtpl:495
+//line views/case_detail.qtpl:501
 }
 
 // notesJSONSafe returns the notes as a JSON-encoded string safe for embedding in a <script> tag.
 //
-//line views/case_detail.qtpl:498
+//line views/case_detail.qtpl:504
 func notesJSONSafe(s string) string {
 	// JSON encode the string (handles escaping quotes, newlines, etc.)
 	b, _ := json.Marshal(s)

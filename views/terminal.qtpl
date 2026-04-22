@@ -169,6 +169,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
 
 {% func (p *TerminalPage) Render() %}
 {%= p.Header() %}
+<script>
+// Terminal pages aren't SPA-migrated yet: opt out so links cause full reload
+// and terminal state isn't cached across navigations.
+(function() {
+    var c = document.currentScript && document.currentScript.parentElement &&
+        document.currentScript.closest('.page-container');
+    if (!c) c = document.querySelector('.page-container');
+    if (c) c.dataset.noSpa = 'true';
+})();
+</script>
 
 <div class="row">
     <div class="col-lg-8">

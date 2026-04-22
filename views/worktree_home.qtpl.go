@@ -516,15 +516,25 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 <script>
-const WORKTREE_NAME = '`)
-//line views/worktree_home.qtpl:320
+// Top-level declarations use `)
+//line views/worktree_home.qtpl:159
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:159
+	qw422016.N().S(`var`)
+//line views/worktree_home.qtpl:159
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:159
+	qw422016.N().S(` so this script can be re-executed when the
+// SPA re-fetches this page (e.g. after LRU eviction from the page cache).
+var WORKTREE_NAME = '`)
+//line views/worktree_home.qtpl:322
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/worktree_home.qtpl:320
+//line views/worktree_home.qtpl:322
 	qw422016.N().S(`';
 
-let newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
-let renameConfirmCallback = null;
-let moveSessionState = { sessionId: null };
+var newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
+var renameConfirmCallback = null;
+var moveSessionState = { sessionId: null };
 
 // Shared helper for select-all/none checkbox toggles.
 window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
@@ -534,7 +544,7 @@ window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId,
         cb.checked = !!checked;
     });
 };
-document.addEventListener('DOMContentLoaded', function() {
+function initWorktreeHomePage() {
     importTranscriptModal = new bootstrap.Modal(document.getElementById('importTranscriptModal'));
     moveSessionModal = new bootstrap.Modal(document.getElementById('moveSessionModal'));
     document.getElementById('moveSessionConfirmBtn').addEventListener('click', submitMoveSession);
@@ -577,7 +587,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('renameConfirmBtn').addEventListener('click', function() {
         if (renameConfirmCallback) renameConfirmCallback();
     });
-});
+}
+// Run init now for SPA navigations (DOM already loaded) or wait for
+// DOMContentLoaded on a fresh page load.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initWorktreeHomePage);
+} else {
+    initWorktreeHomePage();
+}
 
 function showNewClaudeModal() {
     document.getElementById('claudeSessionName').value = '';
@@ -986,36 +1003,36 @@ function reopenCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:785
+//line views/worktree_home.qtpl:794
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:785
+//line views/worktree_home.qtpl:794
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 }
 
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 }
 
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 	return qs422016
-//line views/worktree_home.qtpl:786
+//line views/worktree_home.qtpl:795
 }

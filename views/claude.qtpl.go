@@ -80,18 +80,24 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 <script>
-const CLAUDE_WORKTREE = '`)
-//line views/claude.qtpl:57
+(function() {
+'use strict';
+// Expose on window so external scripts (claude.js, wrapup.js) and inline
+// onclick handlers can reach these values.
+window.CLAUDE_WORKTREE = '`)
+//line views/claude.qtpl:61
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:57
+//line views/claude.qtpl:61
 	qw422016.N().S(`';
-const CLAUDE_SESSION = '`)
-//line views/claude.qtpl:58
+window.CLAUDE_SESSION = '`)
+//line views/claude.qtpl:62
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:58
+//line views/claude.qtpl:62
 	qw422016.N().S(`';
+var CLAUDE_WORKTREE = window.CLAUDE_WORKTREE;
+var CLAUDE_SESSION = window.CLAUDE_SESSION;
 
-function showSaveToCaseModal() {
+window.showSaveToCaseModal = function showSaveToCaseModal() {
     // Fetch open cases for this worktree
     fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE))
     .then(r => r.json())
@@ -111,14 +117,14 @@ function showSaveToCaseModal() {
         modal.show();
     })
     .catch(err => alert('Failed to load cases: ' + err));
-}
+};
 
-function onSaveToCaseSelectChange() {
+window.onSaveToCaseSelectChange = function onSaveToCaseSelectChange() {
     const val = document.getElementById('saveToCaseSelect').value;
     document.getElementById('saveToCaseNewFields').style.display = (val === '__new__') ? 'block' : 'none';
-}
+};
 
-function saveToCaseConfirm() {
+window.saveToCaseConfirm = function saveToCaseConfirm() {
     const selectVal = document.getElementById('saveToCaseSelect').value;
     const title = document.getElementById('saveToCaseTitle').value.trim();
 
@@ -146,7 +152,7 @@ function saveToCaseConfirm() {
     } else {
         alert('Please select a case');
     }
-}
+};
 
 function doSaveTranscript(caseId, title) {
     fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE) + '/' + encodeURIComponent(caseId) + '/transcript', {
@@ -164,6 +170,7 @@ function doSaveTranscript(caseId, title) {
     })
     .catch(err => alert('Save failed: ' + err));
 }
+})();
 </script>
 
 <!-- Save to Case Modal -->
@@ -207,14 +214,17 @@ function doSaveTranscript(caseId, title) {
     </div>
 </div>
 <script>
-const WRAPUP_WORKTREE = CLAUDE_WORKTREE;
-const WRAPUP_SESSION_ID = CLAUDE_SESSION;
-const WRAPUP_SESSION_CREATED = '`)
-//line views/claude.qtpl:178
+(function() {
+'use strict';
+window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
+window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
+window.WRAPUP_SESSION_CREATED = '`)
+//line views/claude.qtpl:187
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:178
+//line views/claude.qtpl:187
 	qw422016.N().S(`';
-let WRAPUP_CASE = null;
+window.WRAPUP_CASE = null;
+})();
 </script>
 
 <!-- Wrap Up Modal -->
@@ -317,36 +327,36 @@ let WRAPUP_CASE = null;
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:281
+//line views/claude.qtpl:291
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:281
+//line views/claude.qtpl:291
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 }
 
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 }
 
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 	return qs422016
-//line views/claude.qtpl:282
+//line views/claude.qtpl:292
 }

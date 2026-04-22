@@ -193,15 +193,21 @@ type CaseDetailPage struct {
 </div>
 
 <script>
-const WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
-const CASE_ID = '{%s JSAttr(p.Case.ID) %}';
-let CASE_NOTES_RAW = {%s= notesJSONSafe(p.Notes) %};
-let CASE_LINKS = {%s= linksJSONSafe(p.Case.Links) %};
+// `var` so the script can be re-executed cleanly when the SPA re-fetches.
+var WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
+var CASE_ID = '{%s JSAttr(p.Case.ID) %}';
+var CASE_NOTES_RAW = {%s= notesJSONSafe(p.Notes) %};
+var CASE_LINKS = {%s= linksJSONSafe(p.Case.Links) %};
 
-document.addEventListener('DOMContentLoaded', function() {
+function initCaseDetailPage() {
     renderNotes();
     renderLinks();
-});
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCaseDetailPage);
+} else {
+    initCaseDetailPage();
+}
 
 function renderNotes() {
     var el = document.getElementById('case-notes');
@@ -401,9 +407,9 @@ function continueTranscript(claudeId) {
 </script>
 
 <script>
-const WRAPUP_WORKTREE = WORKTREE_NAME;
-const WRAPUP_SESSION_ID = null;
-const WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind: '{%s p.Case.Kind %}'};
+var WRAPUP_WORKTREE = WORKTREE_NAME;
+var WRAPUP_SESSION_ID = null;
+var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind: '{%s p.Case.Kind %}'};
 </script>
 
 <!-- Wrap Up Modal -->

@@ -674,6 +674,7 @@
     function makeCopyableSubtitle(subtitleEl, path) {
         if (!subtitleEl || !path) return;
         subtitleEl.classList.add('claude-tool-subtitle-copyable');
+        subtitleEl.dataset.copyPath = path;
         subtitleEl.addEventListener('click', function(e) {
             e.stopPropagation();
             navigator.clipboard.writeText(path).then(function() {
@@ -1008,9 +1009,13 @@
             renderAssistantMarkdown();
         }
         // Snapshot the final markdown on the streaming wrapper so its copy
-        // button still works after accumulatedText is cleared.
+        // button still works after accumulatedText is cleared. Also write it
+        // to the button's data attribute so it survives a cache restore.
         if (currentBubble && currentBubble.parentElement) {
-            currentBubble.parentElement.__markdownSource = accumulatedText;
+            var parentWrapper = currentBubble.parentElement;
+            parentWrapper.__markdownSource = accumulatedText;
+            var copyBtn = parentWrapper.querySelector('.claude-message-copy');
+            if (copyBtn) copyBtn.dataset.copyMarkdown = accumulatedText;
         }
         currentBubble = null;
         currentTextEl = null;
@@ -1200,6 +1205,15 @@
             return;
         }
 
+        // Detach messagesEl from the DOM for the duration of the render.
+        // Each renderAssistantMessage appends a wrapper; doing that against a
+        // live, scrollable, flex-laid-out parent triggers layout/paint mid-loop
+        // and the browser shows messages "streaming in" with visible scrolling.
+        // Building inside a detached node keeps all work off the render tree.
+        var parent = messagesEl.parentNode;
+        var nextSibling = parent ? messagesEl.nextSibling : null;
+        if (parent) parent.removeChild(messagesEl);
+
         // Build a map of tool_use_id → tool_result block across all messages
         // (tool_results live in user messages, tool_uses in assistant messages)
         var toolResults = {};
@@ -1220,19 +1234,35 @@
             }
         }
 
-        for (var mi = 0; mi < messages.length; mi++) {
-            var msg = messages[mi];
-            var isLast = mi === messages.length - 1;
-            if (msg.role === 'user') {
-                renderUserMessage(msg);
-            } else if (msg.role === 'assistant') {
-                // The server synthesizes an in-progress assistant message as the
-                // trailing entry when generating=true. Treat that one as pending
-                // so subsequent stream deltas append to its bubble.
-                renderAssistantMessage(msg, toolResults, planWrites, generating && isLast);
+        try {
+            for (var mi = 0; mi < messages.length; mi++) {
+                var msg = messages[mi];
+                var isLast = mi === messages.length - 1;
+                if (msg.role === 'user') {
+                    renderUserMessage(msg);
+                } else if (msg.role === 'assistant') {
+                    // The server synthesizes an in-progress assistant message as the
+                    // trailing entry when generating=true. Treat that one as pending
+                    // so subsequent stream deltas append to its bubble.
+                    renderAssistantMessage(msg, toolResults, planWrites, generating && isLast);
+                }
             }
+        } finally {
+            // Re-attach so the single batched paint shows the full list at once.
+            if (parent) parent.insertBefore(messagesEl, nextSibling);
         }
-        scrollToBottom();
+        // Jump instantly to the bottom on initial render. scroll-behavior:smooth
+        // on .claude-messages would otherwise animate through every message.
+        scrollToBottomInstant();
+    }
+
+    function scrollToBottomInstant() {
+        requestAnimationFrame(function() {
+            var prev = messagesEl.style.scrollBehavior;
+            messagesEl.style.scrollBehavior = 'auto';
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            messagesEl.style.scrollBehavior = prev;
+        });
     }
 
     function renderUserMessage(msg) {
@@ -1272,18 +1302,21 @@
     }
 
     // attachCopyButton creates an icon button that copies getText() to the
-    // clipboard and inserts it into wrapper. Positioned via CSS so it aligns
-    // with the adjacent bubble.
+    // clipboard and inserts it into wrapper. The initial text is also stored
+    // in data-copy-markdown so it survives a sessionStorage restore where the
+    // closure is lost. For the streaming bubble, finishAssistantTurn updates
+    // that attribute with the final text.
     function attachCopyButton(wrapper, getText) {
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'claude-message-copy';
         btn.title = 'Copy message as markdown';
         btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
+        try { btn.dataset.copyMarkdown = getText() || ''; } catch (e) {}
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            var text = getText();
+            var text = getText() || btn.dataset.copyMarkdown || '';
             if (!text) return;
             navigator.clipboard.writeText(text).then(function() {
                 btn.innerHTML = '<i class="fa-solid fa-check"></i>';

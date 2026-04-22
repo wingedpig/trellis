@@ -317,11 +317,13 @@ type WorktreeHomePage struct {
 </div>
 
 <script>
-const WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
+// Top-level declarations use `var` so this script can be re-executed when the
+// SPA re-fetches this page (e.g. after LRU eviction from the page cache).
+var WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
 
-let newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
-let renameConfirmCallback = null;
-let moveSessionState = { sessionId: null };
+var newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
+var renameConfirmCallback = null;
+var moveSessionState = { sessionId: null };
 
 // Shared helper for select-all/none checkbox toggles.
 window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
@@ -331,7 +333,7 @@ window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId,
         cb.checked = !!checked;
     });
 };
-document.addEventListener('DOMContentLoaded', function() {
+function initWorktreeHomePage() {
     importTranscriptModal = new bootstrap.Modal(document.getElementById('importTranscriptModal'));
     moveSessionModal = new bootstrap.Modal(document.getElementById('moveSessionModal'));
     document.getElementById('moveSessionConfirmBtn').addEventListener('click', submitMoveSession);
@@ -374,7 +376,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('renameConfirmBtn').addEventListener('click', function() {
         if (renameConfirmCallback) renameConfirmCallback();
     });
-});
+}
+// Run init now for SPA navigations (DOM already loaded) or wait for
+// DOMContentLoaded on a fresh page load.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initWorktreeHomePage);
+} else {
+    initWorktreeHomePage();
+}
 
 function showNewClaudeModal() {
     document.getElementById('claudeSessionName').value = '';

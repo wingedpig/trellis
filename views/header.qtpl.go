@@ -1061,79 +1061,82 @@ function showShortcutHelp() {
     new bootstrap.Modal(document.getElementById('shortcutHelpModal')).show();
 }
 </script>
-<div class="container-fluid mt-4">
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="/static/js/logviewer.js"></script>
+<script src="/static/js/spa.js"></script>
 `)
 //line views/header.qtpl:974
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
 //line views/header.qtpl:974
 	qw422016.N().S(`
+<main>
+<div class="page-container container-fluid mt-4">
 `)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 }
 
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 }
 
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 func (p *BasePage) Header() string {
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 	return qs422016
-//line views/header.qtpl:975
+//line views/header.qtpl:977
 }
 
-//line views/header.qtpl:977
+//line views/header.qtpl:979
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:977
+//line views/header.qtpl:979
 	qw422016.N().S(`
 </div>
+</main>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 `)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 }
 
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 }
 
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 	return qs422016
-//line views/header.qtpl:982
+//line views/header.qtpl:985
 }
