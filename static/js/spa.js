@@ -136,8 +136,10 @@
         var cached = cache.get(url);
         if (cached) {
             cache.delete(url);
-            mountContainer(cached.container, url, { restored: true, scrollTop: cached.scrollTop, title: cached.title });
+            // pushState before mount so window.location.pathname reflects
+            // the new URL by the time `trellis:page-entered` fires.
             if (opts.push) history.pushState({ spa: true }, '', url);
+            mountContainer(cached.container, url, { restored: true, scrollTop: cached.scrollTop, title: cached.title });
             navigating = false;
             return;
         }

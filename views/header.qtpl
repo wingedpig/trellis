@@ -711,6 +711,19 @@ window.TrellisNav = (function() {
             connectEventsWebSocket();
             setupLinkHistoryTracking();
         }
+        // SPA navigations don't reload the header — update the picker's
+        // selected value to match the new URL each time the SPA swaps in a
+        // new page.
+        document.addEventListener('trellis:page-entered', function() {
+            if (typeof $ !== 'function') return;
+            var $sel = $('#navSelect');
+            if (!$sel.length) return;
+            var target = window.location.pathname;
+            // Only select if the option exists; otherwise clear the picker
+            // so we don't show a stale selection.
+            var hasOpt = $sel.find('option[value="' + target.replace(/"/g, '\\"') + '"]').length > 0;
+            $sel.val(hasOpt ? target : '').trigger('change.select2');
+        });
     }
 
     // Notification state
