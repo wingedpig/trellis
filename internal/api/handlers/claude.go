@@ -579,6 +579,34 @@ func copyFilePreserveMode(src, dst string) error {
 	return out.Close()
 }
 
+// ForkSessionAPI creates a new session in the same worktree as the source,
+// pre-populated with the source's messages up to (and including) the
+// specified message index. The source session is untouched.
+func (h *ClaudeHandler) ForkSessionAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["session"]
+
+	var body struct {
+		MessageIndex int    `json:"message_index"`
+		DisplayName  string `json:"display_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.MessageIndex < 0 {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "message_index must be >= 0")
+		return
+	}
+
+	session, err := h.manager.ForkSession(sessionID, body.MessageIndex, body.DisplayName)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusCreated, session.Info())
+}
+
 // ListTrashedSessionsAPI returns all trashed Claude sessions for a worktree.
 func (h *ClaudeHandler) ListTrashedSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

@@ -1355,6 +1355,61 @@ func (m *Manager) ExportSession(sessionID, level string) (*Transcript, error) {
 	}, nil
 }
 
+// ForkSession creates a new session in the same worktree as sourceSessionID,
+// pre-populated with the source's messages[0..messageIndex] (inclusive). This
+// is a "split at this point" operation: the new session inherits the prefix,
+// the source session is untouched, and the new session's Claude CLI JSONL is
+// written so --resume continues from exactly that point.
+//
+// messageIndex is 0-based and inclusive: fork at index 3 → new session has
+// messages[0..3] (4 messages). Out-of-range indices are clamped.
+func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayName string) (*Session, error) {
+	m.mu.Lock()
+	src, ok := m.sessions[sourceSessionID]
+	m.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("source session not found")
+	}
+
+	src.mu.Lock()
+	// Copy the message prefix.
+	if messageIndex < 0 {
+		messageIndex = 0
+	}
+	if messageIndex >= len(src.messages) {
+		messageIndex = len(src.messages) - 1
+	}
+	if len(src.messages) == 0 {
+		src.mu.Unlock()
+		return nil, fmt.Errorf("source session has no messages to fork")
+	}
+	prefix := make([]Message, messageIndex+1)
+	copy(prefix, src.messages[:messageIndex+1])
+	worktreeName := src.worktreeName
+	workDir := src.workDir
+	src.mu.Unlock()
+
+	if displayName == "" {
+		displayName = "Fork"
+	}
+
+	newSession := m.CreateSession(worktreeName, workDir, displayName)
+
+	cliSessionID, err := WriteCLISessionFile(workDir, workDir, "", prefix)
+	if err != nil {
+		return newSession, fmt.Errorf("write CLI session: %w", err)
+	}
+
+	newSession.mu.Lock()
+	newSession.claudeSID = cliSessionID
+	newSession.messages = prefix
+	newSession.persistAllMessages()
+	newSession.mu.Unlock()
+
+	m.persist()
+	return newSession, nil
+}
+
 // ImportSession imports a transcript into a worktree, creating a new session
 // with the conversation pre-populated. It writes the conversation to Claude CLI's
 // JSONL format so --resume can pick it up for true continuation.

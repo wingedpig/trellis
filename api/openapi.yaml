@@ -1898,6 +1898,51 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /claude/sessions/{session}/fork:
+    post:
+      tags: [Claude]
+      summary: Fork a session at a message index
+      description: |
+        Creates a new Claude session in the same worktree as the source,
+        pre-populated with the source session's messages[0..message_index]
+        (inclusive). The source session is untouched. The Claude CLI's JSONL
+        session file is rewritten for the new session so `--resume` continues
+        from exactly that point.
+      operationId: forkClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message_index, display_name]
+              properties:
+                message_index:
+                  type: integer
+                  minimum: 0
+                  description: 0-based inclusive index of the last message to include in the fork
+                display_name:
+                  type: string
+                  description: Display name for the new session
+      responses:
+        '201':
+          description: Fork created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ClaudeSession'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /claude/sessions/{session}/move:
     post:
       tags: [Claude]

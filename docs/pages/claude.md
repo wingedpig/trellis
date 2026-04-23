@@ -29,6 +29,14 @@ Click the pencil icon next to a session on the worktree home page to rename it.
 
 Click the trash icon next to a session on the worktree home page. This moves the session to trash — the process is stopped but the session data is preserved.
 
+### Forking a Session
+
+While viewing a Claude chat, hover over any completed message and click the branch icon (next to the copy icon) to fork the session at that point.
+
+The fork modal prompts for a name and creates a new session in the same worktree containing the first N messages of the conversation, where N is the index (inclusive) of the message you clicked. The Claude CLI's JSONL resume file is rewritten for the new session, so when you send the next message the process resumes from exactly that point. The original session is untouched.
+
+Use this when you want to explore an alternate path from a particular decision point without losing the existing conversation — typical pattern: fork off the last user message, then retry a different approach in the new session.
+
 ### Moving Sessions to a New Worktree
 
 Click the move icon (arrow leaving a box) next to a session on the worktree home page to move the session — and optionally some of the source worktree's uncommitted files — into a fresh git worktree.

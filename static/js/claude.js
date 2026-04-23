@@ -1239,12 +1239,12 @@
                 var msg = messages[mi];
                 var isLast = mi === messages.length - 1;
                 if (msg.role === 'user') {
-                    renderUserMessage(msg);
+                    renderUserMessage(msg, mi);
                 } else if (msg.role === 'assistant') {
                     // The server synthesizes an in-progress assistant message as the
                     // trailing entry when generating=true. Treat that one as pending
                     // so subsequent stream deltas append to its bubble.
-                    renderAssistantMessage(msg, toolResults, planWrites, generating && isLast);
+                    renderAssistantMessage(msg, toolResults, planWrites, generating && isLast, mi);
                 }
             }
         } finally {
@@ -1265,7 +1265,7 @@
         });
     }
 
-    function renderUserMessage(msg) {
+    function renderUserMessage(msg, messageIndex) {
         const wrapper = document.createElement('div');
         wrapper.className = 'claude-message claude-message-user';
 
@@ -1281,9 +1281,10 @@
         }
         bubble.textContent = text;
 
-        // Button goes BEFORE the bubble in the DOM — flex-end right-aligns the
-        // row, so the button appears to the left of the bubble.
+        // Buttons go BEFORE the bubble in the DOM — flex-end right-aligns the
+        // row, so the buttons appear to the left of the bubble.
         attachCopyButton(wrapper, function() { return text; });
+        if (typeof messageIndex === 'number') attachForkButton(wrapper, messageIndex);
         wrapper.appendChild(bubble);
         messagesEl.appendChild(wrapper);
     }
@@ -1300,6 +1301,77 @@
         }
         return parts.join('\n\n');
     }
+
+    // attachForkButton creates a branch-icon button that opens the fork dialog
+    // at this message's index. messageIndex is the 0-based index of the
+    // message in the session's history; forking at index N creates a new
+    // session containing messages[0..N] (inclusive).
+    function attachForkButton(wrapper, messageIndex) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'claude-message-fork';
+        btn.title = 'Fork session at this message';
+        btn.dataset.messageIndex = String(messageIndex);
+        btn.innerHTML = '<i class="fa-solid fa-code-branch"></i>';
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openForkModal(messageIndex);
+        });
+        wrapper.appendChild(btn);
+    }
+
+    function openForkModal(messageIndex) {
+        var modalEl = document.getElementById('claudeForkModal');
+        if (!modalEl) return;
+        var input = document.getElementById('claudeForkName');
+        var idxEl = document.getElementById('claudeForkIndex');
+        var subtitle = document.getElementById('claudeForkSubtitle');
+        if (input) input.value = '';
+        if (idxEl) idxEl.value = String(messageIndex);
+        if (subtitle) {
+            subtitle.textContent = 'The new session will contain the first ' +
+                (messageIndex + 1) + ' message' + (messageIndex === 0 ? '' : 's') +
+                ' of this conversation.';
+        }
+        var bs = bootstrap.Modal.getOrCreateInstance(modalEl);
+        bs.show();
+        setTimeout(function() { if (input) input.focus(); }, 100);
+    }
+
+    // Called from the fork modal's Create button (exposed on window).
+    window.claudeForkSubmit = function claudeForkSubmit() {
+        var idxEl = document.getElementById('claudeForkIndex');
+        var input = document.getElementById('claudeForkName');
+        var btn = document.getElementById('claudeForkConfirm');
+        if (!idxEl || !input || !btn) return;
+        var messageIndex = parseInt(idxEl.value, 10);
+        var displayName = (input.value || '').trim();
+        if (!displayName) { input.focus(); return; }
+        if (typeof CLAUDE_SESSION === 'undefined' || !CLAUDE_SESSION) return;
+        btn.disabled = true;
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(CLAUDE_SESSION) + '/fork', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message_index: messageIndex, display_name: displayName })
+        })
+        .then(function(r) {
+            if (!r.ok) return r.json().then(function(d) {
+                throw new Error((d && d.error && d.error.message) || 'Fork failed');
+            });
+            return r.json();
+        })
+        .then(function(payload) {
+            var data = (payload && payload.data) || payload;
+            var modalEl = document.getElementById('claudeForkModal');
+            if (modalEl) bootstrap.Modal.getInstance(modalEl).hide();
+            if (data && data.id && typeof CLAUDE_WORKTREE !== 'undefined') {
+                window.location.href = '/claude/' + encodeURIComponent(CLAUDE_WORKTREE) + '/' + encodeURIComponent(data.id);
+            }
+        })
+        .catch(function(err) { alert('Fork failed: ' + err); })
+        .finally(function() { btn.disabled = false; });
+    };
 
     // attachCopyButton creates an icon button that copies getText() to the
     // clipboard and inserts it into wrapper. The initial text is also stored
@@ -1328,7 +1400,7 @@
         wrapper.appendChild(btn);
     }
 
-    function renderAssistantMessage(msg, toolResults, planWrites, pending) {
+    function renderAssistantMessage(msg, toolResults, planWrites, pending, messageIndex) {
         if (!msg.content || msg.content.length === 0) return;
 
         const wrapper = document.createElement('div');
@@ -1393,6 +1465,10 @@
         wrapper.appendChild(bubble);
         if (markdownSource && !pending) {
             attachCopyButton(wrapper, function() { return markdownSource; });
+        }
+        // Fork button only for completed messages with a known index.
+        if (!pending && typeof messageIndex === 'number') {
+            attachForkButton(wrapper, messageIndex);
         }
         messagesEl.appendChild(wrapper);
 

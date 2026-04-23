@@ -139,6 +139,32 @@ function doSaveTranscript(caseId, title) {
 })();
 </script>
 
+<!-- Fork Session Modal -->
+<div class="modal fade" id="claudeForkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-code-branch"></i> Fork Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3" id="claudeForkSubtitle"></p>
+                <div class="mb-3">
+                    <label for="claudeForkName" class="form-label">New session name</label>
+                    <input type="text" class="form-control" id="claudeForkName" placeholder="e.g. Alternate path">
+                </div>
+                <input type="hidden" id="claudeForkIndex" value="">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="claudeForkConfirm" onclick="claudeForkSubmit()">
+                    <i class="fa-solid fa-code-branch"></i> Create Fork
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Save to Case Modal -->
 <div class="modal fade" id="saveToCaseModal" tabindex="-1">
     <div class="modal-dialog">

@@ -305,6 +305,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/sessions/{session}/restore", claudeHandler.RestoreSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}/permanent", claudeHandler.PermanentDeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/claude/sessions/{session}/move", claudeHandler.MoveSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/sessions/{session}/fork", claudeHandler.ForkSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/sessions/import", claudeHandler.ImportSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/sessions/trash", claudeHandler.ListTrashedSessionsAPI).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/git-status", claudeHandler.GitStatus).Methods("GET")

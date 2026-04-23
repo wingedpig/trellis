@@ -62,7 +62,8 @@
     justify-content: flex-start;
 }
 
-.claude-message-copy {
+.claude-message-copy,
+.claude-message-fork {
     padding: 0.2rem 0.4rem;
     font-size: 0.8rem;
     background: transparent;
@@ -77,11 +78,13 @@
     margin-top: 0.25rem;
 }
 
-.claude-message:hover .claude-message-copy {
+.claude-message:hover .claude-message-copy,
+.claude-message:hover .claude-message-fork {
     opacity: 1;
 }
 
-.claude-message-copy:hover {
+.claude-message-copy:hover,
+.claude-message-fork:hover {
     color: var(--bs-body-color);
     background: var(--trellis-hover-bg, var(--trellis-input-bg));
     border-color: var(--trellis-card-border);

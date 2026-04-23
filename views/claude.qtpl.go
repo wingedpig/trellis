@@ -173,6 +173,32 @@ function doSaveTranscript(caseId, title) {
 })();
 </script>
 
+<!-- Fork Session Modal -->
+<div class="modal fade" id="claudeForkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-code-branch"></i> Fork Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3" id="claudeForkSubtitle"></p>
+                <div class="mb-3">
+                    <label for="claudeForkName" class="form-label">New session name</label>
+                    <input type="text" class="form-control" id="claudeForkName" placeholder="e.g. Alternate path">
+                </div>
+                <input type="hidden" id="claudeForkIndex" value="">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="claudeForkConfirm" onclick="claudeForkSubmit()">
+                    <i class="fa-solid fa-code-branch"></i> Create Fork
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Save to Case Modal -->
 <div class="modal fade" id="saveToCaseModal" tabindex="-1">
     <div class="modal-dialog">
@@ -219,9 +245,9 @@ function doSaveTranscript(caseId, title) {
 window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
 window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
 window.WRAPUP_SESSION_CREATED = '`)
-//line views/claude.qtpl:187
+//line views/claude.qtpl:213
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:187
+//line views/claude.qtpl:213
 	qw422016.N().S(`';
 window.WRAPUP_CASE = null;
 })();
@@ -327,36 +353,36 @@ window.WRAPUP_CASE = null;
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:291
+//line views/claude.qtpl:317
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:291
+//line views/claude.qtpl:317
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 }
 
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 }
 
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 	return qs422016
-//line views/claude.qtpl:292
+//line views/claude.qtpl:318
 }
