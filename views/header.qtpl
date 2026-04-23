@@ -866,7 +866,15 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
         })();
     </script>
     <style>
-        .navbar #navSelect { width: 280px; }
+        .navbar #navSelect { width: 280px; max-width: 100%; }
+        /* On narrow screens inside a collapsed navbar, let the picker fill
+           the row instead of forcing a 280px that overflows. */
+        @media (max-width: 991.98px) {
+            .navbar .d-flex.align-items-center.gap-2.ms-3 { width: 100%; margin-left: 0 !important; margin-top: 0.5rem; }
+            .navbar #navSelect,
+            .navbar .select2-container { width: 100% !important; }
+            .navbar .d-flex.align-items-center.gap-3.ms-auto { margin-left: 0 !important; margin-top: 0.5rem; flex-wrap: wrap; }
+        }
         .select2-container--default .select2-selection--single {
             background: var(--trellis-input-bg);
             border-color: var(--trellis-input-border);

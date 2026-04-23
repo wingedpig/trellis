@@ -230,3 +230,21 @@
     max-height: 200px;
     overflow-y: auto;
 }
+
+/* Narrow-screen adjustments */
+@media (max-width: 767.98px) {
+    /* The fixed 400px expanded panel overlaps content on phones; make it
+       full-width and non-fixed. */
+    .trace-expanded {
+        position: fixed;
+        left: 0.5rem;
+        right: 0.5rem;
+        top: auto;
+        bottom: 0;
+        width: auto;
+        max-height: 70vh;
+    }
+    .trace-expanded-content { font-size: 0.8rem; }
+    /* Log viewer table: prevent horizontal overflow from huge JSON rows. */
+    .log-viewer pre { font-size: 0.7rem; }
+}

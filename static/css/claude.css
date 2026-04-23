@@ -1194,3 +1194,32 @@ pre:hover .claude-code-copy {
 .claude-context-usage {
     cursor: default;
 }
+
+/* Narrow-screen adjustments */
+@media (max-width: 767.98px) {
+    .claude-chat-container { height: calc(100vh - 100px); }
+    .claude-messages { padding: 0.5rem; }
+    .claude-bubble {
+        max-width: 95%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+    .claude-message { margin-bottom: 0.5rem; }
+    .claude-input-row { gap: 0.25rem; }
+    .claude-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 0.85rem;
+    }
+    .claude-input {
+        font-size: 16px; /* 16px prevents iOS auto-zoom on focus */
+        padding: 0.4rem 0.6rem;
+    }
+    .claude-input-footer {
+        font-size: 0.75rem;
+    }
+    .claude-input-hint { display: none; }
+    .claude-empty { padding: 1rem; }
+    .claude-tool-body pre,
+    .claude-bubble-assistant pre { font-size: 0.75rem; }
+}

@@ -491,3 +491,47 @@ kbd {
     background: var(--trellis-dropdown-hover);
     color: var(--trellis-navbar-text);
 }
+
+/* ===== Narrow-screen adjustments ===== */
+@media (max-width: 767.98px) {
+    /* Tighten the main container padding so content uses full width. */
+    .page-container.container-fluid { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+    /* Worktrees list / home: let action buttons wrap onto a second row
+       instead of pushing the worktree name to zero width. */
+    .list-group-item.d-flex.justify-content-between {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* Tables inside cards (e.g. Services on dashboard) can overflow on
+       phones due to long names. Make them horizontally scrollable. */
+    .card-body.p-0 > .table { display: block; overflow-x: auto; max-width: 100%; }
+
+    /* Modal dialogs get edge-to-edge presentation on narrow screens. */
+    .modal-dialog { margin: 0.5rem; }
+
+    /* Hero banner (worktrees page) fits narrower viewport. */
+    .hero .lead { font-size: 1rem; }
+    .hero h1, .hero h2 { font-size: 1.5rem; }
+    .hero .btn-lg { font-size: 0.95rem; padding: 0.4rem 0.75rem; }
+
+    /* Form inputs: 16px prevents iOS from auto-zooming on focus. */
+    input[type="text"], input[type="search"], input[type="email"],
+    input[type="url"], input[type="number"], textarea, select {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 575.98px) {
+    /* Below phone-landscape: shrink navbar brand image a touch. */
+    .navbar-brand img { height: 36px !important; }
+    .navbar-text { font-size: 0.85rem; }
+    h2 { font-size: 1.35rem; }
+    h4 { font-size: 1.05rem; }
+    /* Generic header-with-button rows wrap instead of squishing the button. */
+    .d-flex.justify-content-between.align-items-center.mb-3 {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+}
