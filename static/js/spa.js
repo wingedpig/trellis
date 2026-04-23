@@ -238,6 +238,13 @@
     // the browser parses and executes it. innerHTML-inserted scripts are
     // inert by design; this makes dynamically-inserted pages behave as if
     // the HTML had been parsed normally.
+    //
+    // Dynamically-inserted <script src="..."> tags default to async, meaning
+    // they execute whenever they finish loading — not in DOM order. That
+    // breaks pages that rely on script order (e.g. claude.js assumes the
+    // `marked` global from a preceding CDN script is already defined).
+    // Setting `.async = false` on each fresh script restores the "execute in
+    // insertion order" semantics.
     function reexecuteScripts(root) {
         var scripts = Array.prototype.slice.call(root.querySelectorAll('script'));
         scripts.forEach(function(old) {
@@ -246,6 +253,7 @@
                 var attr = old.attributes[i];
                 fresh.setAttribute(attr.name, attr.value);
             }
+            fresh.async = false;
             fresh.textContent = old.textContent;
             old.parentNode.replaceChild(fresh, old);
         });

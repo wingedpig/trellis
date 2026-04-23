@@ -2059,6 +2059,17 @@
             '</div>';
     }
 
+    // Shown briefly while the WebSocket connects and the first `history`
+    // message arrives. Using this instead of showEmptyState() on init avoids
+    // flashing the empty-state marketing copy for sessions that already have
+    // plenty of messages.
+    function showInitialLoading() {
+        messagesEl.innerHTML =
+            '<div class="claude-empty claude-loading">' +
+            '<i class="fa-solid fa-spinner fa-spin"></i>' +
+            '</div>';
+    }
+
     function showError(message) {
         const errDiv = document.createElement('div');
         errDiv.className = 'claude-error';
@@ -2688,7 +2699,7 @@
     });
 
     // Initialize
-    showEmptyState();
+    showInitialLoading();
     connect();
     inputEl.focus();
 
