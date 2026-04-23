@@ -784,6 +784,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
     #terminal-wrapper {
         height: calc(100vh - 90px);
+        height: calc(100dvh - 90px);
         background: var(--trellis-terminal-bg);
         padding: 10px;
         border-radius: 4px;
@@ -817,6 +818,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
     #code-wrapper {
         height: calc(100vh - 90px);
+        height: calc(100dvh - 90px);
         background: var(--trellis-pre-bg);
         border-radius: 4px;
     }
@@ -827,6 +829,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
     #workflow-wrapper {
         height: calc(100vh - 90px);
+        height: calc(100dvh - 90px);
         background: var(--trellis-terminal-bg);
         padding: 10px;
         border-radius: 4px;
@@ -862,6 +865,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     /* Service log view */
     #service-wrapper, #logviewer-wrapper {
         height: calc(100vh - 90px);
+        height: calc(100dvh - 90px);
         background: #000;
         border-radius: 4px;
         display: flex;
@@ -929,6 +933,26 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     #service-log-table {
         flex: 1;
         overflow: auto;
+        /* Prevent iOS rubber-band bounce when scrolling past edges.
+           `)
+//line views/terminal.qtpl:331
+	qw422016.N().S("`")
+//line views/terminal.qtpl:331
+	qw422016.N().S(`none`)
+//line views/terminal.qtpl:331
+	qw422016.N().S("`")
+//line views/terminal.qtpl:331
+	qw422016.N().S(` disables the element's own bounce; `)
+//line views/terminal.qtpl:331
+	qw422016.N().S("`")
+//line views/terminal.qtpl:331
+	qw422016.N().S(`contain`)
+//line views/terminal.qtpl:331
+	qw422016.N().S("`")
+//line views/terminal.qtpl:331
+	qw422016.N().S(` only blocks
+           the chain to the parent. */
+        overscroll-behavior: none;
         background: var(--trellis-pre-bg);
         font-family: 'JetBrains Mono', Monaco, monospace;
         font-size: 13px;
@@ -1047,6 +1071,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     .logviewer-log {
         flex: 1;
         overflow: auto;
+        /* Prevent iOS rubber-band bounce when scrolling past edges. */
+        overscroll-behavior: none;
         background: var(--trellis-pre-bg);
         padding: 0;
         margin: 0;
@@ -1234,6 +1260,33 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     .shortcut-help-modal tr:last-child td {
         border-bottom: none;
     }
+    /* Tappable command rows inside the shortcut help modal. These mirror the
+       rules in header.qtpl so the terminal page's modal looks the same. */
+    .shortcut-help-modal .list-group-flush .shortcut-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.65rem 1rem;
+        cursor: pointer;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid var(--trellis-input-border);
+        width: 100%;
+        text-align: left;
+        color: var(--bs-body-color);
+    }
+    .shortcut-help-modal .shortcut-action:hover,
+    .shortcut-help-modal .shortcut-action:focus {
+        background: var(--trellis-hover-bg, var(--trellis-input-bg));
+        outline: none;
+    }
+    .shortcut-help-modal .shortcut-action-label { flex: 1; }
+    .shortcut-help-modal .shortcut-action-keys {
+        color: var(--trellis-text-muted);
+        font-size: 0.85rem;
+        margin-left: 0.5rem;
+    }
+    .shortcut-help-modal .shortcut-action-keys kbd { font-size: 0.75rem; }
 </style>
 
 <div id="terminal-wrapper">
@@ -1353,77 +1406,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     </div>
 </div>
 
-<!-- Keyboard Shortcuts Help Modal -->
+<!-- Keyboard Shortcuts / Command Menu Modal (tappable rows) -->
 <div class="modal fade shortcut-help-modal" id="shortcutHelpModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts</h5>
+                <h5 class="modal-title"><i class="fa-solid fa-keyboard"></i> Commands &amp; Shortcuts</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <table>
-                    <tr>
-                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>P</kbd></td>
-                        <td>Open terminal picker</td>
-                    </tr>
-                    <tr>
-                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>/</kbd></td>
-                        <td>Open workflow picker</td>
-                    </tr>
-                    <tr>
-                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>E</kbd></td>
-                        <td>Toggle Terminal / Code view</td>
-                    </tr>
-                    <tr>
-                        <td><kbd>Escape</kbd></td>
-                        <td>Close workflow output</td>
-                    </tr>
-                    <tr>
-                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>Backspace</kbd></td>
-                        <td>Close workflow output / History picker</td>
-                    </tr>
-                    <tr>
-                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>H</kbd></td>
-                        <td>Show this help</td>
-                    </tr>
-                    `)
-//line views/terminal.qtpl:981
-	if len(p.Shortcuts) > 0 {
-//line views/terminal.qtpl:981
-		qw422016.N().S(`
-                    <tr><td colspan="2" style="padding-top: 12px;"><strong>Custom Shortcuts</strong></td></tr>
-                    `)
-//line views/terminal.qtpl:983
-		for _, sc := range p.Shortcuts {
-//line views/terminal.qtpl:983
-			qw422016.N().S(`
-                    <tr>
-                        <td>`)
-//line views/terminal.qtpl:985
-			streamshortcutKeyDisplay(qw422016, sc.Key)
-//line views/terminal.qtpl:985
-			qw422016.N().S(`</td>
-                        <td>Jump to `)
-//line views/terminal.qtpl:986
-			qw422016.E().S(sc.Window)
-//line views/terminal.qtpl:986
-			qw422016.N().S(`</td>
-                    </tr>
-                    `)
-//line views/terminal.qtpl:988
-		}
-//line views/terminal.qtpl:988
-		qw422016.N().S(`
-                    `)
-//line views/terminal.qtpl:989
-	}
-//line views/terminal.qtpl:989
-	qw422016.N().S(`
-                </table>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <div class="modal-body p-0">
+                <div class="list-group list-group-flush" id="shortcutHelpList"></div>
             </div>
         </div>
     </div>
@@ -3154,8 +3146,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         // Cmd/Ctrl+H to show help
         if ((e.metaKey || e.ctrlKey) && e.key === 'h') {
             e.preventDefault();
-            const modal = new bootstrap.Modal(document.getElementById('shortcutHelpModal'));
-            modal.show();
+            showHelp();
         }
 
         // Check custom shortcuts for any other keys
@@ -3535,9 +3526,91 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         history.pushState({ type: 'editor', worktree: currentWorktree }, '', editorUrl);
     }
 
-    function showHelp() {
-        const modal = new bootstrap.Modal(document.getElementById('shortcutHelpModal'));
-        modal.show();
+    function showHelp() { populateShortcutHelp(); new bootstrap.Modal(document.getElementById('shortcutHelpModal')).show(); }
+    // Also override the global showShortcutHelp in case the header's button
+    // triggers it directly.
+    window.showShortcutHelp = showHelp;
+
+    // Build the tappable command menu shown in #shortcutHelpModal. Actions
+    // use the same logic as the corresponding keyboard-shortcut handlers.
+    function populateShortcutHelp() {
+        var list = document.getElementById('shortcutHelpList');
+        if (!list) return;
+        var items = [
+            { label: 'Open navigation picker', keys: 'Cmd/Ctrl + P',
+              run: function() {
+                  $('#navSelect').val(window.location.pathname).trigger('change.select2');
+                  $('#navSelect').select2('open');
+              } },
+            { label: 'Open history picker', keys: 'Cmd/Ctrl + Backspace',
+              run: function() {
+                  var hist = (window.TrellisNav && TrellisNav.getHistory) ? TrellisNav.getHistory() : [];
+                  if (!hist.length) { alert('No navigation history yet.'); return; }
+                  if (window.TrellisNav && TrellisNav.openHistoryPicker) TrellisNav.openHistoryPicker();
+              } }
+        ];
+        var wfSelect = document.getElementById('workflowSelect');
+        if (wfSelect && wfSelect.style.display !== 'none') {
+            items.push({ label: 'Open workflow picker', keys: 'Cmd/Ctrl + /',
+                run: function() { wfSelect.focus(); (wfSelect.showPicker || wfSelect.click).call(wfSelect); } });
+        }
+        if (typeof showCode === 'function' && typeof showTerminal === 'function' &&
+            !window.location.pathname.startsWith('/terminal/remote/') &&
+            typeof currentLogViewerName === 'undefined' || !currentLogViewerName) {
+            items.push({ label: 'Toggle Terminal / Code view', keys: 'Cmd/Ctrl + E',
+                run: function() {
+                    var cw = document.getElementById('code-wrapper');
+                    if (cw && cw.style.display === 'none') { showCode(); } else { showTerminal(); }
+                } });
+        }
+        // Custom shortcuts from the nav controller.
+        var custom = (window.TrellisNav && TrellisNav.getCustomShortcuts) ? TrellisNav.getCustomShortcuts() : [];
+        if (Array.isArray(custom)) {
+            custom.forEach(function(sc) {
+                items.push({ label: sc.window || sc.key, keys: sc.key || '',
+                    run: function() {
+                        if (!(window.TrellisNav && TrellisNav.handleCustomShortcut)) return;
+                        var combo = TrellisNav.parseKeyCombo(sc.key || '');
+                        var fakeEvent = {
+                            metaKey:  !!combo.meta, ctrlKey:  !!combo.ctrl,
+                            shiftKey: !!combo.shift, altKey:  !!combo.alt,
+                            key: combo.key, preventDefault: function(){}
+                        };
+                        if (!fakeEvent.metaKey && !fakeEvent.ctrlKey) fakeEvent.metaKey = true;
+                        TrellisNav.handleCustomShortcut(fakeEvent);
+                    }
+                });
+            });
+        }
+        list.innerHTML = '';
+        items.forEach(function(item) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'shortcut-action';
+            var labelEl = document.createElement('span');
+            labelEl.className = 'shortcut-action-label';
+            labelEl.textContent = item.label;
+            var keysEl = document.createElement('span');
+            keysEl.className = 'shortcut-action-keys';
+            if (item.keys) {
+                keysEl.innerHTML = item.keys.split(' + ').map(function(k) { return '<kbd>' + k + '</kbd>'; }).join(' + ');
+            }
+            btn.appendChild(labelEl);
+            btn.appendChild(keysEl);
+            btn.addEventListener('click', function() {
+                var modalEl = document.getElementById('shortcutHelpModal');
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                if (modalEl) {
+                    modalEl.addEventListener('hidden.bs.modal', function h() {
+                        modalEl.removeEventListener('hidden.bs.modal', h);
+                        try { item.run(); } catch (err) { console.error('shortcut action failed:', err); }
+                    });
+                }
+                if (modal) modal.hide();
+                else try { item.run(); } catch (err) {}
+            });
+            list.appendChild(btn);
+        });
     }
 
     function showWorkflowOutput(title, worktree) {
@@ -5698,36 +5771,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5135
+//line views/terminal.qtpl:5216
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5135
+//line views/terminal.qtpl:5216
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 }
 
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 }
 
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 	return qs422016
-//line views/terminal.qtpl:5136
+//line views/terminal.qtpl:5217
 }

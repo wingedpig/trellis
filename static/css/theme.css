@@ -126,6 +126,12 @@
 body {
     background-color: var(--bs-body-bg) !important;
     color: var(--bs-body-color) !important;
+    /* Prevent iOS rubber-band bounce on the document as a whole. Inner
+       scrollable panes (chat, log viewers) set their own behavior. */
+    overscroll-behavior: none;
+}
+html {
+    overscroll-behavior: none;
 }
 
 /* Headings */

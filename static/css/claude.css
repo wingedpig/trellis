@@ -36,13 +36,24 @@
 .claude-chat-container {
     display: flex;
     flex-direction: column;
+    /* 100vh is wrong on mobile browsers that include the URL bar area —
+       the container ends up taller than the visible viewport, forcing the
+       whole page to scroll and pushing the navbar off-screen. 100dvh
+       tracks the actual visible viewport. The 100vh line is a fallback
+       for browsers that don't understand dvh. */
     height: calc(100vh - 120px);
+    height: calc(100dvh - 120px);
     margin: 0 auto;
 }
 
 .claude-messages {
     flex: 1;
     overflow-y: auto;
+    /* The chat should never scroll horizontally — inner content that's too
+       wide (code blocks, long URLs) is handled inside the bubble. */
+    overflow-x: hidden;
+    /* Prevent iOS rubber-band bounce when scrolling past top/bottom. */
+    overscroll-behavior: none;
     padding: 1rem;
     scroll-behavior: smooth;
 }
@@ -52,6 +63,9 @@
     display: flex;
     align-items: flex-start;
     gap: 0.25rem;
+    /* Allow the flex row to shrink below its content width so a bubble
+       containing a wide code block doesn't push the row past the viewport. */
+    min-width: 0;
 }
 
 .claude-message-user {
@@ -95,6 +109,11 @@
     border-radius: 1rem;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    /* Cap the bubble width so it can't grow past the flex row, which keeps
+       the messages column from ever needing horizontal scroll. 85% leaves
+       room for the copy/fork buttons plus gap on the opposite side. */
+    max-width: 85%;
+    min-width: 0;
 }
 
 .claude-bubble-user {
@@ -127,6 +146,10 @@
     padding: 0.75rem;
     margin: 0.5rem 0;
     overflow-x: auto;
+    /* Constrain to the bubble and scroll horizontally within the pre itself
+       rather than letting a long line stretch the bubble. */
+    max-width: 100%;
+    overscroll-behavior-x: contain;
 }
 
 .claude-bubble-assistant code {
@@ -1200,7 +1223,10 @@ pre:hover .claude-code-copy {
 
 /* Narrow-screen adjustments */
 @media (max-width: 767.98px) {
-    .claude-chat-container { height: calc(100vh - 100px); }
+    .claude-chat-container {
+        height: calc(100vh - 100px);
+        height: calc(100dvh - 100px);
+    }
     .claude-messages { padding: 0.5rem; }
     .claude-bubble {
         max-width: 95%;

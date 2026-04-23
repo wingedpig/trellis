@@ -848,7 +848,8 @@ window.TrellisNav = (function() {
         isHistoryMode: function() { return navHistoryMode; },
         setHistoryMode: function(mode) { navHistoryMode = mode; },
         fuzzyMatcher: fuzzyMatcher,
-        NAV_PAGES: NAV_PAGES
+        NAV_PAGES: NAV_PAGES,
+        getCustomShortcuts: function() { return CUSTOM_SHORTCUTS; }
     };
 })();
 
@@ -950,41 +951,134 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
     </div>
 </nav>
 
-<!-- Keyboard Shortcuts Help Modal -->
+<!-- Keyboard Shortcuts / Command Menu Modal -->
+<!-- Doubles as a tappable command menu on touch devices. Each row is a
+     button that runs the action and closes the modal. -->
 <div class="modal fade" id="shortcutHelpModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts</h5>
+                <h5 class="modal-title"><i class="fa-solid fa-keyboard"></i> Commands &amp; Shortcuts</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <table class="table table-sm">
-                    <tbody>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>P</kbd></td>
-                            <td>Open navigation picker</td>
-                        </tr>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>L</kbd></td>
-                            <td>Jump to log viewer</td>
-                        </tr>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>Backspace</kbd></td>
-                            <td>Open history picker</td>
-                        </tr>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>H</kbd></td>
-                            <td>Show this help</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="modal-body p-0">
+                <div class="list-group list-group-flush" id="shortcutHelpList"></div>
             </div>
         </div>
     </div>
 </div>
+<style>
+.shortcut-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--trellis-card-border);
+    width: 100%;
+    text-align: left;
+    color: var(--bs-body-color);
+}
+.shortcut-action:hover,
+.shortcut-action:focus {
+    background: var(--trellis-hover-bg, var(--trellis-input-bg));
+    outline: none;
+}
+.shortcut-action-label { flex: 1; }
+.shortcut-action-keys { color: var(--trellis-text-muted); font-size: 0.85rem; margin-left: 0.5rem; }
+.shortcut-action-keys kbd { font-size: 0.75rem; }
+</style>
 <script>
 function showShortcutHelp() {
+    var list = document.getElementById('shortcutHelpList');
+    if (list) {
+        // Built-in actions. `run` is resolved from the TrellisNav global so
+        // we don't need to rely on function hoisting across scripts.
+        var items = [
+            { label: 'Open navigation picker', keys: 'Cmd/Ctrl + P',
+              run: function() { if (window.TrellisNav && TrellisNav.openPicker) TrellisNav.openPicker(); } },
+            { label: 'Open history picker',    keys: 'Cmd/Ctrl + Backspace',
+              run: function() {
+                  if (!window.TrellisNav || !TrellisNav.openHistoryPicker) return;
+                  var hist = TrellisNav.getHistory ? TrellisNav.getHistory() : [];
+                  if (!hist.length) { alert('No navigation history yet.'); return; }
+                  TrellisNav.openHistoryPicker();
+              } }
+        ];
+        // Add per-worktree custom shortcuts when present.
+        var custom = (window.TrellisNav && TrellisNav.getCustomShortcuts) ? TrellisNav.getCustomShortcuts() : [];
+        if (Array.isArray(custom)) {
+            for (var i = 0; i < custom.length; i++) {
+                var sc = custom[i];
+                (function(sc) {
+                    items.push({
+                        label: sc.window || sc.key,
+                        keys: sc.key || '',
+                        run: function() {
+                            // Reuse the keydown pipeline by synthesizing an
+                            // event. A plain object works because
+                            // handleCustomShortcut only reads the modifier
+                            // and key fields — it doesn't care if the event
+                            // came from a real KeyDown. (KeyboardEvent
+                            // constructor leaves these fields read-only, so
+                            // overriding them on a real event fails.)
+                            if (window.TrellisNav && TrellisNav.handleCustomShortcut) {
+                                var combo = TrellisNav.parseKeyCombo ? TrellisNav.parseKeyCombo(sc.key || '') : { key: '' };
+                                var fakeEvent = {
+                                    metaKey:  !!combo.meta,
+                                    ctrlKey:  !!combo.ctrl,
+                                    shiftKey: !!combo.shift,
+                                    altKey:   !!combo.alt,
+                                    key:      combo.key,
+                                    preventDefault: function(){}
+                                };
+                                // If neither meta nor ctrl was specified,
+                                // default to one so matchesKeyCombo's
+                                // metaOrCtrl branch fires.
+                                if (!fakeEvent.metaKey && !fakeEvent.ctrlKey) fakeEvent.metaKey = true;
+                                TrellisNav.handleCustomShortcut(fakeEvent);
+                            }
+                        }
+                    });
+                })(sc);
+            }
+        }
+        list.innerHTML = '';
+        items.forEach(function(item, idx) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'shortcut-action';
+            btn.innerHTML =
+                '<span class="shortcut-action-label"></span>' +
+                '<span class="shortcut-action-keys"></span>';
+            btn.querySelector('.shortcut-action-label').textContent = item.label;
+            if (item.keys) {
+                btn.querySelector('.shortcut-action-keys').innerHTML = item.keys
+                    .split(' + ')
+                    .map(function(k) { return '<kbd>' + k + '</kbd>'; })
+                    .join(' + ');
+            }
+            btn.addEventListener('click', function() {
+                var modalEl = document.getElementById('shortcutHelpModal');
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                // Run the action AFTER the modal has fully closed so focus
+                // doesn't get yanked back into the dismissing modal (which
+                // prevents Select2 from opening, for instance).
+                if (modalEl) {
+                    modalEl.addEventListener('hidden.bs.modal', function handler() {
+                        modalEl.removeEventListener('hidden.bs.modal', handler);
+                        try { item.run(); }
+                        catch (err) { console.error('shortcut action failed:', err); }
+                    });
+                }
+                if (modal) modal.hide();
+                else try { item.run(); } catch (err) {}
+            });
+            list.appendChild(btn);
+        });
+    }
     new bootstrap.Modal(document.getElementById('shortcutHelpModal')).show();
 }
 </script>

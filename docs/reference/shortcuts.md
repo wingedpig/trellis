@@ -16,7 +16,20 @@ These shortcuts work from any page in Trellis:
 | `Cmd/Ctrl + P` | Open navigation picker |
 | `Cmd/Ctrl + /` | Open workflow picker (local terminals only) |
 | `Cmd/Ctrl + Backspace` | Open history picker (recently visited screens) |
-| `Cmd/Ctrl + H` | Show keyboard shortcut help |
+| `Cmd/Ctrl + H` | Open commands & shortcuts menu |
+
+## Commands &amp; Shortcuts Menu
+
+Click the keyboard icon in the top nav (or press `Cmd/Ctrl + H`) to open a tappable menu listing every action — useful on touch devices where modifier-key shortcuts aren't practical. Each row runs its action when tapped and dismisses the menu.
+
+The menu lists:
+
+- **Open navigation picker** — same as `Cmd/Ctrl + P`
+- **Open history picker** — same as `Cmd/Ctrl + Backspace`. If no history has been recorded yet in the current tab session, an alert says so.
+- On the terminal page additionally: **Open workflow picker** (when a workflow selector is visible) and **Toggle Terminal / Code view** (when a local worktree is active)
+- **Custom shortcuts** configured for the current worktree (each appears with the assigned key combo as a label)
+
+Custom shortcuts invoked from the menu run the same handler as the keyboard path, so the target screen is resolved and navigated to identically.
 
 ## Navigation Picker (Cmd+P)
 

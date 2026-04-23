@@ -891,7 +891,8 @@ window.TrellisNav = (function() {
         isHistoryMode: function() { return navHistoryMode; },
         setHistoryMode: function(mode) { navHistoryMode = mode; },
         fuzzyMatcher: fuzzyMatcher,
-        NAV_PAGES: NAV_PAGES
+        NAV_PAGES: NAV_PAGES,
+        getCustomShortcuts: function() { return CUSTOM_SHORTCUTS; }
     };
 })();
 
@@ -899,38 +900,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 }
 
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 }
 
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 	return qs422016
-//line views/header.qtpl:858
+//line views/header.qtpl:859
 }
 
-//line views/header.qtpl:860
+//line views/header.qtpl:861
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:860
+//line views/header.qtpl:861
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -938,9 +939,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:866
+//line views/header.qtpl:867
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:866
+//line views/header.qtpl:867
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -1012,25 +1013,25 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:936
+//line views/header.qtpl:937
 	if p.Worktree != nil {
-//line views/header.qtpl:936
+//line views/header.qtpl:937
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:938
+//line views/header.qtpl:939
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:938
+//line views/header.qtpl:939
 		qw422016.N().S(` (`)
-//line views/header.qtpl:938
+//line views/header.qtpl:939
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:938
+//line views/header.qtpl:939
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:940
+//line views/header.qtpl:941
 	}
-//line views/header.qtpl:940
+//line views/header.qtpl:941
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -1044,41 +1045,142 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     </div>
 </nav>
 
-<!-- Keyboard Shortcuts Help Modal -->
+<!-- Keyboard Shortcuts / Command Menu Modal -->
+<!-- Doubles as a tappable command menu on touch devices. Each row is a
+     button that runs the action and closes the modal. -->
 <div class="modal fade" id="shortcutHelpModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fa-solid fa-keyboard"></i> Keyboard Shortcuts</h5>
+                <h5 class="modal-title"><i class="fa-solid fa-keyboard"></i> Commands &amp; Shortcuts</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <table class="table table-sm">
-                    <tbody>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>P</kbd></td>
-                            <td>Open navigation picker</td>
-                        </tr>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>L</kbd></td>
-                            <td>Jump to log viewer</td>
-                        </tr>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>Backspace</kbd></td>
-                            <td>Open history picker</td>
-                        </tr>
-                        <tr>
-                            <td><kbd>Cmd/Ctrl</kbd> + <kbd>H</kbd></td>
-                            <td>Show this help</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="modal-body p-0">
+                <div class="list-group list-group-flush" id="shortcutHelpList"></div>
             </div>
         </div>
     </div>
 </div>
+<style>
+.shortcut-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--trellis-card-border);
+    width: 100%;
+    text-align: left;
+    color: var(--bs-body-color);
+}
+.shortcut-action:hover,
+.shortcut-action:focus {
+    background: var(--trellis-hover-bg, var(--trellis-input-bg));
+    outline: none;
+}
+.shortcut-action-label { flex: 1; }
+.shortcut-action-keys { color: var(--trellis-text-muted); font-size: 0.85rem; margin-left: 0.5rem; }
+.shortcut-action-keys kbd { font-size: 0.75rem; }
+</style>
 <script>
 function showShortcutHelp() {
+    var list = document.getElementById('shortcutHelpList');
+    if (list) {
+        // Built-in actions. `)
+//line views/header.qtpl:941
+	qw422016.N().S("`")
+//line views/header.qtpl:941
+	qw422016.N().S(`run`)
+//line views/header.qtpl:941
+	qw422016.N().S("`")
+//line views/header.qtpl:941
+	qw422016.N().S(` is resolved from the TrellisNav global so
+        // we don't need to rely on function hoisting across scripts.
+        var items = [
+            { label: 'Open navigation picker', keys: 'Cmd/Ctrl + P',
+              run: function() { if (window.TrellisNav && TrellisNav.openPicker) TrellisNav.openPicker(); } },
+            { label: 'Open history picker',    keys: 'Cmd/Ctrl + Backspace',
+              run: function() {
+                  if (!window.TrellisNav || !TrellisNav.openHistoryPicker) return;
+                  var hist = TrellisNav.getHistory ? TrellisNav.getHistory() : [];
+                  if (!hist.length) { alert('No navigation history yet.'); return; }
+                  TrellisNav.openHistoryPicker();
+              } }
+        ];
+        // Add per-worktree custom shortcuts when present.
+        var custom = (window.TrellisNav && TrellisNav.getCustomShortcuts) ? TrellisNav.getCustomShortcuts() : [];
+        if (Array.isArray(custom)) {
+            for (var i = 0; i < custom.length; i++) {
+                var sc = custom[i];
+                (function(sc) {
+                    items.push({
+                        label: sc.window || sc.key,
+                        keys: sc.key || '',
+                        run: function() {
+                            // Reuse the keydown pipeline by synthesizing an
+                            // event. A plain object works because
+                            // handleCustomShortcut only reads the modifier
+                            // and key fields — it doesn't care if the event
+                            // came from a real KeyDown. (KeyboardEvent
+                            // constructor leaves these fields read-only, so
+                            // overriding them on a real event fails.)
+                            if (window.TrellisNav && TrellisNav.handleCustomShortcut) {
+                                var combo = TrellisNav.parseKeyCombo ? TrellisNav.parseKeyCombo(sc.key || '') : { key: '' };
+                                var fakeEvent = {
+                                    metaKey:  !!combo.meta,
+                                    ctrlKey:  !!combo.ctrl,
+                                    shiftKey: !!combo.shift,
+                                    altKey:   !!combo.alt,
+                                    key:      combo.key,
+                                    preventDefault: function(){}
+                                };
+                                // If neither meta nor ctrl was specified,
+                                // default to one so matchesKeyCombo's
+                                // metaOrCtrl branch fires.
+                                if (!fakeEvent.metaKey && !fakeEvent.ctrlKey) fakeEvent.metaKey = true;
+                                TrellisNav.handleCustomShortcut(fakeEvent);
+                            }
+                        }
+                    });
+                })(sc);
+            }
+        }
+        list.innerHTML = '';
+        items.forEach(function(item, idx) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'shortcut-action';
+            btn.innerHTML =
+                '<span class="shortcut-action-label"></span>' +
+                '<span class="shortcut-action-keys"></span>';
+            btn.querySelector('.shortcut-action-label').textContent = item.label;
+            if (item.keys) {
+                btn.querySelector('.shortcut-action-keys').innerHTML = item.keys
+                    .split(' + ')
+                    .map(function(k) { return '<kbd>' + k + '</kbd>'; })
+                    .join(' + ');
+            }
+            btn.addEventListener('click', function() {
+                var modalEl = document.getElementById('shortcutHelpModal');
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                // Run the action AFTER the modal has fully closed so focus
+                // doesn't get yanked back into the dismissing modal (which
+                // prevents Select2 from opening, for instance).
+                if (modalEl) {
+                    modalEl.addEventListener('hidden.bs.modal', function handler() {
+                        modalEl.removeEventListener('hidden.bs.modal', handler);
+                        try { item.run(); }
+                        catch (err) { console.error('shortcut action failed:', err); }
+                    });
+                }
+                if (modal) modal.hide();
+                else try { item.run(); } catch (err) {}
+            });
+            list.appendChild(btn);
+        });
+    }
     new bootstrap.Modal(document.getElementById('shortcutHelpModal')).show();
 }
 </script>
@@ -1087,45 +1189,45 @@ function showShortcutHelp() {
 <script src="/static/js/logviewer.js"></script>
 <script src="/static/js/spa.js"></script>
 `)
-//line views/header.qtpl:995
+//line views/header.qtpl:1089
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:995
+//line views/header.qtpl:1089
 	qw422016.N().S(`
 <main>
 <div class="page-container container-fluid mt-4">
 `)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 }
 
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 }
 
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 func (p *BasePage) Header() string {
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 	return qs422016
-//line views/header.qtpl:998
+//line views/header.qtpl:1092
 }
 
-//line views/header.qtpl:1000
+//line views/header.qtpl:1094
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:1000
+//line views/header.qtpl:1094
 	qw422016.N().S(`
 </div>
 </main>
@@ -1133,31 +1235,31 @@ func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 }
 
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 }
 
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 	return qs422016
-//line views/header.qtpl:1006
+//line views/header.qtpl:1100
 }
