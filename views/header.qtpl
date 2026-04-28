@@ -448,8 +448,8 @@ window.TrellisNav = (function() {
     // Keyboard shortcuts (page mode only - terminal handles its own shortcuts)
     if (NAV_MODE === 'page') {
         document.addEventListener('keydown', (e) => {
-            // Cmd/Ctrl+P to open picker
-            if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+            // Cmd/Ctrl+P to open picker (Shift+Cmd+P is the command palette)
+            if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
                 e.preventDefault();
                 openPicker();
                 return;
@@ -1086,6 +1086,7 @@ function showShortcutHelp() {
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="/static/js/logviewer.js"></script>
 <script src="/static/js/spa.js"></script>
+<script src="/static/js/command_palette.js"></script>
 {%= NavScript(p.SessionID(), p.ShortcutsJSON(), "page") %}
 <main>
 <div class="page-container container-fluid mt-4">

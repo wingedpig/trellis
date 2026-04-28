@@ -5,7 +5,7 @@ description: Control the Trellis development environment - check service status,
 
 # Trellis Development Environment Control
 
-Use `trellis-ctl` to interact with the running Trellis instance. The `TRELLIS_API` environment variable is automatically set in Trellis terminal sessions.
+Use `trellis-ctl` to interact with the running Trellis instance. It auto-discovers the API URL by walking up from the current directory looking for `trellis.hjson`. If `server.public_url` is set, it's used verbatim; otherwise the URL is built from `server.host`, `server.port`, and `server.tls_cert`/`tls_key`. Set `server.public_url` when bind address ≠ connect address — for example, binding to a Tailscale IP with a cert issued for the Tailscale hostname. In Trellis-managed terminal sessions, `TRELLIS_API` is set automatically (using the same resolution) and takes precedence over the config file. You can also pass `-config <path>` or set `TRELLIS_CONFIG` to point at a specific config file.
 
 **Important:** Always use the `-json` flag for structured output that's easier to parse:
 ```bash

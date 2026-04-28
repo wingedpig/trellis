@@ -9,9 +9,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hjson/hjson-go/v4"
 )
+
+// APIBaseURL returns the URL clients (trellis-ctl, terminals via TRELLIS_API)
+// should use to reach this Trellis instance.
+//
+// Resolution order:
+//  1. Server.PublicURL when set (use verbatim, trailing slash trimmed).
+//  2. Otherwise build "<scheme>://<host>:<port>" where scheme is "https" if
+//     both TLS cert and key are set, and bind-all addresses ("", "0.0.0.0",
+//     "::", "[::]") are rewritten to "127.0.0.1".
+//
+// PublicURL is needed when bind address differs from the address clients
+// should use — for example, when binding to a Tailscale IP whose certificate
+// is issued for the machine's Tailscale hostname rather than the IP.
+func (c *Config) APIBaseURL() string {
+	if u := strings.TrimRight(c.Server.PublicURL, "/"); u != "" {
+		return u
+	}
+	host := c.Server.Host
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	}
+	scheme := "http"
+	if c.Server.TLSCert != "" && c.Server.TLSKey != "" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s:%d", scheme, host, c.Server.Port)
+}
 
 // Loader handles configuration file loading.
 type Loader struct{}
@@ -79,6 +108,47 @@ func (l *Loader) FindConfig() (string, error) {
 	}
 
 	return "", fmt.Errorf("config file not found (looked for trellis.hjson, trellis.json)")
+}
+
+// FindConfigUp searches for a config file starting at startDir and walking up
+// the directory tree until one is found or the filesystem root is reached.
+// It looks for trellis.hjson first, then trellis.json at each level.
+// If startDir is empty, the current working directory is used.
+func (l *Loader) FindConfigUp(startDir string) (string, error) {
+	candidates := []string{
+		"trellis.hjson",
+		"trellis.json",
+	}
+
+	dir := startDir
+	if dir == "" {
+		var err error
+		dir, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("get working directory: %w", err)
+		}
+	}
+
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve start directory: %w", err)
+	}
+
+	for {
+		for _, name := range candidates {
+			path := filepath.Join(abs, name)
+			if _, err := os.Stat(path); err == nil {
+				return path, nil
+			}
+		}
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			break
+		}
+		abs = parent
+	}
+
+	return "", fmt.Errorf("config file not found in %s or any parent directory (looked for trellis.hjson, trellis.json)", startDir)
 }
 
 // applyDefaults sets default values for missing config fields.

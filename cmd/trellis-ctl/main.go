@@ -20,12 +20,15 @@ import (
 	"time"
 
 	"github.com/wingedpig/trellis/cmd/trellis-ctl/logs"
+	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/pkg/client"
 )
 
+const defaultAPIURL = "http://localhost:1234"
+
 var (
 	version    = "0.95"
-	apiURL     = "http://localhost:1234"
+	apiURL     = defaultAPIURL
 	jsonOutput = false
 
 	// API client instance
@@ -33,18 +36,42 @@ var (
 )
 
 func main() {
-	// Check for TRELLIS_API environment variable
-	if env := os.Getenv("TRELLIS_API"); env != "" {
-		apiURL = strings.TrimSuffix(env, "/")
+	// Parse global flags and filter them out. -config takes a value.
+	var (
+		filteredArgs []string
+		configPath   string
+	)
+	rawArgs := os.Args[1:]
+	for i := 0; i < len(rawArgs); i++ {
+		arg := rawArgs[i]
+		switch {
+		case arg == "-json":
+			jsonOutput = true
+		case arg == "-config" && i+1 < len(rawArgs):
+			i++
+			configPath = rawArgs[i]
+		case strings.HasPrefix(arg, "-config="):
+			configPath = strings.TrimPrefix(arg, "-config=")
+		default:
+			filteredArgs = append(filteredArgs, arg)
+		}
 	}
 
-	// Parse global flags and filter them out
-	var filteredArgs []string
-	for _, arg := range os.Args[1:] {
-		if arg == "-json" {
-			jsonOutput = true
-		} else {
-			filteredArgs = append(filteredArgs, arg)
+	// Resolve API URL with this precedence (highest to lowest):
+	//   1. TRELLIS_API env (set automatically in Trellis-managed terminals)
+	//   2. -config flag / TRELLIS_CONFIG env pointing to a trellis.hjson
+	//   3. trellis.hjson auto-discovered by walking up from cwd
+	//   4. http://localhost:1234 fallback
+	if env := os.Getenv("TRELLIS_API"); env != "" {
+		apiURL = strings.TrimSuffix(env, "/")
+	} else {
+		if configPath == "" {
+			configPath = os.Getenv("TRELLIS_CONFIG")
+		}
+		if url, err := apiURLFromConfig(configPath); err == nil {
+			apiURL = url
+		} else if configPath != "" {
+			fmt.Fprintf(os.Stderr, "Warning: %v; falling back to %s\n", err, defaultAPIURL)
 		}
 	}
 
@@ -101,17 +128,47 @@ func main() {
 	}
 }
 
+// apiURLFromConfig resolves the API URL from a Trellis config file.
+// If path is empty, walks up from the current directory looking for
+// trellis.hjson / trellis.json. Returns the constructed URL on success.
+func apiURLFromConfig(path string) (string, error) {
+	loader := config.NewLoader()
+	if path == "" {
+		found, err := loader.FindConfigUp("")
+		if err != nil {
+			return "", err
+		}
+		path = found
+	}
+
+	cfg, err := loader.LoadWithDefaults(context.Background(), path)
+	if err != nil {
+		return "", fmt.Errorf("load %s: %w", path, err)
+	}
+
+	return cfg.APIBaseURL(), nil
+}
+
 func printUsage() {
 	fmt.Println(`trellis-ctl - Control a running Trellis instance
 
 Usage:
-  trellis-ctl [-json] <command> [arguments]
+  trellis-ctl [-json] [-config <path>] <command> [arguments]
 
 Global Flags:
-  -json          Output in JSON format
+  -json            Output in JSON format
+  -config <path>   Path to trellis.hjson (overrides auto-discovery)
+
+Connection:
+  trellis-ctl resolves the API URL in this order:
+    1. TRELLIS_API env var (set automatically in Trellis terminals)
+    2. -config flag or TRELLIS_CONFIG env var
+    3. trellis.hjson found by walking up from the current directory
+    4. http://localhost:1234 fallback
 
 Environment:
-  TRELLIS_API    Base URL of Trellis API (default: http://localhost:1234)
+  TRELLIS_API      Base URL of Trellis API (overrides config)
+  TRELLIS_CONFIG   Path to trellis.hjson (used if -config not given)
 
 Commands:
   status [service]         Show status of all services or a specific service

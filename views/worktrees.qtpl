@@ -18,22 +18,6 @@ type WorktreesPage struct {
 {% func (p *WorktreesPage) Render() %}
 {%= p.Header() %}
 
-<main>
-<div class="hero">
-    <div class="container">
-        <img src="https://trellis.dev/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
-        <p class="lead">An AI-native development environment</p>
-        <p class="text-muted">Claude sessions, service logs, distributed traces, and crash reports — all scoped to the worktree you're working in. Investigations become Cases, committed to git alongside the fix. One keyboard-driven interface instead of a collection of disconnected tools.</p>
-        {% if p.Version != "" %}<p class="text-muted mb-2">v{%s p.Version %}</p>{% endif %}
-        <div class="mt-4">
-            <a href="https://trellis.dev/docs/" class="btn btn-primary btn-lg me-2"><i class="fa-solid fa-book"></i> Documentation</a>
-            <a href="https://github.com/wingedpig/trellis" class="btn btn-outline-secondary btn-lg me-2" target="_blank"><i class="fa-brands fa-github"></i> GitHub</a>
-            <a href="https://groups.io/g/trellis" class="btn btn-outline-secondary btn-lg" target="_blank"><i class="fa-solid fa-envelope"></i> Email Group</a>
-        </div>
-    </div>
-</div>
-</main>
-
 <h5 class="mb-3"><i class="fa-solid fa-code-branch"></i> Worktrees</h5>
 
 <p>Current worktree: <strong>{% if p.Active != nil %}{%s p.Active.Name() %}{% else %}None{% endif %}</strong></p>
@@ -142,6 +126,22 @@ type WorktreesPage struct {
     <p class="mb-0">Each worktree has its own binary directory. Current: <code>{%s p.BinariesDir %}</code></p>
 </div>
 {% endif %}
+
+<!-- Bottom-of-page links & version -->
+<div class="worktrees-footer d-flex flex-wrap align-items-center gap-2 mt-4 pt-3 border-top">
+    <a href="https://trellis.dev/docs/" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="fa-solid fa-book"></i> Documentation
+    </a>
+    <a href="https://github.com/wingedpig/trellis" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="fa-brands fa-github"></i> GitHub
+    </a>
+    <a href="https://groups.io/g/trellis" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="fa-solid fa-envelope"></i> Email Group
+    </a>
+    {% if p.Version != "" %}
+    <span class="ms-auto text-muted small">v{%s p.Version %}</span>
+    {% endif %}
+</div>
 
 <!-- Generic Alert Modal -->
 <div class="modal fade" id="alertModal" tabindex="-1">

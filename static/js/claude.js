@@ -677,7 +677,7 @@
         subtitleEl.dataset.copyPath = path;
         subtitleEl.addEventListener('click', function(e) {
             e.stopPropagation();
-            navigator.clipboard.writeText(path).then(function() {
+            (window.trellisCopyToClipboard || navigator.clipboard.writeText.bind(navigator.clipboard))(path).then(function() {
                 subtitleEl.classList.add('claude-tool-subtitle-copied');
                 var original = subtitleEl.textContent;
                 subtitleEl.textContent = 'Copied!';
@@ -1390,7 +1390,7 @@
             e.stopPropagation();
             var text = getText() || btn.dataset.copyMarkdown || '';
             if (!text) return;
-            navigator.clipboard.writeText(text).then(function() {
+            (window.trellisCopyToClipboard || navigator.clipboard.writeText.bind(navigator.clipboard))(text).then(function() {
                 btn.innerHTML = '<i class="fa-solid fa-check"></i>';
                 setTimeout(function() {
                     btn.innerHTML = '<i class="fa-regular fa-copy"></i>';
@@ -2598,7 +2598,7 @@
             btn.addEventListener('click', function() {
                 const code = pre.querySelector('code');
                 const text = code ? code.textContent : pre.textContent;
-                navigator.clipboard.writeText(text).then(function() {
+                (window.trellisCopyToClipboard || navigator.clipboard.writeText.bind(navigator.clipboard))(text).then(function() {
                     btn.innerHTML = '<i class="fa-solid fa-check"></i>';
                     setTimeout(function() {
                         btn.innerHTML = '<i class="fa-regular fa-copy"></i>';

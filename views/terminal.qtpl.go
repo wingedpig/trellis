@@ -3043,9 +3043,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 const selection = termData.getLastSelection ? termData.getLastSelection() : termData.term.getSelection();
                 if (selection) {
                     e.preventDefault();
-                    navigator.clipboard.writeText(selection).then(() => {
+                    robustCopy(selection).then(function() {
                         console.log('Copied', selection.length, 'chars to clipboard');
-                    }).catch(err => {
+                    }).catch(function(err) {
                         console.error('Clipboard write failed:', err);
                     });
                     return;
@@ -3067,6 +3067,14 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             }
 
             e.preventDefault();
+            // navigator.clipboard.readText requires a secure context.
+            // On non-secure origins (http://hostname:port on a LAN) this
+            // API is undefined; gracefully no-op rather than throwing so
+            // the keystroke doesn't break the page.
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                console.warn('Paste unavailable: Clipboard API requires HTTPS or localhost.');
+                return;
+            }
             navigator.clipboard.readText().then(text => {
                 const termData = terminals[currentTerminalKey];
                 if (termData && termData.ws && termData.ws.readyState === WebSocket.OPEN) {
@@ -3171,6 +3179,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     });
 
     // Parse a key string like "cmd+l" or "ctrl+shift+1" into components
+    // Copy text to the clipboard. Falls back to a hidden-textarea +
+    // document.execCommand('copy') when the Clipboard API is unavailable
+    // (e.g. http://hostname:port on a LAN is not a secure context).
+    function robustCopy(text) {
+        if (window.trellisCopyToClipboard) {
+            return window.trellisCopyToClipboard(text);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function(resolve, reject) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.top = '0';
+            ta.style.left = '0';
+            ta.style.opacity = '0';
+            ta.style.pointerEvents = 'none';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+            if (ok) resolve(); else reject(new Error('copy failed'));
+        });
+    }
+
     function parseKeyCombo(keyStr) {
         const parts = keyStr.toLowerCase().split('+');
         return {
@@ -5771,36 +5809,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5216
+//line views/terminal.qtpl:5254
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5216
+//line views/terminal.qtpl:5254
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 }
 
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 }
 
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 	return qs422016
-//line views/terminal.qtpl:5217
+//line views/terminal.qtpl:5255
 }

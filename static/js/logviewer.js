@@ -183,7 +183,7 @@ function copyFieldValue(icon) {
     // Decode base64 value from data attribute
     const encodedValue = icon.getAttribute('data-copy-value');
     const value = decodeURIComponent(escape(atob(encodedValue)));
-    navigator.clipboard.writeText(value).then(function() {
+    copyTextRobust(value).then(function() {
         // Show feedback
         icon.className = 'fa-solid fa-check copy-btn copied';
         setTimeout(function() {
@@ -191,6 +191,36 @@ function copyFieldValue(icon) {
         }, 1500);
     }).catch(function(err) {
         console.error('Failed to copy:', err);
+    });
+}
+
+// Copy text to the clipboard, falling back to a hidden textarea +
+// execCommand in non-secure contexts (e.g. http://hostname:port on a LAN)
+// where the Clipboard API isn't exposed.
+function copyTextRobust(text) {
+    if (window.trellisCopyToClipboard) {
+        return window.trellisCopyToClipboard(text);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function(resolve, reject) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.opacity = '0';
+        ta.style.pointerEvents = 'none';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(ta);
+        if (ok) resolve(); else reject(new Error('copy failed'));
     });
 }
 

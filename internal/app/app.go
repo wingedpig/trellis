@@ -306,12 +306,8 @@ func (app *App) Initialize(ctx context.Context) error {
 		})
 	}
 
-	// Compute API base URL for trellis-ctl
-	apiHost := cfg.Server.Host
-	if apiHost == "" || apiHost == "0.0.0.0" {
-		apiHost = "localhost"
-	}
-	apiBaseURL := fmt.Sprintf("http://%s:%d", apiHost, cfg.Server.Port)
+	// Compute API base URL for trellis-ctl (set as TRELLIS_API in tmux sessions).
+	apiBaseURL := cfg.APIBaseURL()
 
 	terminalStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "terminal")
 	app.terminalManager = terminal.NewManager(tmuxExecutor, terminal.TerminalConfig{

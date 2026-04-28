@@ -102,7 +102,7 @@ Use `trellis-ctl` to control Trellis from the command line:
 ./trellis-ctl crash newest        # View most recent crash
 ```
 
-In Trellis-managed terminals, `TRELLIS_API` is set automatically. To use `trellis-ctl` without the `./` prefix, add it to your PATH or copy to `/usr/local/bin`.
+From any directory inside your project, `trellis-ctl` finds `trellis.hjson` by walking up and connects to the configured host/port (using `https://` when both `tls_cert` and `tls_key` are set). In Trellis-managed terminals, `TRELLIS_API` is set automatically and takes precedence. To use `trellis-ctl` without the `./` prefix, add it to your PATH or copy to `/usr/local/bin`.
 
 ## Key Features
 

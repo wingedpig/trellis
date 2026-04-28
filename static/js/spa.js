@@ -261,6 +261,33 @@
         });
     }
 
+    // Shared clipboard helper that works even in non-secure contexts (e.g.
+    // http://hostname:port on a LAN — navigator.clipboard is undefined there).
+    // Returns a Promise that resolves on success and rejects on failure.
+    window.trellisCopyToClipboard = function trellisCopyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function(resolve, reject) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.top = '0';
+            ta.style.left = '0';
+            ta.style.opacity = '0';
+            ta.style.pointerEvents = 'none';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+            if (ok) resolve(); else reject(new Error('copy failed'));
+        });
+    };
+
     // Expose for debugging / programmatic navigation.
     window.TrellisSPA = {
         navigate: function(url) { return navigate(normalizeUrl(url) || url, { push: true }); },

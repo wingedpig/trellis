@@ -47,268 +47,240 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 //line views/worktrees.qtpl:19
 	qw422016.N().S(`
 
-<main>
-<div class="hero">
-    <div class="container">
-        <img src="https://trellis.dev/images/logo.png" alt="Trellis" height="150" class="mb-3 hero-logo">
-        <p class="lead">An AI-native development environment</p>
-        <p class="text-muted">Claude sessions, service logs, distributed traces, and crash reports — all scoped to the worktree you're working in. Investigations become Cases, committed to git alongside the fix. One keyboard-driven interface instead of a collection of disconnected tools.</p>
-        `)
-//line views/worktrees.qtpl:27
-	if p.Version != "" {
-//line views/worktrees.qtpl:27
-		qw422016.N().S(`<p class="text-muted mb-2">v`)
-//line views/worktrees.qtpl:27
-		qw422016.E().S(p.Version)
-//line views/worktrees.qtpl:27
-		qw422016.N().S(`</p>`)
-//line views/worktrees.qtpl:27
-	}
-//line views/worktrees.qtpl:27
-	qw422016.N().S(`
-        <div class="mt-4">
-            <a href="https://trellis.dev/docs/" class="btn btn-primary btn-lg me-2"><i class="fa-solid fa-book"></i> Documentation</a>
-            <a href="https://github.com/wingedpig/trellis" class="btn btn-outline-secondary btn-lg me-2" target="_blank"><i class="fa-brands fa-github"></i> GitHub</a>
-            <a href="https://groups.io/g/trellis" class="btn btn-outline-secondary btn-lg" target="_blank"><i class="fa-solid fa-envelope"></i> Email Group</a>
-        </div>
-    </div>
-</div>
-</main>
-
 <h5 class="mb-3"><i class="fa-solid fa-code-branch"></i> Worktrees</h5>
 
 <p>Current worktree: <strong>`)
-//line views/worktrees.qtpl:39
+//line views/worktrees.qtpl:23
 	if p.Active != nil {
-//line views/worktrees.qtpl:39
+//line views/worktrees.qtpl:23
 		qw422016.E().S(p.Active.Name())
-//line views/worktrees.qtpl:39
+//line views/worktrees.qtpl:23
 	} else {
-//line views/worktrees.qtpl:39
+//line views/worktrees.qtpl:23
 		qw422016.N().S(`None`)
-//line views/worktrees.qtpl:39
+//line views/worktrees.qtpl:23
 	}
-//line views/worktrees.qtpl:39
+//line views/worktrees.qtpl:23
 	qw422016.N().S(`</strong></p>
 
 <div class="list-group mb-4">
     `)
-//line views/worktrees.qtpl:42
+//line views/worktrees.qtpl:26
 	for _, wt := range p.Worktrees {
-//line views/worktrees.qtpl:42
+//line views/worktrees.qtpl:26
 		qw422016.N().S(`
     `)
-//line views/worktrees.qtpl:43
+//line views/worktrees.qtpl:27
 		isActive := p.Active != nil && p.Active.Path == wt.Path
 
-//line views/worktrees.qtpl:43
+//line views/worktrees.qtpl:27
 		qw422016.N().S(`
     `)
-//line views/worktrees.qtpl:44
+//line views/worktrees.qtpl:28
 		isMain := wt.Name() == p.ProjectName
 
-//line views/worktrees.qtpl:44
+//line views/worktrees.qtpl:28
 		qw422016.N().S(`
     `)
-//line views/worktrees.qtpl:45
+//line views/worktrees.qtpl:29
 		displayName := wt.Name()
 
-//line views/worktrees.qtpl:45
+//line views/worktrees.qtpl:29
 		qw422016.N().S(`
     `)
-//line views/worktrees.qtpl:46
+//line views/worktrees.qtpl:30
 		if isMain && wt.Branch != "" {
 			displayName = wt.Branch
 		} else if p.ProjectName != "" {
 			displayName = strings.TrimPrefix(displayName, p.ProjectName+"-")
 		}
 
-//line views/worktrees.qtpl:50
+//line views/worktrees.qtpl:34
 		qw422016.N().S(`
     <div class="list-group-item `)
-//line views/worktrees.qtpl:51
+//line views/worktrees.qtpl:35
 		if isActive {
-//line views/worktrees.qtpl:51
+//line views/worktrees.qtpl:35
 			qw422016.N().S(`active`)
-//line views/worktrees.qtpl:51
+//line views/worktrees.qtpl:35
 		}
-//line views/worktrees.qtpl:51
+//line views/worktrees.qtpl:35
 		qw422016.N().S(`" data-worktree-path="`)
-//line views/worktrees.qtpl:51
+//line views/worktrees.qtpl:35
 		qw422016.E().S(wt.Path)
-//line views/worktrees.qtpl:51
+//line views/worktrees.qtpl:35
 		qw422016.N().S(`">
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 `)
-//line views/worktrees.qtpl:54
+//line views/worktrees.qtpl:38
 		if isActive {
-//line views/worktrees.qtpl:54
+//line views/worktrees.qtpl:38
 			qw422016.N().S(`
                 <i class="fa-solid fa-check"></i>
                 `)
-//line views/worktrees.qtpl:56
+//line views/worktrees.qtpl:40
 		} else {
-//line views/worktrees.qtpl:56
+//line views/worktrees.qtpl:40
 			qw422016.N().S(`
                 <i class="fa-solid fa-code-branch"></i>
                 `)
-//line views/worktrees.qtpl:58
+//line views/worktrees.qtpl:42
 		}
-//line views/worktrees.qtpl:58
+//line views/worktrees.qtpl:42
 		qw422016.N().S(`
                 <a href="/worktree/`)
-//line views/worktrees.qtpl:59
+//line views/worktrees.qtpl:43
 		qw422016.E().S(displayName)
-//line views/worktrees.qtpl:59
+//line views/worktrees.qtpl:43
 		qw422016.N().S(`" class="text-decoration-none" style="color: inherit;">`)
-//line views/worktrees.qtpl:59
+//line views/worktrees.qtpl:43
 		qw422016.E().S(displayName)
-//line views/worktrees.qtpl:59
+//line views/worktrees.qtpl:43
 		qw422016.N().S(`</a>
                 `)
-//line views/worktrees.qtpl:60
+//line views/worktrees.qtpl:44
 		if isActive {
-//line views/worktrees.qtpl:60
+//line views/worktrees.qtpl:44
 			qw422016.N().S(` (current)`)
-//line views/worktrees.qtpl:60
+//line views/worktrees.qtpl:44
 		}
-//line views/worktrees.qtpl:60
+//line views/worktrees.qtpl:44
 		qw422016.N().S(`
                 <span class="wt-status">
                 `)
-//line views/worktrees.qtpl:62
+//line views/worktrees.qtpl:46
 		if wt.Dirty {
-//line views/worktrees.qtpl:62
+//line views/worktrees.qtpl:46
 			qw422016.N().S(`
                 <span class="badge bg-danger ms-2" title="Uncommitted changes">
                     <i class="fa-solid fa-pencil"></i> dirty
                 </span>
                 `)
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:50
 		}
-//line views/worktrees.qtpl:66
+//line views/worktrees.qtpl:50
 		qw422016.N().S(`
                 `)
-//line views/worktrees.qtpl:67
+//line views/worktrees.qtpl:51
 		if wt.Ahead > 0 || wt.Behind > 0 {
-//line views/worktrees.qtpl:67
+//line views/worktrees.qtpl:51
 			qw422016.N().S(`
                 <span class="badge bg-info text-dark ms-2" title="Commits ahead/behind main">
                     `)
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:53
 			if wt.Ahead > 0 {
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:53
 				qw422016.N().S(`<i class="fa-solid fa-arrow-up"></i>`)
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:53
 				qw422016.N().D(wt.Ahead)
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:53
 			}
-//line views/worktrees.qtpl:69
+//line views/worktrees.qtpl:53
 			qw422016.N().S(`
                     `)
-//line views/worktrees.qtpl:70
+//line views/worktrees.qtpl:54
 			if wt.Behind > 0 {
-//line views/worktrees.qtpl:70
+//line views/worktrees.qtpl:54
 				qw422016.N().S(`<i class="fa-solid fa-arrow-down"></i>`)
-//line views/worktrees.qtpl:70
+//line views/worktrees.qtpl:54
 				qw422016.N().D(wt.Behind)
-//line views/worktrees.qtpl:70
+//line views/worktrees.qtpl:54
 			}
-//line views/worktrees.qtpl:70
+//line views/worktrees.qtpl:54
 			qw422016.N().S(`
                 </span>
                 `)
-//line views/worktrees.qtpl:72
+//line views/worktrees.qtpl:56
 		}
-//line views/worktrees.qtpl:72
+//line views/worktrees.qtpl:56
 		qw422016.N().S(`
                 `)
-//line views/worktrees.qtpl:73
+//line views/worktrees.qtpl:57
 		if wt.Detached {
-//line views/worktrees.qtpl:73
+//line views/worktrees.qtpl:57
 			qw422016.N().S(`
                 <span class="badge bg-secondary ms-2">Detached</span>
                 `)
-//line views/worktrees.qtpl:75
+//line views/worktrees.qtpl:59
 		}
-//line views/worktrees.qtpl:75
+//line views/worktrees.qtpl:59
 		qw422016.N().S(`
                 </span>
                 <br>
                 <small class="text-muted">Branch: `)
-//line views/worktrees.qtpl:78
+//line views/worktrees.qtpl:62
 		qw422016.E().S(wt.Branch)
-//line views/worktrees.qtpl:78
+//line views/worktrees.qtpl:62
 		qw422016.N().S(`</small>
             </div>
             <div>
                 `)
-//line views/worktrees.qtpl:81
+//line views/worktrees.qtpl:65
 		if !isActive {
-//line views/worktrees.qtpl:81
+//line views/worktrees.qtpl:65
 			qw422016.N().S(`
                 <a href="#" class="btn btn-sm btn-primary" onclick="promptSwitchWorktree('`)
-//line views/worktrees.qtpl:82
+//line views/worktrees.qtpl:66
 			qw422016.E().S(JSAttr(wt.Name()))
-//line views/worktrees.qtpl:82
+//line views/worktrees.qtpl:66
 			qw422016.N().S(`'); return false;">
                     <i class="fa-solid fa-sign-in-alt"></i> Switch
                 </a>
                 `)
-//line views/worktrees.qtpl:85
+//line views/worktrees.qtpl:69
 			if !isMain {
-//line views/worktrees.qtpl:85
+//line views/worktrees.qtpl:69
 				qw422016.N().S(`
                 <button class="btn btn-sm btn-danger" onclick="showRemoveModal('`)
-//line views/worktrees.qtpl:86
+//line views/worktrees.qtpl:70
 				qw422016.E().S(JSAttr(wt.Name()))
-//line views/worktrees.qtpl:86
+//line views/worktrees.qtpl:70
 				qw422016.N().S(`', '`)
-//line views/worktrees.qtpl:86
+//line views/worktrees.qtpl:70
 				qw422016.E().S(JSAttr(wt.Branch))
-//line views/worktrees.qtpl:86
+//line views/worktrees.qtpl:70
 				qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i> Remove
                 </button>
                 `)
-//line views/worktrees.qtpl:89
+//line views/worktrees.qtpl:73
 			}
-//line views/worktrees.qtpl:89
+//line views/worktrees.qtpl:73
 			qw422016.N().S(`
                 `)
-//line views/worktrees.qtpl:90
+//line views/worktrees.qtpl:74
 		} else {
-//line views/worktrees.qtpl:90
+//line views/worktrees.qtpl:74
 			qw422016.N().S(`
                 <span class="text-muted">Cannot remove current worktree</span>
                 `)
-//line views/worktrees.qtpl:92
+//line views/worktrees.qtpl:76
 		}
-//line views/worktrees.qtpl:92
+//line views/worktrees.qtpl:76
 		qw422016.N().S(`
             </div>
         </div>
     </div>
     `)
-//line views/worktrees.qtpl:96
+//line views/worktrees.qtpl:80
 	}
-//line views/worktrees.qtpl:96
+//line views/worktrees.qtpl:80
 	qw422016.N().S(`
 </div>
 
 `)
-//line views/worktrees.qtpl:99
+//line views/worktrees.qtpl:83
 	if len(p.Worktrees) == 0 {
-//line views/worktrees.qtpl:99
+//line views/worktrees.qtpl:83
 		qw422016.N().S(`
 <div class="alert alert-info">
     <i class="fa-solid fa-info-circle"></i> No git worktrees found.
 </div>
 `)
-//line views/worktrees.qtpl:103
+//line views/worktrees.qtpl:87
 	}
-//line views/worktrees.qtpl:103
+//line views/worktrees.qtpl:87
 	qw422016.N().S(`
 
 <div class="card mb-4">
@@ -329,9 +301,9 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
                     <ul class="mb-0">
                         <li>New branch: <code><span id="branchPreview">feature-x</span></code></li>
                         <li>New worktree directory: <code>../<span id="dirPreview">`)
-//line views/worktrees.qtpl:122
+//line views/worktrees.qtpl:106
 	qw422016.E().S(p.ProjectName)
-//line views/worktrees.qtpl:122
+//line views/worktrees.qtpl:106
 	qw422016.N().S(`-feature-x</span></code></li>
                     </ul>
                 </div>
@@ -350,23 +322,51 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 `)
-//line views/worktrees.qtpl:139
+//line views/worktrees.qtpl:123
 	if p.BinariesDir != "" {
-//line views/worktrees.qtpl:139
+//line views/worktrees.qtpl:123
 		qw422016.N().S(`
 <div class="alert alert-info">
     <h6><i class="fa-solid fa-folder"></i> Binary Locations</h6>
     <p class="mb-0">Each worktree has its own binary directory. Current: <code>`)
-//line views/worktrees.qtpl:142
+//line views/worktrees.qtpl:126
 		qw422016.E().S(p.BinariesDir)
-//line views/worktrees.qtpl:142
+//line views/worktrees.qtpl:126
 		qw422016.N().S(`</code></p>
 </div>
 `)
-//line views/worktrees.qtpl:144
+//line views/worktrees.qtpl:128
 	}
-//line views/worktrees.qtpl:144
+//line views/worktrees.qtpl:128
 	qw422016.N().S(`
+
+<!-- Bottom-of-page links & version -->
+<div class="worktrees-footer d-flex flex-wrap align-items-center gap-2 mt-4 pt-3 border-top">
+    <a href="https://trellis.dev/docs/" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="fa-solid fa-book"></i> Documentation
+    </a>
+    <a href="https://github.com/wingedpig/trellis" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="fa-brands fa-github"></i> GitHub
+    </a>
+    <a href="https://groups.io/g/trellis" class="btn btn-outline-secondary btn-sm" target="_blank">
+        <i class="fa-solid fa-envelope"></i> Email Group
+    </a>
+    `)
+//line views/worktrees.qtpl:141
+	if p.Version != "" {
+//line views/worktrees.qtpl:141
+		qw422016.N().S(`
+    <span class="ms-auto text-muted small">v`)
+//line views/worktrees.qtpl:142
+		qw422016.E().S(p.Version)
+//line views/worktrees.qtpl:142
+		qw422016.N().S(`</span>
+    `)
+//line views/worktrees.qtpl:143
+	}
+//line views/worktrees.qtpl:143
+	qw422016.N().S(`
+</div>
 
 <!-- Generic Alert Modal -->
 <div class="modal fade" id="alertModal" tabindex="-1">

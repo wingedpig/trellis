@@ -87,6 +87,8 @@ func NewRouter(deps Dependencies) *mux.Router {
 	// Service handlers
 	serviceHandler := handlers.NewServiceHandler(deps.ServiceManager)
 	api.HandleFunc("/services", serviceHandler.List).Methods("GET")
+	api.HandleFunc("/services/start-all", serviceHandler.StartAll).Methods("POST")
+	api.HandleFunc("/services/stop-all", serviceHandler.StopAll).Methods("POST")
 	api.HandleFunc("/services/{name}", serviceHandler.Get).Methods("GET")
 	api.HandleFunc("/services/{name}/start", serviceHandler.Start).Methods("POST")
 	api.HandleFunc("/services/{name}/stop", serviceHandler.Stop).Methods("POST")
@@ -154,6 +156,10 @@ func NewRouter(deps Dependencies) *mux.Router {
 		api.HandleFunc("/crashes/{id}", crashHandler.Delete).Methods("DELETE")
 	}
 
+	// Command palette
+	commandsHandler := handlers.NewCommandsHandler(deps.WorktreeManager, deps.ServiceManager, deps.WorkflowRunner, deps.CrashManager, deps.ClaudeManager)
+	api.HandleFunc("/commands", commandsHandler.List).Methods("GET")
+
 	return r
 }
 
@@ -219,6 +225,8 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// Service handlers
 	serviceHandler := handlers.NewServiceHandler(deps.ServiceManager)
 	api.HandleFunc("/services", serviceHandler.List).Methods("GET")
+	api.HandleFunc("/services/start-all", serviceHandler.StartAll).Methods("POST")
+	api.HandleFunc("/services/stop-all", serviceHandler.StopAll).Methods("POST")
 	api.HandleFunc("/services/{name}", serviceHandler.Get).Methods("GET")
 	api.HandleFunc("/services/{name}/start", serviceHandler.Start).Methods("POST")
 	api.HandleFunc("/services/{name}/stop", serviceHandler.Stop).Methods("POST")
@@ -348,6 +356,10 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/crashes/{id}", crashHandler.Get).Methods("GET")
 		api.HandleFunc("/crashes/{id}", crashHandler.Delete).Methods("DELETE")
 	}
+
+	// Command palette
+	commandsHandler := handlers.NewCommandsHandler(deps.WorktreeManager, deps.ServiceManager, deps.WorkflowRunner, deps.CrashManager, deps.ClaudeManager)
+	api.HandleFunc("/commands", commandsHandler.List).Methods("GET")
 
 	// Debug/profiling endpoints
 	r.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)

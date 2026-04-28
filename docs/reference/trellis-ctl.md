@@ -19,17 +19,53 @@ go build -o trellis-ctl ./cmd/trellis-ctl
 
 ## Configuration
 
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `TRELLIS_API` | Base URL of Trellis API | `http://localhost:1234` |
+`trellis-ctl` resolves the API URL in this order (highest precedence first):
 
-In Trellis-managed tmux sessions, `TRELLIS_API` is set automatically.
+1. `TRELLIS_API` environment variable — set automatically in Trellis-managed
+   tmux sessions, so commands run inside Trellis terminals always reach the
+   right instance.
+2. `-config <path>` flag or `TRELLIS_CONFIG` environment variable — load the
+   specified `trellis.hjson` and use its `server.public_url` if set; otherwise
+   build the URL from `server.host`, `server.port`, and (when both are set)
+   `server.tls_cert` / `server.tls_key`.
+3. `trellis.hjson` (or `trellis.json`) auto-discovered by walking up from the
+   current directory, resolved the same way.
+4. `http://localhost:1234` fallback if no config or env override is found.
+
+`server.public_url`, when set, is used verbatim — useful when the bind
+address differs from the address clients should connect to (e.g., binding
+to a Tailscale IP whose certificate is issued for the machine's Tailscale
+hostname rather than the IP). Example:
+
+```hjson
+server: {
+  host: "100.80.99.38"                            // bind address
+  port: 1234
+  tls_cert: "..."
+  tls_key: "..."
+  public_url: "https://mybox.tail-net.ts.net:1234"  // address clients use
+}
+```
+
+When `public_url` is not set: if `server.host` is `0.0.0.0` or `::`,
+`trellis-ctl` connects to `127.0.0.1` instead, and when both `tls_cert` and
+`tls_key` are set the scheme becomes `https`.
+
+The same resolution is used by the Trellis daemon to compute the
+`TRELLIS_API` value injected into Trellis-managed tmux sessions, so the CLI
+inside terminals reaches the instance via the correct URL automatically.
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `TRELLIS_API` | Base URL of Trellis API; overrides config-based discovery. |
+| `TRELLIS_CONFIG` | Path to `trellis.hjson`; used when `-config` is not given. |
 
 ## Global Flags
 
 | Flag | Description |
 |------|-------------|
 | `-json` | Output in JSON format |
+| `-config <path>` | Path to `trellis.hjson` to read connection info from. |
 
 The `-json` flag works with any command:
 ```bash
@@ -313,8 +349,9 @@ name: trellis
 description: Control the Trellis development environment
 ---
 
-Use `trellis-ctl` to interact with Trellis. The `TRELLIS_API`
-environment variable is automatically set.
+Use `trellis-ctl` to interact with Trellis. It auto-discovers the API URL
+from `trellis.hjson` (walking up from the current directory) and respects
+`TRELLIS_API` when set in Trellis-managed terminals.
 
 ## Commands
 - `trellis-ctl status` - Check service status

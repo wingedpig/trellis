@@ -58,10 +58,11 @@ type ProjectConfig struct {
 
 // ServerConfig configures the HTTP server.
 type ServerConfig struct {
-	Port    int    `json:"port"`
-	Host    string `json:"host"`
-	TLSCert string `json:"tls_cert"` // Path to TLS certificate file (enables HTTPS if both cert and key set)
-	TLSKey  string `json:"tls_key"`  // Path to TLS private key file
+	Port      int    `json:"port"`
+	Host      string `json:"host"`
+	TLSCert   string `json:"tls_cert"`   // Path to TLS certificate file (enables HTTPS if both cert and key set)
+	TLSKey    string `json:"tls_key"`    // Path to TLS private key file
+	PublicURL string `json:"public_url"` // Externally reachable URL clients should use (overrides host/port for trellis-ctl and TRELLIS_API)
 }
 
 // ProxyListenerConfig configures a reverse proxy listener.

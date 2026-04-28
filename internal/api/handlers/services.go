@@ -90,6 +90,24 @@ func (h *ServiceHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, svc)
 }
 
+// StartAll starts all enabled services.
+func (h *ServiceHandler) StartAll(w http.ResponseWriter, r *http.Request) {
+	if err := h.mgr.StartAll(context.Background()); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrServiceError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, h.mgr.List())
+}
+
+// StopAll stops all running services.
+func (h *ServiceHandler) StopAll(w http.ResponseWriter, r *http.Request) {
+	if err := h.mgr.StopAll(context.Background()); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrServiceError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, h.mgr.List())
+}
+
 // Logs returns the logs for a service.
 func (h *ServiceHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

@@ -93,7 +93,10 @@ From here you can:
 
 ## 4. Use the CLI
 
-In any Trellis-managed terminal, `TRELLIS_API` is automatically set:
+From your project directory (or any subdirectory), `trellis-ctl` finds
+`trellis.hjson` by walking up and connects to the configured host/port.
+In Trellis-managed terminals, `TRELLIS_API` is also set automatically and
+takes precedence:
 
 ```bash
 # Check service status
