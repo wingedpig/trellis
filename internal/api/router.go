@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io/fs"
 	"log"
@@ -409,6 +410,17 @@ func (s *Server) ListenAndServe() error {
 	if tlsEnabled {
 		certPath := expandPath(s.cfg.TLSCert)
 		keyPath := expandPath(s.cfg.TLSKey)
+		// Log every TLS ClientHello so handshake errors can be correlated
+		// to a specific client (remote addr + SNI hostname + ALPN). The
+		// stdlib's "TLS handshake error from <ip>:<port>" log line that
+		// follows on a failure shares the same remote addr.
+		s.server.TLSConfig = &tls.Config{
+			GetConfigForClient: func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+				log.Printf("TLS ClientHello from %s: sni=%q alpn=%v versions=%v",
+					hi.Conn.RemoteAddr(), hi.ServerName, hi.SupportedProtos, tlsVersionNames(hi.SupportedVersions))
+				return nil, nil
+			},
+		}
 		log.Printf("API server listening on https://%s (TLS enabled)", addr)
 		return s.server.ListenAndServeTLS(certPath, keyPath)
 	}

@@ -51,6 +51,11 @@
                 }
             });
 
+        // Eagerly create the confirm modal so the first invocation isn't on
+        // a freshly-inserted element (which can race with Bootstrap's transition
+        // detection and skip the visible fade-in).
+        ensureConfirmModal();
+
         wfSelect.addEventListener('change', function() {
             if (this.value) {
                 var opt = this.options[this.selectedIndex];
@@ -101,15 +106,17 @@
         return new Promise(function(resolve) {
             document.getElementById('wfConfirmModalTitle').textContent = title || 'Confirm';
             document.getElementById('wfConfirmModalMessage').textContent = message;
-            var modal = new bootstrap.Modal(document.getElementById('wfConfirmModal'));
-            var yesBtn = document.getElementById('wfConfirmModalYes');
             var modalEl = document.getElementById('wfConfirmModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            var yesBtn = document.getElementById('wfConfirmModalYes');
             var newYesBtn = yesBtn.cloneNode(true);
             yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
             newYesBtn.onclick = function() { modal.hide(); resolve(true); };
+            // Attach both listeners BEFORE show() so neither can be missed if
+            // the event fires synchronously (e.g. on first-show timing edge cases).
             modalEl.addEventListener('hidden.bs.modal', function() { resolve(false); }, { once: true });
-            modal.show();
             modalEl.addEventListener('shown.bs.modal', function() { newYesBtn.focus(); }, { once: true });
+            modal.show();
         });
     }
 

@@ -4,6 +4,7 @@
 package client
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -99,6 +100,10 @@ func (l *LogClient) GetEntries(ctx context.Context, name string, opts *LogEntrie
 //
 // Use opts to filter by time range and grep pattern. The Before/After options
 // in opts specify context lines around grep matches.
+//
+// The client requests the streaming NDJSON response shape so headers arrive
+// immediately. The HTTP client's per-request Timeout is bypassed for this
+// call — pass a deadline via ctx if you want one.
 func (l *LogClient) GetHistoryEntries(ctx context.Context, name string, opts *LogEntriesOptions) ([]LogEntry, error) {
 	params := url.Values{}
 
@@ -128,19 +133,71 @@ func (l *LogClient) GetHistoryEntries(ctx context.Context, name string, opts *Lo
 		path += "?" + params.Encode()
 	}
 
-	data, err := l.c.get(ctx, path)
+	resp, err := l.c.stream(ctx, path, "application/x-ndjson")
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
-	var result struct {
-		Entries []LogEntry `json:"entries"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse historical entries: %w", err)
+	// Server falls back to the buffered envelope if it doesn't honor the
+	// streaming Accept header (e.g., older builds). Detect that and parse
+	// accordingly.
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(ct), "ndjson") {
+		// Buffered fallback: standard apiResponse envelope around {"entries":[...]}.
+		var apiResp apiResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+			return nil, fmt.Errorf("failed to parse historical entries: %w", err)
+		}
+		if apiResp.Error != nil {
+			return nil, apiResp.Error
+		}
+		var result struct {
+			Entries []LogEntry `json:"entries"`
+		}
+		if err := json.Unmarshal(apiResp.Data, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse historical entries: %w", err)
+		}
+		return result.Entries, nil
 	}
 
-	return result.Entries, nil
+	var entries []LogEntry
+	scanner := bufio.NewScanner(resp.Body)
+	// History responses can include very long lines (multi-line stack traces
+	// captured into one entry's Raw field). Grow the buffer well past the
+	// 64KiB default to avoid splitting them.
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		// Heartbeats and mid-stream errors are encoded as small JSON objects
+		// with reserved underscore-prefixed keys. Peek at the first field
+		// before doing a full LogEntry decode.
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(line, &probe); err != nil {
+			return entries, fmt.Errorf("malformed NDJSON line: %w", err)
+		}
+		if _, ok := probe["_heartbeat"]; ok {
+			continue
+		}
+		if raw, ok := probe["_error"]; ok {
+			var msg string
+			_ = json.Unmarshal(raw, &msg)
+			return entries, fmt.Errorf("stream error: %s", msg)
+		}
+		var entry LogEntry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			return entries, fmt.Errorf("malformed log entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := scanner.Err(); err != nil {
+		return entries, fmt.Errorf("reading history stream: %w", err)
+	}
+	return entries, nil
 }
 
 // GetHistory returns historical log entries from a log viewer's history files.

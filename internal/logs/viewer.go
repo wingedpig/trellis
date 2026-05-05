@@ -218,23 +218,31 @@ func (v *Viewer) GetEntriesRange(start, end time.Time, limit int) []LogEntry {
 	return v.buffer.GetRange(start, end, limit)
 }
 
-// GetHistoricalEntries loads entries from rotated files.
-func (v *Viewer) GetHistoricalEntries(ctx context.Context, start, end time.Time, filter *Filter, limit int, grep string, grepBefore, grepAfter int) ([]LogEntry, error) {
-	log.Printf("GetHistoricalEntries: start=%v end=%v limit=%d grep=%q before=%d after=%d", start, end, limit, grep, grepBefore, grepAfter)
+// errStreamLimitReached is a sentinel returned by the StreamHistoricalEntries
+// callback to signal that the configured limit has been hit and the stream
+// should stop producing.
+var errStreamLimitReached = errors.New("stream limit reached")
+
+// StreamHistoricalEntries reads entries from rotated files and pushes them
+// through fn one at a time. Filtering, time-range pruning, and limit handling
+// match GetHistoricalEntries. If fn returns a non-nil error, the stream stops
+// and that error is returned (a nil-returning fn means "keep going").
+//
+// Use this to avoid buffering the entire historical result set in memory —
+// for example when streaming NDJSON to an HTTP client.
+func (v *Viewer) StreamHistoricalEntries(ctx context.Context, start, end time.Time, filter *Filter, limit int, grep string, grepBefore, grepAfter int, fn func(LogEntry) error) error {
+	log.Printf("StreamHistoricalEntries: start=%v end=%v limit=%d grep=%q before=%d after=%d", start, end, limit, grep, grepBefore, grepAfter)
 
 	lineCh := make(chan string, 1000)
 	errCh := make(chan error, 1)
 
-	// Create a cancellable context so we can stop the producer early
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	go func() {
 		defer close(lineCh)
 		if err := v.source.ReadRange(ctx, start, end, lineCh, grep, grepBefore, grepAfter); err != nil {
-			log.Printf("GetHistoricalEntries: ReadRange error: %v (ctx.Err=%v)", err, ctx.Err())
-			// Don't report context.Canceled as an error - it's expected when limit is reached
-			// Use errors.Is() because the error may be wrapped (e.g., "reading file: context canceled")
+			log.Printf("StreamHistoricalEntries: ReadRange error: %v (ctx.Err=%v)", err, ctx.Err())
 			if !errors.Is(err, context.Canceled) {
 				errCh <- err
 			}
@@ -242,56 +250,66 @@ func (v *Viewer) GetHistoricalEntries(ctx context.Context, start, end time.Time,
 		close(errCh)
 	}()
 
-	var entries []LogEntry
+	emitted := 0
 	linesReceived := 0
-	limitReached := false
+	var fnErr error
 	for line := range lineCh {
 		linesReceived++
 		entry := v.parser.Parse(line)
 		entry.Source = v.name
 
-		// Apply derived fields
 		if v.deriver != nil {
 			v.deriver.Apply(&entry)
 		}
 
-		// Check time range
 		if entry.Timestamp.Before(start) || entry.Timestamp.After(end) {
 			continue
 		}
 
-		// Apply filter
 		if filter != nil && !filter.Match(entry) {
 			continue
 		}
 
-		entries = append(entries, entry)
-		if limit > 0 && len(entries) >= limit {
-			log.Printf("GetHistoricalEntries: limit %d reached after %d lines", limit, linesReceived)
-			limitReached = true
+		if err := fn(entry); err != nil {
+			fnErr = err
+			break
+		}
+		emitted++
+		if limit > 0 && emitted >= limit {
+			log.Printf("StreamHistoricalEntries: limit %d reached after %d lines", limit, linesReceived)
+			fnErr = errStreamLimitReached
 			break
 		}
 	}
 
-	log.Printf("GetHistoricalEntries: received %d lines, %d entries passed filters, limitReached=%v", linesReceived, len(entries), limitReached)
-
-	// If we broke out early, cancel the context and drain the channel
-	// to ensure the producer goroutine can exit
-	if limitReached {
+	// Drain so the producer goroutine can exit
+	if fnErr != nil {
 		cancel()
 		for range lineCh {
-			// Drain remaining lines
 		}
 	}
 
-	// Check for errors from ReadRange (non-blocking now since channel is drained)
 	if err := <-errCh; err != nil {
-		log.Printf("GetHistoricalEntries: returning error: %v", err)
-		return entries, err
+		log.Printf("StreamHistoricalEntries: returning error: %v", err)
+		return err
 	}
 
-	log.Printf("GetHistoricalEntries: returning %d entries", len(entries))
-	return entries, nil
+	log.Printf("StreamHistoricalEntries: emitted %d entries from %d lines", emitted, linesReceived)
+	if fnErr != nil && !errors.Is(fnErr, errStreamLimitReached) {
+		return fnErr
+	}
+	return nil
+}
+
+// GetHistoricalEntries loads entries from rotated files into a slice.
+// Prefer StreamHistoricalEntries for large result sets to avoid buffering.
+func (v *Viewer) GetHistoricalEntries(ctx context.Context, start, end time.Time, filter *Filter, limit int, grep string, grepBefore, grepAfter int) ([]LogEntry, error) {
+	var entries []LogEntry
+	err := v.StreamHistoricalEntries(ctx, start, end, filter, limit, grep, grepBefore, grepAfter, func(e LogEntry) error {
+		entries = append(entries, e)
+		return nil
+	})
+	return entries, err
 }
 
 // ListRotatedFiles returns available rotated log files.

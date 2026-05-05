@@ -114,6 +114,7 @@
                     dropdownParent: $('#cmdPaletteBox'),
                     placeholder: 'Type a command…',
                     width: '100%',
+                    matcher: (typeof TrellisNav !== 'undefined' && TrellisNav.fuzzyMatcher) ? TrellisNav.fuzzyMatcher : undefined,
                 });
                 $sel.on('select2:select', onPick);
                 $sel.on('select2:close', function() { setTimeout(closePalette, 0); });

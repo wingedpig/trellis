@@ -3775,9 +3775,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             document.getElementById('workflowConfirmTitle').textContent = title || 'Confirm';
             document.getElementById('workflowConfirmMessage').textContent = message;
 
-            const modal = new bootstrap.Modal(document.getElementById('workflowConfirmModal'));
-            const yesBtn = document.getElementById('workflowConfirmYes');
             const modalEl = document.getElementById('workflowConfirmModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            const yesBtn = document.getElementById('workflowConfirmYes');
 
             // Clean up old handlers by cloning the button
             const newYesBtn = yesBtn.cloneNode(true);
@@ -3788,16 +3788,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 resolve(true);
             };
 
+            // Attach both listeners BEFORE show() so neither can be missed if
+            // the event fires synchronously (e.g. first-show timing edge cases).
             modalEl.addEventListener('hidden.bs.modal', function() {
                 resolve(false);
             }, { once: true });
-
-            modal.show();
-
-            // Focus the Yes button when modal is shown
             modalEl.addEventListener('shown.bs.modal', function() {
                 newYesBtn.focus();
             }, { once: true });
+
+            modal.show();
         });
     }
 

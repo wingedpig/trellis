@@ -160,7 +160,27 @@ func (h *LogHandler) GetEntries(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Default deadline for historical log queries. Scanning rotated files plus
+// applying grep/regex over a wide time range can take many seconds; the old
+// 60s ceiling was too tight for production-sized log volumes. Override per
+// request with ?timeout=<duration>.
+const defaultHistoryTimeout = 5 * time.Minute
+
+// Maximum allowed value for the per-request timeout query parameter, to keep
+// a misbehaving client from pinning a server goroutine indefinitely.
+const maxHistoryTimeout = 30 * time.Minute
+
+// historyHeartbeatInterval is the cadence at which streamed history responses
+// emit a no-op JSON object so the client knows the connection is still alive
+// even when matches are sparse.
+const historyHeartbeatInterval = 10 * time.Second
+
 // GetHistory returns historical log entries from rotated files.
+//
+// If the client sends Accept: application/x-ndjson, the response is streamed
+// as newline-delimited JSON: one LogEntry per line, periodic heartbeat lines
+// of {"_heartbeat":true}, and on mid-stream failure a final {"_error":"..."}
+// line. Otherwise the legacy buffered JSON envelope is returned.
 func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
@@ -180,6 +200,7 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	grepStr := query.Get("grep")
 	beforeStr := query.Get("before")
 	afterStr := query.Get("after")
+	timeoutStr := query.Get("timeout")
 
 	// Parse time range (required)
 	start, err := time.Parse(time.RFC3339, startStr)
@@ -220,9 +241,23 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		grepAfter, _ = strconv.Atoi(afterStr)
 	}
 
-	// Get historical entries
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	// Resolve per-request timeout
+	timeout := defaultHistoryTimeout
+	if timeoutStr != "" {
+		if d, err := time.ParseDuration(timeoutStr); err == nil && d > 0 {
+			if d > maxHistoryTimeout {
+				d = maxHistoryTimeout
+			}
+			timeout = d
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
+
+	if acceptsNDJSON(r) {
+		h.streamHistory(ctx, w, viewer, start, end, filter, limit, grepStr, grepBefore, grepAfter)
+		return
+	}
 
 	entries, err := viewer.GetHistoricalEntries(ctx, start, end, filter, limit, grepStr, grepBefore, grepAfter)
 	if err != nil {
@@ -236,6 +271,82 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		"start":   start,
 		"end":     end,
 	})
+}
+
+// acceptsNDJSON returns true if the client signalled a preference for
+// newline-delimited JSON via the Accept header.
+func acceptsNDJSON(r *http.Request) bool {
+	for _, v := range r.Header.Values("Accept") {
+		for _, part := range strings.Split(v, ",") {
+			mt := strings.TrimSpace(strings.SplitN(part, ";", 2)[0])
+			if strings.EqualFold(mt, "application/x-ndjson") || strings.EqualFold(mt, "application/ndjson") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// streamHistory writes the historical entries as NDJSON, flushing after every
+// line. Headers are sent immediately so the client never sits in
+// "awaiting headers" while the disk scan runs.
+func (h *LogHandler) streamHistory(ctx context.Context, w http.ResponseWriter, viewer *logs.Viewer, start, end time.Time, filter *logs.Filter, limit int, grep string, grepBefore, grepAfter int) {
+	flusher, _ := w.(http.Flusher)
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	// Heartbeats are guarded by writeMu — both the producer and the heartbeat
+	// goroutine call writeLine concurrently.
+	var writeMu sync.Mutex
+	enc := json.NewEncoder(w)
+	writeLine := func(v interface{}) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		if err := enc.Encode(v); err != nil {
+			return err
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return nil
+	}
+
+	// Heartbeat ticker. We stop it before returning so the goroutine exits.
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	defer stopHeartbeat()
+	go func() {
+		t := time.NewTicker(historyHeartbeatInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-t.C:
+				if err := writeLine(map[string]interface{}{"_heartbeat": true}); err != nil {
+					return // client gone
+				}
+			}
+		}
+	}()
+
+	streamErr := viewer.StreamHistoricalEntries(ctx, start, end, filter, limit, grep, grepBefore, grepAfter, func(e logs.LogEntry) error {
+		return writeLine(e)
+	})
+
+	stopHeartbeat()
+
+	if streamErr != nil && !isConnectionClosed(streamErr) {
+		// We've already written headers, so we can't change the status code.
+		// Surface the error as a final NDJSON line; the client checks for it.
+		_ = writeLine(map[string]interface{}{"_error": streamErr.Error()})
+		log.Printf("streamHistory: %v", streamErr)
+	}
 }
 
 // ListRotatedFiles returns available rotated log files.

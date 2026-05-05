@@ -908,3 +908,27 @@ func TestWriteErrorWithDetails(t *testing.T) {
 	assert.NotNil(t, resp.Error)
 	assert.NotNil(t, resp.Error.Details)
 }
+
+func TestAcceptsNDJSON(t *testing.T) {
+	cases := []struct {
+		header string
+		want   bool
+	}{
+		{"", false},
+		{"application/json", false},
+		{"application/x-ndjson", true},
+		{"application/ndjson", true},
+		{"APPLICATION/X-NDJSON", true},
+		{"text/html, application/x-ndjson;q=0.9", true},
+		{"application/x-ndjson; charset=utf-8", true},
+		{"application/json, text/plain", false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest("GET", "/", nil)
+		if tc.header != "" {
+			req.Header.Set("Accept", tc.header)
+		}
+		got := acceptsNDJSON(req)
+		assert.Equal(t, tc.want, got, "header=%q", tc.header)
+	}
+}

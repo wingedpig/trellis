@@ -36,10 +36,11 @@ var (
 )
 
 func main() {
-	// Parse global flags and filter them out. -config takes a value.
+	// Parse global flags and filter them out. -config and -timeout take a value.
 	var (
 		filteredArgs []string
 		configPath   string
+		timeoutStr   string
 	)
 	rawArgs := os.Args[1:]
 	for i := 0; i < len(rawArgs); i++ {
@@ -52,6 +53,11 @@ func main() {
 			configPath = rawArgs[i]
 		case strings.HasPrefix(arg, "-config="):
 			configPath = strings.TrimPrefix(arg, "-config=")
+		case arg == "-timeout" && i+1 < len(rawArgs):
+			i++
+			timeoutStr = rawArgs[i]
+		case strings.HasPrefix(arg, "-timeout="):
+			timeoutStr = strings.TrimPrefix(arg, "-timeout=")
 		default:
 			filteredArgs = append(filteredArgs, arg)
 		}
@@ -75,9 +81,6 @@ func main() {
 		}
 	}
 
-	// Initialize API client
-	apiClient = client.New(apiURL)
-
 	if len(filteredArgs) < 1 {
 		printUsage()
 		os.Exit(1)
@@ -85,6 +88,26 @@ func main() {
 
 	cmd := filteredArgs[0]
 	args := filteredArgs[1:]
+
+	// Build client options. Resolve timeout in this order:
+	//   1. explicit -timeout flag (any positive value)
+	//   2. command-specific default — `logs` history scans can take minutes,
+	//      so use 5m unless overridden
+	//   3. client library default (30s)
+	var clientOpts []client.Option
+	if timeoutStr != "" {
+		d, err := time.ParseDuration(timeoutStr)
+		if err != nil || d <= 0 {
+			fmt.Fprintf(os.Stderr, "Error: invalid -timeout value %q: %v\n", timeoutStr, err)
+			os.Exit(1)
+		}
+		clientOpts = append(clientOpts, client.WithTimeout(d))
+	} else if cmd == "logs" {
+		clientOpts = append(clientOpts, client.WithTimeout(5*time.Minute))
+	}
+
+	// Initialize API client
+	apiClient = client.New(apiURL, clientOpts...)
 
 	var err error
 	switch cmd {
@@ -153,11 +176,12 @@ func printUsage() {
 	fmt.Println(`trellis-ctl - Control a running Trellis instance
 
 Usage:
-  trellis-ctl [-json] [-config <path>] <command> [arguments]
+  trellis-ctl [-json] [-config <path>] [-timeout <duration>] <command> [arguments]
 
 Global Flags:
   -json            Output in JSON format
   -config <path>   Path to trellis.hjson (overrides auto-discovery)
+  -timeout <dur>   HTTP timeout (e.g., 30s, 5m). Default: 30s, or 5m for "logs"
 
 Connection:
   trellis-ctl resolves the API URL in this order:

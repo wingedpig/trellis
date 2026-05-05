@@ -841,6 +841,98 @@ func TestLogClient_GetHistoryEntries(t *testing.T) {
 	}
 }
 
+// TestLogClient_GetHistoryEntries_NDJSON verifies that the client consumes
+// the streaming NDJSON response shape: heartbeats are skipped, entries are
+// appended in order, and a final _error line is surfaced as an error.
+func TestLogClient_GetHistoryEntries_NDJSON(t *testing.T) {
+	server := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/logs/nginx/history" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Accept"); got != "application/x-ndjson" {
+			t.Errorf("Accept = %q, want application/x-ndjson", got)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		// heartbeat → entry → heartbeat → entry → done
+		lines := []string{
+			`{"_heartbeat":true}`,
+			`{"timestamp":"2026-04-28T10:00:00Z","level":"info","message":"first","raw":"first","source":"nginx","sequence":1}`,
+			`{"_heartbeat":true}`,
+			`{"timestamp":"2026-04-28T10:00:01Z","level":"error","message":"second","raw":"second","source":"nginx","sequence":2}`,
+		}
+		for _, l := range lines {
+			w.Write([]byte(l + "\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	})
+	defer server.Close()
+
+	c := New(server.URL)
+	result, err := c.Logs.GetHistoryEntries(context.Background(), "nginx", &LogEntriesOptions{
+		Since: time.Now().Add(-1 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetHistoryEntries() error = %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("got %d entries, want 2", len(result))
+	}
+	if result[0].Message != "first" || result[1].Message != "second" {
+		t.Errorf("unexpected entry messages: %+v", result)
+	}
+}
+
+func TestLogClient_GetHistoryEntries_NDJSONError(t *testing.T) {
+	server := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"timestamp":"2026-04-28T10:00:00Z","message":"partial","raw":"partial","source":"nginx","sequence":1}` + "\n"))
+		w.Write([]byte(`{"_error":"disk read failed"}` + "\n"))
+	})
+	defer server.Close()
+
+	c := New(server.URL)
+	result, err := c.Logs.GetHistoryEntries(context.Background(), "nginx", &LogEntriesOptions{
+		Since: time.Now().Add(-1 * time.Hour),
+	})
+	if err == nil {
+		t.Fatal("expected error from _error stream line")
+	}
+	if !strings.Contains(err.Error(), "disk read failed") {
+		t.Errorf("error = %v, want substring %q", err, "disk read failed")
+	}
+	// Entries received before the error should still be returned.
+	if len(result) != 1 || result[0].Message != "partial" {
+		t.Errorf("expected the partial entry to be returned, got %+v", result)
+	}
+}
+
+// TestLogClient_GetHistoryEntries_BufferedFallback exercises the back-compat
+// path where the server doesn't honor the streaming Accept header and
+// returns the legacy JSON envelope.
+func TestLogClient_GetHistoryEntries_BufferedFallback(t *testing.T) {
+	entries := []LogEntry{
+		{Message: "legacy", Level: "info"},
+	}
+	server := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		// Server intentionally responds with application/json, ignoring Accept.
+		apiHandler(map[string]interface{}{"entries": entries}, http.StatusOK)(w, r)
+	})
+	defer server.Close()
+
+	c := New(server.URL)
+	result, err := c.Logs.GetHistoryEntries(context.Background(), "nginx", &LogEntriesOptions{})
+	if err != nil {
+		t.Fatalf("GetHistoryEntries() error = %v", err)
+	}
+	if len(result) != 1 || result[0].Message != "legacy" {
+		t.Errorf("buffered fallback returned %+v", result)
+	}
+}
+
 func TestLogClient_GetHistory(t *testing.T) {
 	entries := []LogEntry{
 		{Message: "test entry", Level: "info"},

@@ -286,6 +286,41 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader) (j
 	return c.parseResponse(resp)
 }
 
+// stream issues a GET that the caller is expected to consume incrementally
+// (e.g., NDJSON). The HTTP client's per-request Timeout is bypassed by
+// substituting an unbounded client — the request context controls cancellation
+// instead, which is what callers want for long-running streams. The caller
+// must close resp.Body.
+func (c *Client) stream(ctx context.Context, path, accept string) (*http.Response, error) {
+	url := c.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Trellis-Version", c.version)
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+
+	streamClient := *c.httpClient
+	streamClient.Timeout = 0 // ctx governs
+
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		var apiResp apiResponse
+		if json.Unmarshal(body, &apiResp) == nil && apiResp.Error != nil {
+			return nil, apiResp.Error
+		}
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	return resp, nil
+}
+
 // parseResponse reads and parses an API response.
 func (c *Client) parseResponse(resp *http.Response) (json.RawMessage, error) {
 	respBody, err := io.ReadAll(resp.Body)

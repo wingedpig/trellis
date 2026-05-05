@@ -4,9 +4,32 @@
 package api
 
 import (
+	"crypto/tls"
 	"fmt"
 	"os"
 )
+
+// tlsVersionNames maps the raw uint16 TLS version codes from a ClientHello
+// to short human-readable strings ("1.2", "1.3", ...). Unknown versions are
+// rendered as their hex value.
+func tlsVersionNames(vs []uint16) []string {
+	out := make([]string, 0, len(vs))
+	for _, v := range vs {
+		switch v {
+		case tls.VersionTLS10:
+			out = append(out, "1.0")
+		case tls.VersionTLS11:
+			out = append(out, "1.1")
+		case tls.VersionTLS12:
+			out = append(out, "1.2")
+		case tls.VersionTLS13:
+			out = append(out, "1.3")
+		default:
+			out = append(out, fmt.Sprintf("0x%04x", v))
+		}
+	}
+	return out
+}
 
 // CheckTLSConfig validates TLS configuration and returns whether TLS should be enabled.
 // Returns an error if configuration is invalid.
