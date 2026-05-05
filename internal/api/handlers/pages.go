@@ -363,6 +363,9 @@ func (h *PageHandler) buildLogViewerList() []views.LogViewerInfo {
 
 	var logViewers []views.LogViewerInfo
 	for _, name := range h.logManager.List() {
+		if strings.HasPrefix(name, "svc:") {
+			continue
+		}
 		info := views.LogViewerInfo{
 			Name: name,
 		}
