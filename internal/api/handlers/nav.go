@@ -10,6 +10,7 @@ import (
 
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
@@ -22,6 +23,7 @@ type NavHandler struct {
 	serviceMgr    service.Manager
 	logMgr        *logs.Manager
 	claudeMgr     *claude.Manager
+	codexMgr      *codex.Manager
 	caseMgr       *cases.Manager
 	worktreeMgr   worktree.Manager
 	links         []LinkConfig
@@ -31,12 +33,13 @@ type NavHandler struct {
 }
 
 // NewNavHandler creates a new navigation handler.
-func NewNavHandler(terminalMgr terminal.Manager, serviceMgr service.Manager, logMgr *logs.Manager, claudeMgr *claude.Manager, caseMgr *cases.Manager, worktreeMgr worktree.Manager, links []LinkConfig, shortcuts []ShortcutConfig, notifications NotificationConfig, projectName string) *NavHandler {
+func NewNavHandler(terminalMgr terminal.Manager, serviceMgr service.Manager, logMgr *logs.Manager, claudeMgr *claude.Manager, codexMgr *codex.Manager, caseMgr *cases.Manager, worktreeMgr worktree.Manager, links []LinkConfig, shortcuts []ShortcutConfig, notifications NotificationConfig, projectName string) *NavHandler {
 	return &NavHandler{
 		terminalMgr:   terminalMgr,
 		serviceMgr:    serviceMgr,
 		logMgr:        logMgr,
 		claudeMgr:     claudeMgr,
+		codexMgr:      codexMgr,
 		caseMgr:       caseMgr,
 		worktreeMgr:   worktreeMgr,
 		links:         links,
@@ -101,6 +104,14 @@ type NavClaudeSession struct {
 	SessionID string `json:"sessionId"`
 }
 
+// NavCodexSession represents a Codex session option in navigation.
+type NavCodexSession struct {
+	URL       string `json:"url"`
+	Display   string `json:"display"`
+	Worktree  string `json:"worktree"`
+	SessionID string `json:"sessionId"`
+}
+
 // NavWorktree represents a worktree option in navigation.
 type NavWorktree struct {
 	URL     string `json:"url"`
@@ -117,6 +128,7 @@ type NavOptionsResponse struct {
 	Shortcuts      []NavShortcut      `json:"shortcuts"`
 	Notifications  NavNotifications   `json:"notifications"`
 	ClaudeSessions []NavClaudeSession `json:"claudeSessions"`
+	CodexSessions  []NavCodexSession  `json:"codexSessions"`
 	Cases          []NavCase          `json:"cases"`
 	Worktrees      []NavWorktree      `json:"worktrees"`
 }
@@ -130,6 +142,7 @@ func (h *NavHandler) Options(w http.ResponseWriter, r *http.Request) {
 		LogViewers:     []NavLogViewer{},
 		Shortcuts:      []NavShortcut{},
 		ClaudeSessions: []NavClaudeSession{},
+		CodexSessions:  []NavCodexSession{},
 		Cases:          []NavCase{},
 		Worktrees:      []NavWorktree{},
 		Notifications:  NavNotifications{
@@ -232,6 +245,19 @@ func (h *NavHandler) Options(w http.ResponseWriter, r *http.Request) {
 		for _, sess := range sessions {
 			resp.ClaudeSessions = append(resp.ClaudeSessions, NavClaudeSession{
 				URL:       "/claude/" + sess.WorktreeName + "/" + sess.ID,
+				Display:   "@" + sess.WorktreeName + " - " + sess.DisplayName,
+				Worktree:  sess.WorktreeName,
+				SessionID: sess.ID,
+			})
+		}
+	}
+
+	// Get Codex sessions
+	if h.codexMgr != nil {
+		sessions := h.codexMgr.AllSessions()
+		for _, sess := range sessions {
+			resp.CodexSessions = append(resp.CodexSessions, NavCodexSession{
+				URL:       "/codex/" + sess.WorktreeName + "/" + sess.ID,
 				Display:   "@" + sess.WorktreeName + " - " + sess.DisplayName,
 				Worktree:  sess.WorktreeName,
 				SessionID: sess.ID,

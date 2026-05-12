@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
@@ -29,6 +30,7 @@ import (
 // ClaudeHandler handles Claude Code WebSocket connections.
 type ClaudeHandler struct {
 	manager     *claude.Manager
+	codexMgr    *codex.Manager // for cross-agent operations like wrap-up capturing related codex sessions
 	worktreeMgr worktree.Manager
 	caseMgr     *cases.Manager
 	traceMgr    *trace.Manager
@@ -36,9 +38,10 @@ type ClaudeHandler struct {
 }
 
 // NewClaudeHandler creates a new Claude handler.
-func NewClaudeHandler(manager *claude.Manager, worktreeMgr worktree.Manager, caseMgr *cases.Manager, traceMgr *trace.Manager, bus events.EventBus) *ClaudeHandler {
+func NewClaudeHandler(manager *claude.Manager, codexMgr *codex.Manager, worktreeMgr worktree.Manager, caseMgr *cases.Manager, traceMgr *trace.Manager, bus events.EventBus) *ClaudeHandler {
 	return &ClaudeHandler{
 		manager:     manager,
+		codexMgr:    codexMgr,
 		worktreeMgr: worktreeMgr,
 		caseMgr:     caseMgr,
 		traceMgr:    traceMgr,
@@ -732,14 +735,72 @@ func (h *ClaudeHandler) ListTraceReports(w http.ResponseWriter, r *http.Request)
 
 // wrapUpRequest is the request body for the WrapUp handler.
 type wrapUpRequest struct {
-	SessionID     string           `json:"session_id"`
-	CaseID        string           `json:"case_id"`
-	Title         string           `json:"title"`
-	Kind          string           `json:"kind"`
-	CommitMessage string           `json:"commit_message"`
-	Files         []string         `json:"files"`
-	Links         []cases.CaseLink `json:"links"`
-	Traces        []string         `json:"traces"`
+	SessionID     string                 `json:"session_id"`
+	CaseID        string                 `json:"case_id"`
+	Title         string                 `json:"title"`
+	Kind          string                 `json:"kind"`
+	CommitMessage string                 `json:"commit_message"`
+	Files         []string               `json:"files"`
+	Links         []cases.CaseLink       `json:"links"`
+	Traces        []string               `json:"traces"`
+	RelatedSessions []relatedSessionRef  `json:"related_sessions,omitempty"`
+}
+
+// relatedSessionRef is an entry in WrapUpRequest.RelatedSessions: a session
+// from the *other* agent in the same worktree that the user wants captured
+// (transcript saved to the case, then session trashed) as part of this
+// wrap-up. Lets the user wrap up cross-agent collaborative work in one shot.
+type relatedSessionRef struct {
+	Agent     string `json:"agent"`      // "claude" | "codex"
+	SessionID string `json:"session_id"`
+}
+
+// captureRelatedSession exports a session from the named agent, saves its
+// transcript to the case, and trashes the session. Best-effort — failures
+// are logged but don't abort the wrap-up.
+//
+// Called from both ClaudeHandler.WrapUp and CodexHandler.WrapUp; that's why
+// it takes both managers and decides which one to use based on rel.Agent.
+func (h *ClaudeHandler) captureRelatedSessionImpl(rel relatedSessionRef, worktreePath, caseID string) {
+	captureRelatedSession(rel, worktreePath, caseID, h.caseMgr, h.manager, h.codexMgr)
+}
+
+func captureRelatedSession(rel relatedSessionRef, worktreePath, caseID string, caseMgr *cases.Manager, claudeMgr *claude.Manager, codexMgr *codex.Manager) {
+	if caseMgr == nil || rel.SessionID == "" {
+		return
+	}
+	switch rel.Agent {
+	case "claude":
+		if claudeMgr == nil {
+			return
+		}
+		t, err := claudeMgr.ExportSession(rel.SessionID, "full")
+		if err != nil {
+			return
+		}
+		title := t.Source.DisplayName
+		if title == "" {
+			title = "Session " + rel.SessionID[:min(8, len(rel.SessionID))]
+		}
+		refID := uuid.New().String()[:8]
+		_ = caseMgr.SaveTranscript(worktreePath, caseID, refID, title, rel.SessionID, t)
+		_ = claudeMgr.TrashSession(rel.SessionID)
+	case "codex":
+		if codexMgr == nil {
+			return
+		}
+		t, err := codexMgr.ExportSession(rel.SessionID, "full")
+		if err != nil {
+			return
+		}
+		title := t.Source.DisplayName
+		if title == "" {
+			title = "Session " + rel.SessionID[:min(8, len(rel.SessionID))]
+		}
+		refID := uuid.New().String()[:8]
+		_ = caseMgr.SaveCodexTranscript(worktreePath, caseID, refID, title, rel.SessionID, t)
+		_ = codexMgr.TrashSession(rel.SessionID)
+	}
 }
 
 // WrapUp orchestrates the full wrap-up workflow: create/update case, update transcripts, archive, commit.
@@ -844,6 +905,12 @@ func (h *ClaudeHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
 			refID := uuid.New().String()[:8]
 			_ = h.caseMgr.SaveTrace(wt.Path, caseID, refID, report)
 		}
+	}
+
+	// Step 4b: Capture related sessions from the *other* agent — their
+	// transcripts get saved to the same case and the sessions are trashed.
+	for _, rel := range req.RelatedSessions {
+		captureRelatedSession(rel, wt.Path, caseID, h.caseMgr, h.manager, h.codexMgr)
 	}
 
 	// Step 5: Archive case

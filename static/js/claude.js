@@ -1398,6 +1398,31 @@
             });
         });
         wrapper.appendChild(btn);
+
+        // Cross-agent quote button: copies a markdown blockquote with
+        // attribution so it pastes cleanly into the other agent's input.
+        var role = wrapper.classList.contains('claude-message-user') ? 'user' : 'assistant';
+        var qbtn = document.createElement('button');
+        qbtn.type = 'button';
+        qbtn.className = 'claude-message-copy';
+        qbtn.title = 'Copy as quote (paste into Codex)';
+        qbtn.innerHTML = '<i class="fa-solid fa-quote-right"></i>';
+        qbtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var text = getText() || '';
+            if (!text) return;
+            var header = '[from claude · ' + role + ']';
+            var lines = text.split('\n').map(function(l) { return '> ' + l; }).join('\n');
+            var quoted = '> ' + header + '\n' + lines;
+            (window.trellisCopyToClipboard || navigator.clipboard.writeText.bind(navigator.clipboard))(quoted).then(function() {
+                qbtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                setTimeout(function() {
+                    qbtn.innerHTML = '<i class="fa-solid fa-quote-right"></i>';
+                }, 1500);
+            });
+        });
+        wrapper.appendChild(qbtn);
     }
 
     function renderAssistantMessage(msg, toolResults, planWrites, pending, messageIndex) {

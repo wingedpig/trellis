@@ -13,17 +13,18 @@ const CaseSchema = "trellis.case.v1"
 
 // CaseJSON is the full manifest stored as case.json in each case directory.
 type CaseJSON struct {
-	Schema    string         `json:"schema"`
-	ID        string         `json:"id"`
-	Title     string         `json:"title"`
-	Kind      string         `json:"kind"`                // "bug", "feature", "investigation", "task"
-	Status    string         `json:"status"`              // "open", "resolved", "wontfix"
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	Worktree  CaseWorktree   `json:"worktree"`
-	Links     []CaseLink     `json:"links,omitempty"`
-	Evidence  []CaseEvidence `json:"evidence,omitempty"`
+	Schema    string          `json:"schema"`
+	ID        string          `json:"id"`
+	Title     string          `json:"title"`
+	Kind      string          `json:"kind"`                // "bug", "feature", "investigation", "task"
+	Status    string          `json:"status"`              // "open", "resolved", "wontfix"
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	Worktree  CaseWorktree    `json:"worktree"`
+	Links     []CaseLink      `json:"links,omitempty"`
+	Evidence  []CaseEvidence  `json:"evidence,omitempty"`
 	Claude    []CaseClaudeRef `json:"claude,omitempty"`
+	Codex     []CaseCodexRef  `json:"codex,omitempty"`
 }
 
 // CaseWorktree records which worktree/branch the case was created in.
@@ -50,6 +51,22 @@ type CaseEvidence struct {
 
 // CaseClaudeRef references a Claude transcript stored in the case.
 type CaseClaudeRef struct {
+	ID              string    `json:"id"`
+	Title           string    `json:"title"`
+	Filename        string    `json:"filename"`
+	ExportedAt      time.Time `json:"exported_at"`
+	MessageCount    int       `json:"message_count"`
+	Preview         string    `json:"preview,omitempty"`
+	SourceSessionID string    `json:"source_session_id,omitempty"`
+	// CurrentMessageCount is populated at render time, not persisted.
+	// 0 = not checked, -1 = session deleted, >0 = live message count.
+	CurrentMessageCount int `json:"-"`
+}
+
+// CaseCodexRef references a Codex transcript stored in the case.
+// Symmetric to CaseClaudeRef; codex transcripts live under codex_transcripts/
+// to avoid filename collisions with claude transcripts in the same case.
+type CaseCodexRef struct {
 	ID              string    `json:"id"`
 	Title           string    `json:"title"`
 	Filename        string    `json:"filename"`

@@ -105,7 +105,7 @@ type CaseDetailPage struct {
 
     {% if len(p.Case.Claude) > 0 %}
     <div class="case-section mb-4">
-        <h4><i class="fa-solid fa-robot"></i> Transcripts</h4>
+        <h4><i class="fa-solid fa-robot"></i> Claude Transcripts</h4>
         <div class="list-group">
             {% for _, ref := range p.Case.Claude %}
             <div class="list-group-item d-flex justify-content-between align-items-center">
@@ -135,6 +135,47 @@ type CaseDetailPage struct {
                     </button>
                     {% endif %}
                     <button class="btn btn-outline-primary btn-sm" onclick="continueTranscript('{%s JSAttr(ref.ID) %}')">
+                        <i class="fa-solid fa-play"></i> Continue
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if len(p.Case.Codex) > 0 %}
+    <div class="case-section mb-4">
+        <h4><i class="fa-solid fa-microchip"></i> Codex Transcripts</h4>
+        <div class="list-group">
+            {% for _, ref := range p.Case.Codex %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <div>
+                        <strong>{%s ref.Title %}</strong>
+                        <span class="text-muted ms-2">{%d ref.MessageCount %} messages</span>
+                        <span class="text-muted ms-2">{%s ref.ExportedAt.Format("2006-01-02 15:04") %}</span>
+                        {% if ref.CurrentMessageCount > ref.MessageCount %}
+                        <span class="text-warning ms-2" title="The live session has more messages than this saved transcript">
+                            <i class="fa-solid fa-circle-exclamation"></i> {%d ref.CurrentMessageCount - ref.MessageCount %} new messages
+                        </span>
+                        {% elseif ref.CurrentMessageCount == -1 %}
+                        <span class="text-muted ms-2" title="The source session has been deleted">
+                            <i class="fa-solid fa-circle-xmark"></i> session deleted
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if ref.Preview != "" %}
+                    <div class="text-muted small text-truncate" style="max-width: 600px;">{%s ref.Preview %}</div>
+                    {% endif %}
+                </div>
+                <div class="d-flex gap-1">
+                    {% if ref.CurrentMessageCount > ref.MessageCount %}
+                    <button class="btn btn-outline-warning btn-sm" onclick="updateCodexTranscript('{%s JSAttr(ref.ID) %}')" title="Update transcript with latest messages">
+                        <i class="fa-solid fa-rotate"></i> Update
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-outline-primary btn-sm" onclick="continueCodexTranscript('{%s JSAttr(ref.ID) %}')">
                         <i class="fa-solid fa-play"></i> Continue
                     </button>
                 </div>
@@ -401,6 +442,39 @@ function continueTranscript(claudeId) {
     .then(data => {
         const sess = data.data || data;
         window.location.href = '/claude/' + encodeURIComponent(WORKTREE_NAME) + '/' + sess.id;
+    })
+    .catch(err => alert('Continue failed: ' + err));
+}
+
+function updateCodexTranscript(codexId) {
+    var btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Updating...';
+    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(CASE_ID) + '/codex-transcript/' + encodeURIComponent(codexId), {
+        method: 'PUT'
+    })
+    .then(resp => {
+        if (!resp.ok) return resp.json().then(d => { throw new Error(d.error?.message || 'Update failed'); });
+        window.location.reload();
+    })
+    .catch(err => alert('Update failed: ' + err))
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Update';
+    });
+}
+
+function continueCodexTranscript(codexId) {
+    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(CASE_ID) + '/codex-transcript/' + encodeURIComponent(codexId) + '/continue', {
+        method: 'POST'
+    })
+    .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Continue failed'); });
+        return r.json();
+    })
+    .then(data => {
+        const sess = data.data || data;
+        window.location.href = '/codex/' + encodeURIComponent(WORKTREE_NAME) + '/' + sess.id;
     })
     .catch(err => alert('Continue failed: ' + err));
 }

@@ -37,7 +37,7 @@ function showWrapUpModal() {
 
     // Fetch git status
     promises.push(
-        fetch('/api/v1/claude/' + encodeURIComponent(WRAPUP_WORKTREE) + '/git-status')
+        fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/git-status')
         .then(function(r) { return r.json(); })
         .then(function(d) { return d.data || d; })
     );
@@ -45,7 +45,7 @@ function showWrapUpModal() {
     // If we have a session ID and no existing case, check for linked case
     if (WRAPUP_SESSION_ID && !existingCase) {
         promises.push(
-            fetch('/api/v1/claude/' + encodeURIComponent(WRAPUP_WORKTREE) + '/session-case?session_id=' + encodeURIComponent(WRAPUP_SESSION_ID))
+            fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/session-case?session_id=' + encodeURIComponent(WRAPUP_SESSION_ID))
             .then(function(r) {
                 if (!r.ok) return null;
                 return r.json().then(function(d) { return d.data || d; });
@@ -58,9 +58,20 @@ function showWrapUpModal() {
 
     // Fetch trace reports
     promises.push(
-        fetch('/api/v1/claude/' + encodeURIComponent(WRAPUP_WORKTREE) + '/trace-reports')
+        fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/trace-reports')
         .then(function(r) { return r.json(); })
         .then(function(d) { return (d.data || d).reports || []; })
+        .catch(function() { return []; })
+    );
+
+    // Fetch the *other* agent's open sessions for this worktree so the user
+    // can opt to wrap up cross-agent collaborative work in one go.
+    var thisAgent = (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT) ? WRAPUP_AGENT : 'claude';
+    var otherAgent = thisAgent === 'codex' ? 'claude' : 'codex';
+    promises.push(
+        fetch('/api/v1/' + otherAgent + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/sessions')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) { return d ? (d.data || d) : []; })
         .catch(function() { return []; })
     );
 
@@ -68,6 +79,7 @@ function showWrapUpModal() {
         var status = results[0];
         var linkedCase = results[1];
         var traceReports = results[2];
+        var relatedSessions = results[3] || [];
 
         if (linkedCase) {
             existingCase = linkedCase;
@@ -100,6 +112,9 @@ function showWrapUpModal() {
         // Render traces
         var sessionCreated = (typeof WRAPUP_SESSION_CREATED !== 'undefined' && WRAPUP_SESSION_CREATED) ? WRAPUP_SESSION_CREATED : null;
         renderWrapUpTraces(traceReports, sessionCreated);
+
+        // Render related (other-agent) sessions for the same worktree.
+        renderWrapUpRelatedSessions(relatedSessions, otherAgent);
 
         // Pre-fill commit message
         updateWrapUpCommitMsg();
@@ -177,6 +192,51 @@ function renderWrapUpTraces(reports, sessionCreatedAt) {
     el.innerHTML = html;
 }
 
+function renderWrapUpRelatedSessions(sessions, otherAgent) {
+    var section = document.getElementById('wrapUpRelatedSection');
+    var el = document.getElementById('wrapUpRelatedList');
+    var label = document.getElementById('wrapUpRelatedLabel');
+    if (!section || !el) return;
+
+    if (!sessions || sessions.length === 0) {
+        section.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+    section.style.display = '';
+    if (label) {
+        var pretty = otherAgent === 'codex' ? 'Codex' : 'Claude';
+        label.textContent = 'Related ' + pretty + ' sessions to archive';
+    }
+
+    // Skip the session being wrapped up itself (shouldn't appear under the
+    // *other* agent anyway, but guard against weirdness).
+    var ownID = (typeof WRAPUP_SESSION_ID !== 'undefined' && WRAPUP_SESSION_ID) ? WRAPUP_SESSION_ID : '';
+
+    var html = '';
+    sessions.forEach(function(s) {
+        if (!s || !s.id || s.id === ownID) return;
+        var id = 'wrapup-related-' + btoa(s.id).replace(/[^a-zA-Z0-9]/g, '');
+        var lastInput = s.last_user_input ? new Date(s.last_user_input).toLocaleString() : '(no activity)';
+        var displayName = s.display_name || '(unnamed)';
+        html += '<div class="form-check">' +
+            '<input class="form-check-input" type="checkbox" id="' + id + '" value="' + escapeWrapUpAttr(s.id) +
+                '" data-agent="' + escapeWrapUpAttr(otherAgent) + '">' +
+            '<label class="form-check-label" for="' + id + '">' +
+            '<i class="fa-solid fa-message me-1"></i>' +
+            escapeWrapUpHtml(displayName) +
+            '<small class="text-muted ms-2">' + escapeWrapUpHtml(lastInput) + '</small>' +
+            '</label></div>';
+    });
+
+    if (!html) {
+        section.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+    el.innerHTML = html;
+}
+
 function slugify(s) {
     s = s.toLowerCase();
     s = s.replace(/[\/_.]/g, '-');
@@ -247,6 +307,12 @@ function wrapUpConfirm() {
         traces.push(cb.value);
     });
 
+    // Gather selected related sessions (other-agent sessions to archive).
+    var relatedSessions = [];
+    document.querySelectorAll('#wrapUpRelatedList .form-check-input:checked').forEach(function(cb) {
+        relatedSessions.push({ agent: cb.dataset.agent, session_id: cb.value });
+    });
+
     var commitMsg = document.getElementById('wrapUpCommitMsg').value.trim();
     if (!commitMsg) {
         errEl.textContent = 'Commit message is required.';
@@ -258,7 +324,8 @@ function wrapUpConfirm() {
         commit_message: commitMsg,
         files: files,
         links: links,
-        traces: traces
+        traces: traces,
+        related_sessions: relatedSessions
     };
 
     if (modal.dataset.isNewCase === 'true') {
@@ -280,7 +347,7 @@ function wrapUpConfirm() {
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Wrapping up...';
 
-    fetch('/api/v1/claude/' + encodeURIComponent(WRAPUP_WORKTREE) + '/wrap-up', {
+    fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/wrap-up', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)

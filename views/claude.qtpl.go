@@ -319,6 +319,19 @@ window.WRAPUP_CASE = null;
                     <div id="wrapUpTraceList" class="wrap-up-file-list"></div>
                 </div>
 
+                <!-- Related sessions from the other agent -->
+                <div class="mb-3" id="wrapUpRelatedSection" style="display:none">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1" id="wrapUpRelatedLabel">Related sessions to archive</label>
+                        <span class="small">
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpRelatedList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('wrapUpRelatedList', false); return false;">none</a>
+                        </span>
+                    </div>
+                    <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
+                </div>
+
                 <!-- Commit message -->
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
@@ -353,36 +366,36 @@ window.WRAPUP_CASE = null;
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:317
+//line views/claude.qtpl:330
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:317
+//line views/claude.qtpl:330
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 }
 
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 }
 
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 	return qs422016
-//line views/claude.qtpl:318
+//line views/claude.qtpl:331
 }

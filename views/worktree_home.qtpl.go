@@ -15,40 +15,44 @@ import "github.com/wingedpig/trellis/internal/cases"
 import "github.com/wingedpig/trellis/internal/claude"
 
 //line views/worktree_home.qtpl:6
+import "github.com/wingedpig/trellis/internal/codex"
+
+//line views/worktree_home.qtpl:7
 import "github.com/wingedpig/trellis/internal/terminal"
 
-//line views/worktree_home.qtpl:8
+//line views/worktree_home.qtpl:9
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line views/worktree_home.qtpl:8
+//line views/worktree_home.qtpl:9
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line views/worktree_home.qtpl:9
+//line views/worktree_home.qtpl:10
 type WorktreeHomePage struct {
 	BasePage
 	WorktreeName    string
 	Branch          string
 	Cases           []cases.CaseInfo
 	ClaudeSessions  []*claude.SessionInfo
+	CodexSessions   []*codex.SessionInfo
 	Terminals       []terminal.WindowInfo
 	TmuxSessionName string // Empty if no tmux session exists
 }
 
-//line views/worktree_home.qtpl:20
+//line views/worktree_home.qtpl:22
 func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/worktree_home.qtpl:20
+//line views/worktree_home.qtpl:22
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:21
+//line views/worktree_home.qtpl:23
 	p.StreamHeader(qw422016)
-//line views/worktree_home.qtpl:21
+//line views/worktree_home.qtpl:23
 	qw422016.N().S(`
 
 <link href="/static/css/worktree_home.css" rel="stylesheet">
@@ -57,24 +61,24 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 <div class="worktree-home">
     <div class="worktree-header mb-4">
         <h2><i class="fa-solid fa-folder-tree"></i> `)
-//line views/worktree_home.qtpl:28
+//line views/worktree_home.qtpl:30
 	qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:28
+//line views/worktree_home.qtpl:30
 	qw422016.N().S(`</h2>
         `)
-//line views/worktree_home.qtpl:29
+//line views/worktree_home.qtpl:31
 	if p.Branch != "" {
-//line views/worktree_home.qtpl:29
+//line views/worktree_home.qtpl:31
 		qw422016.N().S(`
         <span class="badge bg-secondary"><i class="fa-solid fa-code-branch"></i> `)
-//line views/worktree_home.qtpl:30
+//line views/worktree_home.qtpl:32
 		qw422016.E().S(p.Branch)
-//line views/worktree_home.qtpl:30
+//line views/worktree_home.qtpl:32
 		qw422016.N().S(`</span>
         `)
-//line views/worktree_home.qtpl:31
+//line views/worktree_home.qtpl:33
 	}
-//line views/worktree_home.qtpl:31
+//line views/worktree_home.qtpl:33
 	qw422016.N().S(`
     </div>
 
@@ -93,74 +97,74 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:48
+//line views/worktree_home.qtpl:50
 	if len(p.Cases) == 0 {
-//line views/worktree_home.qtpl:48
+//line views/worktree_home.qtpl:50
 		qw422016.N().S(`
         <div class="empty-state" id="casesEmptyState">
             <p class="text-muted">No open cases. Create one to track a unit of work.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:52
+//line views/worktree_home.qtpl:54
 	} else {
-//line views/worktree_home.qtpl:52
+//line views/worktree_home.qtpl:54
 		qw422016.N().S(`
         <div class="list-group" id="casesList">
             `)
-//line views/worktree_home.qtpl:54
+//line views/worktree_home.qtpl:56
 		for _, c := range p.Cases {
-//line views/worktree_home.qtpl:54
+//line views/worktree_home.qtpl:56
 			qw422016.N().S(`
             <div class="list-group-item case-list-item">
                 <div class="case-info">
                     <a href="/case/`)
-//line views/worktree_home.qtpl:57
+//line views/worktree_home.qtpl:59
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:57
+//line views/worktree_home.qtpl:59
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:57
+//line views/worktree_home.qtpl:59
 			qw422016.E().S(c.ID)
-//line views/worktree_home.qtpl:57
+//line views/worktree_home.qtpl:59
 			qw422016.N().S(`" class="text-decoration-none">
                         <span class="badge case-kind-`)
-//line views/worktree_home.qtpl:58
+//line views/worktree_home.qtpl:60
 			qw422016.E().S(c.Kind)
-//line views/worktree_home.qtpl:58
+//line views/worktree_home.qtpl:60
 			qw422016.N().S(` me-1">`)
-//line views/worktree_home.qtpl:58
+//line views/worktree_home.qtpl:60
 			qw422016.E().S(c.Kind)
-//line views/worktree_home.qtpl:58
+//line views/worktree_home.qtpl:60
 			qw422016.N().S(`</span>
                         `)
-//line views/worktree_home.qtpl:59
+//line views/worktree_home.qtpl:61
 			qw422016.E().S(c.Title)
-//line views/worktree_home.qtpl:59
+//line views/worktree_home.qtpl:61
 			qw422016.N().S(`
                     </a>
                     <span class="case-date">`)
-//line views/worktree_home.qtpl:61
+//line views/worktree_home.qtpl:63
 			qw422016.E().S(c.CreatedAt.Format("2006-01-02"))
-//line views/worktree_home.qtpl:61
+//line views/worktree_home.qtpl:63
 			qw422016.N().S(`</span>
                 </div>
                 <button class="btn btn-outline-warning btn-sm" onclick="archiveCaseFromList('`)
-//line views/worktree_home.qtpl:63
+//line views/worktree_home.qtpl:65
 			qw422016.E().S(JSAttr(c.ID))
-//line views/worktree_home.qtpl:63
+//line views/worktree_home.qtpl:65
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-box-archive"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:67
+//line views/worktree_home.qtpl:69
 		}
-//line views/worktree_home.qtpl:67
+//line views/worktree_home.qtpl:69
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:69
+//line views/worktree_home.qtpl:71
 	}
-//line views/worktree_home.qtpl:69
+//line views/worktree_home.qtpl:71
 	qw422016.N().S(`
 
         <div id="archivedCasesContainer" style="display:none;" class="mt-3">
@@ -187,101 +191,214 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:94
+//line views/worktree_home.qtpl:96
 	if len(p.ClaudeSessions) == 0 {
-//line views/worktree_home.qtpl:94
+//line views/worktree_home.qtpl:96
 		qw422016.N().S(`
         <div class="empty-state">
             <p class="text-muted">No Claude sessions yet. Create one to get started.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:98
+//line views/worktree_home.qtpl:100
 	} else {
-//line views/worktree_home.qtpl:98
+//line views/worktree_home.qtpl:100
 		qw422016.N().S(`
         <div class="list-group">
             `)
-//line views/worktree_home.qtpl:100
+//line views/worktree_home.qtpl:102
 		for _, sess := range p.ClaudeSessions {
-//line views/worktree_home.qtpl:100
+//line views/worktree_home.qtpl:102
 			qw422016.N().S(`
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="/claude/`)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:104
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:104
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:104
 			qw422016.E().S(sess.ID)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:104
 			qw422016.N().S(`" class="text-decoration-none flex-grow-1 d-flex align-items-center">
                     <i class="fa-solid fa-message"></i>
                     <span class="ms-1">`)
-//line views/worktree_home.qtpl:104
+//line views/worktree_home.qtpl:106
 			qw422016.E().S(sess.DisplayName)
-//line views/worktree_home.qtpl:104
+//line views/worktree_home.qtpl:106
 			qw422016.N().S(`</span>
                     `)
-//line views/worktree_home.qtpl:105
+//line views/worktree_home.qtpl:107
 			if !sess.LastUserInput.IsZero() {
-//line views/worktree_home.qtpl:105
+//line views/worktree_home.qtpl:107
 				qw422016.N().S(`
                     <span class="text-muted ms-2 small">`)
-//line views/worktree_home.qtpl:106
+//line views/worktree_home.qtpl:108
 				qw422016.E().S(FormatRelativeTime(sess.LastUserInput))
-//line views/worktree_home.qtpl:106
+//line views/worktree_home.qtpl:108
 				qw422016.N().S(`</span>
                     `)
-//line views/worktree_home.qtpl:107
+//line views/worktree_home.qtpl:109
 			}
-//line views/worktree_home.qtpl:107
+//line views/worktree_home.qtpl:109
 			qw422016.N().S(`
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameClaudeSession('`)
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:111
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:111
 			qw422016.N().S(`', '`)
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:111
 			qw422016.E().S(JSAttr(sess.DisplayName))
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:111
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Move to new worktree" onclick="showMoveSessionModal('`)
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:114
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:114
 			qw422016.N().S(`', '`)
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:114
 			qw422016.E().S(JSAttr(sess.DisplayName))
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:114
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i>
                 </button>
                 <button class="btn btn-outline-danger btn-sm" onclick="deleteClaudeSession('`)
-//line views/worktree_home.qtpl:115
+//line views/worktree_home.qtpl:117
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:115
+//line views/worktree_home.qtpl:117
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:119
+//line views/worktree_home.qtpl:121
 		}
-//line views/worktree_home.qtpl:119
+//line views/worktree_home.qtpl:121
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:121
+//line views/worktree_home.qtpl:123
 	}
-//line views/worktree_home.qtpl:121
+//line views/worktree_home.qtpl:123
 	qw422016.N().S(`
 
         <div id="trashedSessionsContainer" style="display:none;" class="mt-3">
             <h6 class="text-muted">Trash</h6>
             <div id="trashedSessionsList" class="list-group"></div>
+        </div>
+    </div>
+
+    <!-- Codex Sessions -->
+    <div class="section mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="fa-solid fa-microchip"></i> Codex Sessions</h4>
+            <div>
+                <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" onclick="toggleTrashedCodexSessions()">
+                    <i class="fa-solid fa-trash-can"></i> Show Trash
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="showNewCodexModal()">
+                    <i class="fa-solid fa-plus"></i> New Session
+                </button>
+            </div>
+        </div>
+
+        `)
+//line views/worktree_home.qtpl:145
+	if len(p.CodexSessions) == 0 {
+//line views/worktree_home.qtpl:145
+		qw422016.N().S(`
+        <div class="empty-state">
+            <p class="text-muted">No Codex sessions yet. Create one to get started.</p>
+        </div>
+        `)
+//line views/worktree_home.qtpl:149
+	} else {
+//line views/worktree_home.qtpl:149
+		qw422016.N().S(`
+        <div class="list-group">
+            `)
+//line views/worktree_home.qtpl:151
+		for _, sess := range p.CodexSessions {
+//line views/worktree_home.qtpl:151
+			qw422016.N().S(`
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="/codex/`)
+//line views/worktree_home.qtpl:153
+			qw422016.E().S(p.WorktreeName)
+//line views/worktree_home.qtpl:153
+			qw422016.N().S(`/`)
+//line views/worktree_home.qtpl:153
+			qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:153
+			qw422016.N().S(`" class="text-decoration-none flex-grow-1 d-flex align-items-center">
+                    <i class="fa-solid fa-message"></i>
+                    <span class="ms-1">`)
+//line views/worktree_home.qtpl:155
+			qw422016.E().S(sess.DisplayName)
+//line views/worktree_home.qtpl:155
+			qw422016.N().S(`</span>
+                    `)
+//line views/worktree_home.qtpl:156
+			if !sess.LastUserInput.IsZero() {
+//line views/worktree_home.qtpl:156
+				qw422016.N().S(`
+                    <span class="text-muted ms-2 small">`)
+//line views/worktree_home.qtpl:157
+				qw422016.E().S(FormatRelativeTime(sess.LastUserInput))
+//line views/worktree_home.qtpl:157
+				qw422016.N().S(`</span>
+                    `)
+//line views/worktree_home.qtpl:158
+			}
+//line views/worktree_home.qtpl:158
+			qw422016.N().S(`
+                </a>
+                <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameCodexSession('`)
+//line views/worktree_home.qtpl:160
+			qw422016.E().S(JSAttr(sess.ID))
+//line views/worktree_home.qtpl:160
+			qw422016.N().S(`', '`)
+//line views/worktree_home.qtpl:160
+			qw422016.E().S(JSAttr(sess.DisplayName))
+//line views/worktree_home.qtpl:160
+			qw422016.N().S(`')">
+                    <i class="fa-solid fa-pencil"></i>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Move to new worktree" onclick="showMoveCodexSessionModal('`)
+//line views/worktree_home.qtpl:163
+			qw422016.E().S(JSAttr(sess.ID))
+//line views/worktree_home.qtpl:163
+			qw422016.N().S(`', '`)
+//line views/worktree_home.qtpl:163
+			qw422016.E().S(JSAttr(sess.DisplayName))
+//line views/worktree_home.qtpl:163
+			qw422016.N().S(`')">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteCodexSession('`)
+//line views/worktree_home.qtpl:166
+			qw422016.E().S(JSAttr(sess.ID))
+//line views/worktree_home.qtpl:166
+			qw422016.N().S(`')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+            `)
+//line views/worktree_home.qtpl:170
+		}
+//line views/worktree_home.qtpl:170
+		qw422016.N().S(`
+        </div>
+        `)
+//line views/worktree_home.qtpl:172
+	}
+//line views/worktree_home.qtpl:172
+	qw422016.N().S(`
+
+        <div id="trashedCodexSessionsContainer" style="display:none;" class="mt-3">
+            <h6 class="text-muted">Trash</h6>
+            <div id="trashedCodexSessionsList" class="list-group"></div>
         </div>
     </div>
 
@@ -295,66 +412,66 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:138
+//line views/worktree_home.qtpl:189
 	if len(p.Terminals) == 0 {
-//line views/worktree_home.qtpl:138
+//line views/worktree_home.qtpl:189
 		qw422016.N().S(`
         <div class="empty-state">
             <p class="text-muted">No terminal windows. Create one to get started.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:142
+//line views/worktree_home.qtpl:193
 	} else {
-//line views/worktree_home.qtpl:142
+//line views/worktree_home.qtpl:193
 		qw422016.N().S(`
         <div class="list-group">
             `)
-//line views/worktree_home.qtpl:144
+//line views/worktree_home.qtpl:195
 		for _, win := range p.Terminals {
-//line views/worktree_home.qtpl:144
+//line views/worktree_home.qtpl:195
 			qw422016.N().S(`
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="/terminal/local/`)
-//line views/worktree_home.qtpl:146
+//line views/worktree_home.qtpl:197
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:146
+//line views/worktree_home.qtpl:197
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:146
+//line views/worktree_home.qtpl:197
 			qw422016.E().S(win.Name)
-//line views/worktree_home.qtpl:146
+//line views/worktree_home.qtpl:197
 			qw422016.N().S(`" class="text-decoration-none flex-grow-1">
                     <i class="fa-solid fa-terminal"></i>
                     `)
-//line views/worktree_home.qtpl:148
+//line views/worktree_home.qtpl:199
 			qw422016.E().S(win.Name)
-//line views/worktree_home.qtpl:148
+//line views/worktree_home.qtpl:199
 			qw422016.N().S(`
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameTerminal('`)
-//line views/worktree_home.qtpl:150
+//line views/worktree_home.qtpl:201
 			qw422016.E().S(JSAttr(win.Name))
-//line views/worktree_home.qtpl:150
+//line views/worktree_home.qtpl:201
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
                 <button class="btn btn-outline-danger btn-sm" onclick="deleteTerminal('`)
-//line views/worktree_home.qtpl:153
+//line views/worktree_home.qtpl:204
 			qw422016.E().S(JSAttr(win.Name))
-//line views/worktree_home.qtpl:153
+//line views/worktree_home.qtpl:204
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:157
+//line views/worktree_home.qtpl:208
 		}
-//line views/worktree_home.qtpl:157
+//line views/worktree_home.qtpl:208
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:159
+//line views/worktree_home.qtpl:210
 	}
-//line views/worktree_home.qtpl:159
+//line views/worktree_home.qtpl:210
 	qw422016.N().S(`
     </div>
 
@@ -378,6 +495,29 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="createClaudeSession()">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Codex Session Modal -->
+<div class="modal fade" id="newCodexModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-microchip"></i> New Codex Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="codexSessionName" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="codexSessionName" placeholder="Session 1" autofocus>
+                    <div class="form-text">Leave blank for auto-naming.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createCodexSession()">Create</button>
             </div>
         </div>
     </div>
@@ -517,24 +657,24 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script>
 // Top-level declarations use `)
-//line views/worktree_home.qtpl:159
+//line views/worktree_home.qtpl:210
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:159
+//line views/worktree_home.qtpl:210
 	qw422016.N().S(`var`)
-//line views/worktree_home.qtpl:159
+//line views/worktree_home.qtpl:210
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:159
+//line views/worktree_home.qtpl:210
 	qw422016.N().S(` so this script can be re-executed when the
 // SPA re-fetches this page (e.g. after LRU eviction from the page cache).
 var WORKTREE_NAME = '`)
-//line views/worktree_home.qtpl:322
+//line views/worktree_home.qtpl:396
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/worktree_home.qtpl:322
+//line views/worktree_home.qtpl:396
 	qw422016.N().S(`';
 
-var newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
+var newTerminalModal, newClaudeModal, newCodexModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
 var renameConfirmCallback = null;
-var moveSessionState = { sessionId: null };
+var moveSessionState = { sessionId: null, agent: 'claude' };
 
 // Shared helper for select-all/none checkbox toggles.
 window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
@@ -560,6 +700,13 @@ function initWorktreeHomePage() {
         if (e.key === 'Enter') { e.preventDefault(); createCase(); }
     });
     newClaudeModal = new bootstrap.Modal(document.getElementById('newClaudeModal'));
+    newCodexModal = new bootstrap.Modal(document.getElementById('newCodexModal'));
+    document.getElementById('newCodexModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('codexSessionName').focus();
+    });
+    document.getElementById('newCodexModal').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); createCodexSession(); }
+    });
     document.getElementById('newClaudeModal').addEventListener('shown.bs.modal', function() {
         document.getElementById('claudeSessionName').focus();
     });
@@ -599,6 +746,119 @@ if (document.readyState === 'loading') {
 function showNewClaudeModal() {
     document.getElementById('claudeSessionName').value = '';
     newClaudeModal.show();
+}
+
+function showNewCodexModal() {
+    document.getElementById('codexSessionName').value = '';
+    newCodexModal.show();
+}
+
+function createCodexSession() {
+    const name = document.getElementById('codexSessionName').value.trim();
+    const body = name ? JSON.stringify({display_name: name}) : '{}';
+    fetch('/api/v1/codex/' + encodeURIComponent(WORKTREE_NAME) + '/sessions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body
+    })
+    .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Create failed'); });
+        return r.json();
+    })
+    .then(data => {
+        const sess = data.data || data;
+        TrellisNav.pushToHistory(window.location.pathname);
+        window.location.href = '/codex/' + encodeURIComponent(WORKTREE_NAME) + '/' + sess.id;
+    })
+    .catch(err => alert('Failed to create session: ' + err));
+}
+
+function deleteCodexSession(sessionId) {
+    fetch('/api/v1/codex/sessions/' + sessionId, { method: 'DELETE' })
+    .then(() => window.location.reload())
+    .catch(err => alert('Failed to trash session: ' + err));
+}
+
+function renameCodexSession(sessionId, currentName) {
+    document.getElementById('renameModalTitle').textContent = 'Rename Codex Session';
+    document.getElementById('renameInput').value = currentName;
+    const btn = document.getElementById('renameConfirmBtn');
+    btn.onclick = function() {
+        const name = document.getElementById('renameInput').value.trim();
+        if (!name) return;
+        fetch('/api/v1/codex/sessions/' + sessionId, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({display_name: name})
+        })
+        .then(r => { if (!r.ok) throw new Error('Rename failed'); window.location.reload(); })
+        .catch(err => alert('Failed: ' + err));
+    };
+    renameModal.show();
+}
+
+let codexTrashedVisible = false;
+function toggleTrashedCodexSessions() {
+    const container = document.getElementById('trashedCodexSessionsContainer');
+    const btn = document.getElementById('showCodexTrashBtn');
+    if (codexTrashedVisible) {
+        container.style.display = 'none';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Show Trash';
+        codexTrashedVisible = false;
+        return;
+    }
+    fetch('/api/v1/codex/' + encodeURIComponent(WORKTREE_NAME) + '/sessions/trash')
+    .then(r => r.json())
+    .then(data => {
+        const sessions = data.data || data;
+        const list = document.getElementById('trashedCodexSessionsList');
+        list.innerHTML = '';
+        if (!sessions || sessions.length === 0) {
+            list.innerHTML = '<p class="text-muted p-2">No trashed sessions.</p>';
+        } else {
+            sessions.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                const name = document.createElement('span');
+                name.className = 'flex-grow-1';
+                name.innerHTML = '<i class="fa-solid fa-message"></i> <span class="ms-1">' + escapeHtml(s.display_name) + '</span>';
+                item.appendChild(name);
+                const restoreBtn = document.createElement('button');
+                restoreBtn.className = 'btn btn-outline-success btn-sm me-1';
+                restoreBtn.innerHTML = '<i class="fa-solid fa-trash-arrow-up"></i>';
+                restoreBtn.onclick = function() { restoreCodexSession(s.id); };
+                item.appendChild(restoreBtn);
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-outline-danger btn-sm';
+                deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                deleteBtn.onclick = function() { permanentDeleteCodexSession(s.id); };
+                item.appendChild(deleteBtn);
+                list.appendChild(item);
+            });
+        }
+        container.style.display = 'block';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Hide Trash';
+        codexTrashedVisible = true;
+    })
+    .catch(err => alert('Failed to load trashed sessions: ' + err));
+}
+
+function restoreCodexSession(sessionId) {
+    fetch('/api/v1/codex/sessions/' + sessionId + '/restore', { method: 'POST' })
+    .then(() => window.location.reload())
+    .catch(err => alert('Failed to restore session: ' + err));
+}
+
+function permanentDeleteCodexSession(sessionId) {
+    if (!confirm('Permanently delete this session? This cannot be undone.')) return;
+    fetch('/api/v1/codex/sessions/' + sessionId + '/permanent', { method: 'DELETE' })
+    .then(() => {
+        if (codexTrashedVisible) {
+            toggleTrashedCodexSessions();
+            toggleTrashedCodexSessions();
+        }
+    })
+    .catch(err => alert('Failed to delete session: ' + err));
 }
 
 function showNewTerminalModal() {
@@ -731,8 +991,12 @@ function deleteTerminal(windowName) {
     .catch(err => alert('Failed to delete terminal: ' + err));
 }
 
-function showMoveSessionModal(sessionId, sessionName) {
+function showMoveSessionModal(sessionId, sessionName) { showMoveSessionModalFor('claude', sessionId, sessionName); }
+function showMoveCodexSessionModal(sessionId, sessionName) { showMoveSessionModalFor('codex', sessionId, sessionName); }
+
+function showMoveSessionModalFor(agent, sessionId, sessionName) {
     moveSessionState.sessionId = sessionId;
+    moveSessionState.agent = agent;
     document.getElementById('moveSessionSubtitle').textContent = 'Moving "' + sessionName + '" from ' + WORKTREE_NAME;
     document.getElementById('moveSessionBranch').value = '';
     const listEl = document.getElementById('moveSessionFilesList');
@@ -740,7 +1004,7 @@ function showMoveSessionModal(sessionId, sessionName) {
     listEl.innerHTML = '';
     statusEl.textContent = 'Loading…';
     statusEl.style.display = '';
-    fetch('/api/v1/claude/' + encodeURIComponent(WORKTREE_NAME) + '/git-status')
+    fetch('/api/v1/' + agent + '/' + encodeURIComponent(WORKTREE_NAME) + '/git-status')
     .then(r => r.json())
     .then(payload => {
         const data = payload.data || payload;
@@ -790,6 +1054,7 @@ function showMoveSessionModal(sessionId, sessionName) {
 
 function submitMoveSession() {
     const sessionId = moveSessionState.sessionId;
+    const agent = moveSessionState.agent || 'claude';
     if (!sessionId) return;
     const branch = document.getElementById('moveSessionBranch').value.trim();
     if (!branch) {
@@ -801,7 +1066,7 @@ function submitMoveSession() {
         .map(cb => cb.value);
     const btn = document.getElementById('moveSessionConfirmBtn');
     btn.disabled = true;
-    fetch('/api/v1/claude/sessions/' + encodeURIComponent(sessionId) + '/move', {
+    fetch('/api/v1/' + agent + '/sessions/' + encodeURIComponent(sessionId) + '/move', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ branch: branch, files: files })
@@ -1003,36 +1268,36 @@ function reopenCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:794
+//line views/worktree_home.qtpl:993
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:794
+//line views/worktree_home.qtpl:993
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 }
 
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 }
 
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 	return qs422016
-//line views/worktree_home.qtpl:795
+//line views/worktree_home.qtpl:994
 }

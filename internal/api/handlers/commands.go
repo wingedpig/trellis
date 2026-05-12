@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/workflow"
@@ -26,11 +27,12 @@ type CommandsHandler struct {
 	workflowRunner workflow.Runner
 	crashMgr       *crashes.Manager
 	claudeMgr      *claude.Manager
+	codexMgr       *codex.Manager
 	projectName    string
 }
 
 // NewCommandsHandler creates a new commands handler.
-func NewCommandsHandler(worktreeMgr worktree.Manager, serviceMgr service.Manager, workflowRunner workflow.Runner, crashMgr *crashes.Manager, claudeMgr *claude.Manager) *CommandsHandler {
+func NewCommandsHandler(worktreeMgr worktree.Manager, serviceMgr service.Manager, workflowRunner workflow.Runner, crashMgr *crashes.Manager, claudeMgr *claude.Manager, codexMgr *codex.Manager) *CommandsHandler {
 	var pn string
 	if worktreeMgr != nil {
 		pn = worktreeMgr.ProjectName()
@@ -41,6 +43,7 @@ func NewCommandsHandler(worktreeMgr worktree.Manager, serviceMgr service.Manager
 		workflowRunner: workflowRunner,
 		crashMgr:       crashMgr,
 		claudeMgr:      claudeMgr,
+		codexMgr:       codexMgr,
 		projectName:    pn,
 	}
 }
@@ -186,6 +189,29 @@ func (h *CommandsHandler) List(w http.ResponseWriter, r *http.Request) {
 					Then: &CommandAction{
 						Type: "navigate",
 						URL:  "/claude/{data.worktree_name}/{data.id}",
+					},
+				},
+			})
+		}
+	}
+
+	// Codex verbs — one "New session in <worktree>" per worktree.
+	if h.codexMgr != nil && h.worktreeMgr != nil {
+		wts, _ := h.worktreeMgr.List()
+		names := make([]string, 0, len(wts))
+		for _, wt := range wts {
+			names = append(names, h.worktreeName(wt))
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			esc := url.PathEscape(name)
+			cmds = append(cmds, Command{
+				ID: "codex.new." + name, Title: "Codex: New session in " + name,
+				Action: CommandAction{
+					Type: "api", Method: "POST", URL: "/api/v1/codex/" + esc + "/sessions",
+					Then: &CommandAction{
+						Type: "navigate",
+						URL:  "/codex/{data.worktree_name}/{data.id}",
 					},
 				},
 			})

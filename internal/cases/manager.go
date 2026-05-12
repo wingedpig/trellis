@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/trace"
 )
@@ -54,6 +55,32 @@ func (m *Manager) FindCaseBySession(worktreePath, sessionID string) *CaseJSON {
 			continue
 		}
 		for _, ref := range c.Claude {
+			if ref.SourceSessionID == sessionID {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
+// FindCaseByCodexSession scans open cases for one with a Codex transcript
+// linked to the given session.
+func (m *Manager) FindCaseByCodexSession(worktreePath, sessionID string) *CaseJSON {
+	dir := m.casesDir(worktreePath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name(), "case.json")
+		c, err := loadCase(path)
+		if err != nil {
+			continue
+		}
+		for _, ref := range c.Codex {
 			if ref.SourceSessionID == sessionID {
 				return c
 			}
@@ -366,6 +393,94 @@ func (m *Manager) UpdateTranscript(worktreePath, caseID, refID string, transcrip
 	}
 
 	return saveCase(casePath, c)
+}
+
+// SaveCodexTranscript writes a Codex transcript to the case and updates case.json.
+// Codex transcripts live under codex_transcripts/ to avoid filename collisions
+// with Claude transcripts in the same case.
+func (m *Manager) SaveCodexTranscript(worktreePath, caseID, refID, title, sourceSessionID string, transcript *codex.Transcript) error {
+	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
+	casePath := filepath.Join(caseDir, "case.json")
+	c, err := loadCase(casePath)
+	if err != nil {
+		return fmt.Errorf("case not found: %s", caseID)
+	}
+
+	transcriptsDir := filepath.Join(caseDir, "codex_transcripts")
+	jsonlPath := filepath.Join(transcriptsDir, refID+".jsonl")
+	metaPath := filepath.Join(transcriptsDir, refID+".json")
+	if err := codex.WriteTranscriptSplit(jsonlPath, metaPath, transcript); err != nil {
+		return fmt.Errorf("write codex transcript: %w", err)
+	}
+
+	ref := CaseCodexRef{
+		ID:              refID,
+		Title:           title,
+		Filename:        refID + ".jsonl",
+		ExportedAt:      time.Now(),
+		MessageCount:    transcript.Stats.MessageCount,
+		Preview:         codex.FirstUserPreview(transcript.Messages, 200),
+		SourceSessionID: sourceSessionID,
+	}
+	c.Codex = append(c.Codex, ref)
+	return saveCase(casePath, c)
+}
+
+// UpdateCodexTranscript overwrites an existing Codex transcript in the case.
+func (m *Manager) UpdateCodexTranscript(worktreePath, caseID, refID string, transcript *codex.Transcript) error {
+	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
+	casePath := filepath.Join(caseDir, "case.json")
+	c, err := loadCase(casePath)
+	if err != nil {
+		return fmt.Errorf("case not found: %s", caseID)
+	}
+
+	for i := range c.Codex {
+		if c.Codex[i].ID == refID {
+			transcriptsDir := filepath.Join(caseDir, "codex_transcripts")
+			jsonlPath := filepath.Join(transcriptsDir, refID+".jsonl")
+			metaPath := filepath.Join(transcriptsDir, refID+".json")
+			if err := codex.WriteTranscriptSplit(jsonlPath, metaPath, transcript); err != nil {
+				return fmt.Errorf("write codex transcript: %w", err)
+			}
+			c.Codex[i].Filename = refID + ".jsonl"
+			c.Codex[i].ExportedAt = time.Now()
+			c.Codex[i].MessageCount = transcript.Stats.MessageCount
+			c.Codex[i].Preview = codex.FirstUserPreview(transcript.Messages, 200)
+			return saveCase(casePath, c)
+		}
+	}
+	return fmt.Errorf("codex transcript ref not found: %s", refID)
+}
+
+// GetCodexTranscript reads a codex transcript from a case (open or archived).
+func (m *Manager) GetCodexTranscript(worktreePath, caseID, refID string) (*codex.Transcript, error) {
+	for _, base := range []string{
+		filepath.Join(m.casesDir(worktreePath), caseID, "codex_transcripts"),
+		filepath.Join(m.archivedDir(worktreePath), caseID, "codex_transcripts"),
+	} {
+		jsonlPath := filepath.Join(base, refID+".jsonl")
+		metaPath := filepath.Join(base, refID+".json")
+		if _, err := os.Stat(jsonlPath); err == nil {
+			return codex.ReadTranscriptSplit(jsonlPath, metaPath)
+		}
+	}
+	return nil, fmt.Errorf("codex transcript not found: %s", refID)
+}
+
+// BackfillCodexPreviews fills in empty Preview fields on CaseCodexRef entries
+// by reading their stored transcripts. Mirrors BackfillPreviews for Claude.
+func (m *Manager) BackfillCodexPreviews(worktreePath, caseID string, refs []CaseCodexRef) {
+	for i := range refs {
+		if refs[i].Preview != "" {
+			continue
+		}
+		t, err := m.GetCodexTranscript(worktreePath, caseID, refs[i].ID)
+		if err != nil {
+			continue
+		}
+		refs[i].Preview = codex.FirstUserPreview(t.Messages, 200)
+	}
 }
 
 // SaveTrace writes a full trace report as a standalone JSON file in the traces/ subdirectory.

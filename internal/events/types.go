@@ -89,6 +89,9 @@ const (
 	// Claude session events
 	EventClaudeSessionMoved = "claude.session.moved"
 
+	// Codex session events
+	EventCodexSessionMoved = "codex.session.moved"
+
 	// Notification events (for AI assistants and external tools)
 	EventNotifyDone    = "notify.done"    // Task completed
 	EventNotifyBlocked = "notify.blocked" // Waiting for user input

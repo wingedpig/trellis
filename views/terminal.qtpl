@@ -1528,7 +1528,8 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 const currentVal = $('#navSelect').val();
                 const worktrees = navData.data.worktrees || [];
                 const claudeSessions = navData.data.claudeSessions || [];
-                if (worktrees.length === 0 && claudeSessions.length === 0) return;
+                const codexSessions = navData.data.codexSessions || [];
+                if (worktrees.length === 0 && claudeSessions.length === 0 && codexSessions.length === 0) return;
 
                 for (const wt of worktrees) {
                     if (select.querySelector('option[value="' + CSS.escape(wt.url) + '"]')) continue;
@@ -1552,22 +1553,22 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                     }
                 }
 
-                for (const sess of claudeSessions) {
-                    if (select.querySelector('option[value="' + CSS.escape(sess.url) + '"]')) continue;
-                    // Insert after the last terminal (but before output/editor) for this worktree
-                    // Find all terminal options for this worktree
+                function insertSessionOption(sess, agent) {
+                    if (select.querySelector('option[value="' + CSS.escape(sess.url) + '"]')) return;
                     const wtOpts = select.querySelectorAll('option[data-worktree="' + CSS.escape(sess.worktree) + '"][data-is-terminal="true"]');
                     const opt = document.createElement('option');
                     opt.value = sess.url;
                     opt.dataset.isPage = 'true';
-                    opt.dataset.isClaude = 'true';
+                    if (agent === 'codex') {
+                        opt.dataset.isCodex = 'true';
+                    } else {
+                        opt.dataset.isClaude = 'true';
+                    }
                     opt.textContent = sess.display;
                     if (wtOpts.length > 0) {
-                        // Insert after the last terminal for this worktree
                         const lastTerminal = wtOpts[wtOpts.length - 1];
                         lastTerminal.after(opt);
                     } else {
-                        // Insert after worktree home if present
                         const wtHome = select.querySelector('option[value="' + CSS.escape('/worktree/' + sess.worktree) + '"]');
                         if (wtHome) {
                             wtHome.after(opt);
@@ -1580,6 +1581,13 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                             }
                         }
                     }
+                }
+
+                for (const sess of claudeSessions) {
+                    insertSessionOption(sess, 'claude');
+                }
+                for (const sess of codexSessions) {
+                    insertSessionOption(sess, 'codex');
                 }
 
                 // Rebuild originalNavOptions and re-init Select2

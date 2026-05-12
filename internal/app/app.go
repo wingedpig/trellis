@@ -21,6 +21,7 @@ import (
 	"github.com/wingedpig/trellis/internal/api/handlers"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
@@ -54,6 +55,7 @@ type App struct {
 	binaryWatcher    *watcher.BinaryWatcher
 	vsCodeHandler    *handlers.VSCodeHandler
 	claudeManager    *claude.Manager
+	codexManager     *codex.Manager
 	caseManager      *cases.Manager
 	proxyManager     *proxy.Manager
 	apiServer        *api.Server
@@ -286,6 +288,10 @@ func (app *App) Initialize(ctx context.Context) error {
 	// Initialize Claude Code session manager
 	claudeStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "claude")
 	app.claudeManager = claude.NewManager(claudeStateDir)
+
+	// Initialize Codex session manager (sibling to Claude state)
+	codexStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "codex")
+	app.codexManager = codex.NewManager(codexStateDir)
 
 	// Initialize case manager
 	casesDir := cfg.Cases.Dir
@@ -673,6 +679,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			CrashManager:    app.crashManager,
 			EventBus:        app.eventBus,
 			ClaudeManager:   app.claudeManager,
+			CodexManager:    app.codexManager,
 			CaseManager:     app.caseManager,
 			VSCodeHandler:   app.vsCodeHandler,
 			Shortcuts:       shortcuts,
@@ -825,6 +832,11 @@ func (app *App) Shutdown(ctx context.Context) error {
 	// Stop Claude sessions
 	if app.claudeManager != nil {
 		app.claudeManager.Shutdown()
+	}
+
+	// Stop Codex sessions
+	if app.codexManager != nil {
+		app.codexManager.Shutdown()
 	}
 
 	// Stop all services

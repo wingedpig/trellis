@@ -517,6 +517,7 @@ window.TrellisNav = (function() {
                     const localTerminals = (data.data.terminals || []).filter(t => !t.isRemote);
                     const remoteTerminals = (data.data.terminals || []).filter(t => t.isRemote);
                     const claudeSessions = data.data.claudeSessions || [];
+                    const codexSessions = data.data.codexSessions || [];
                     const worktrees = data.data.worktrees || [];
 
                     // Build a map of worktree name -> items
@@ -554,6 +555,18 @@ window.TrellisNav = (function() {
                                 select.appendChild(opt);
                             }
                         }
+
+                        // Codex sessions for this worktree
+                        for (const sess of codexSessions) {
+                            if (sess.worktree === wtData.name) {
+                                const opt = document.createElement('option');
+                                opt.value = sess.url;
+                                opt.dataset.isPage = 'true';
+                                opt.dataset.isCodex = 'true';
+                                opt.textContent = sess.display;
+                                select.appendChild(opt);
+                            }
+                        }
                     }
 
                     // Local terminals not matching any known worktree
@@ -579,6 +592,19 @@ window.TrellisNav = (function() {
                             opt.dataset.isClaude = 'true';
                             opt.dataset.claudeRunning = sess.running ? 'true' : 'false';
                             opt.textContent = sess.display;
+                            select.appendChild(opt);
+                        }
+                    }
+
+                    // Codex sessions not matching any known worktree
+                    for (const sess of codexSessions) {
+                        const matched = wtNames.some(n => sess.worktree === n);
+                        if (!matched) {
+                            const opt = document.createElement('option');
+                            opt.value = sess.url;
+                            opt.dataset.isPage = 'true';
+                            opt.dataset.isCodex = 'true';
+                            opt.textContent = sess.display + ' (codex)';
                             select.appendChild(opt);
                         }
                     }

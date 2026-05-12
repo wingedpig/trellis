@@ -2013,7 +2013,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 const currentVal = $('#navSelect').val();
                 const worktrees = navData.data.worktrees || [];
                 const claudeSessions = navData.data.claudeSessions || [];
-                if (worktrees.length === 0 && claudeSessions.length === 0) return;
+                const codexSessions = navData.data.codexSessions || [];
+                if (worktrees.length === 0 && claudeSessions.length === 0 && codexSessions.length === 0) return;
 
                 for (const wt of worktrees) {
                     if (select.querySelector('option[value="' + CSS.escape(wt.url) + '"]')) continue;
@@ -2037,22 +2038,22 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                     }
                 }
 
-                for (const sess of claudeSessions) {
-                    if (select.querySelector('option[value="' + CSS.escape(sess.url) + '"]')) continue;
-                    // Insert after the last terminal (but before output/editor) for this worktree
-                    // Find all terminal options for this worktree
+                function insertSessionOption(sess, agent) {
+                    if (select.querySelector('option[value="' + CSS.escape(sess.url) + '"]')) return;
                     const wtOpts = select.querySelectorAll('option[data-worktree="' + CSS.escape(sess.worktree) + '"][data-is-terminal="true"]');
                     const opt = document.createElement('option');
                     opt.value = sess.url;
                     opt.dataset.isPage = 'true';
-                    opt.dataset.isClaude = 'true';
+                    if (agent === 'codex') {
+                        opt.dataset.isCodex = 'true';
+                    } else {
+                        opt.dataset.isClaude = 'true';
+                    }
                     opt.textContent = sess.display;
                     if (wtOpts.length > 0) {
-                        // Insert after the last terminal for this worktree
                         const lastTerminal = wtOpts[wtOpts.length - 1];
                         lastTerminal.after(opt);
                     } else {
-                        // Insert after worktree home if present
                         const wtHome = select.querySelector('option[value="' + CSS.escape('/worktree/' + sess.worktree) + '"]');
                         if (wtHome) {
                             wtHome.after(opt);
@@ -2065,6 +2066,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                             }
                         }
                     }
+                }
+
+                for (const sess of claudeSessions) {
+                    insertSessionOption(sess, 'claude');
+                }
+                for (const sess of codexSessions) {
+                    insertSessionOption(sess, 'codex');
                 }
 
                 // Rebuild originalNavOptions and re-init Select2
@@ -5809,36 +5817,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5254
+//line views/terminal.qtpl:5262
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5254
+//line views/terminal.qtpl:5262
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 }
 
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 }
 
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 	return qs422016
-//line views/terminal.qtpl:5255
+//line views/terminal.qtpl:5263
 }

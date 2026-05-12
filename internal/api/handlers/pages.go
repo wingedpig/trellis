@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
@@ -79,6 +80,7 @@ type PageHandler struct {
 	traceManager  *trace.Manager
 	crashManager  *crashes.Manager
 	claudeManager *claude.Manager
+	codexManager  *codex.Manager
 	caseManager   *cases.Manager
 	shortcuts     []ShortcutConfig
 	notifications NotificationConfig
@@ -87,7 +89,7 @@ type PageHandler struct {
 }
 
 // NewPageHandler creates a new page handler.
-func NewPageHandler(services service.Manager, worktrees worktree.Manager, workflows workflow.Runner, eventBus events.EventBus, terminals terminal.Manager, logManager *logs.Manager, traceManager *trace.Manager, crashManager *crashes.Manager, claudeManager *claude.Manager, caseManager *cases.Manager, shortcuts []ShortcutConfig, notifications NotificationConfig, links []LinkConfig, version string) *PageHandler {
+func NewPageHandler(services service.Manager, worktrees worktree.Manager, workflows workflow.Runner, eventBus events.EventBus, terminals terminal.Manager, logManager *logs.Manager, traceManager *trace.Manager, crashManager *crashes.Manager, claudeManager *claude.Manager, codexManager *codex.Manager, caseManager *cases.Manager, shortcuts []ShortcutConfig, notifications NotificationConfig, links []LinkConfig, version string) *PageHandler {
 	return &PageHandler{
 		services:      services,
 		worktrees:     worktrees,
@@ -98,6 +100,7 @@ func NewPageHandler(services service.Manager, worktrees worktree.Manager, workfl
 		traceManager:  traceManager,
 		crashManager:  crashManager,
 		claudeManager: claudeManager,
+		codexManager:  codexManager,
 		caseManager:   caseManager,
 		shortcuts:     shortcuts,
 		notifications: notifications,
@@ -734,6 +737,12 @@ func (h *PageHandler) WorktreeHome(w http.ResponseWriter, r *http.Request) {
 		claudeSessions = h.claudeManager.ListSessions(name)
 	}
 
+	// Get Codex sessions for this worktree
+	var codexSessions []*codex.SessionInfo
+	if h.codexManager != nil {
+		codexSessions = h.codexManager.ListSessions(name)
+	}
+
 	// Get open cases for this worktree
 	var openCases []cases.CaseInfo
 	if h.caseManager != nil && h.worktrees != nil {
@@ -766,6 +775,7 @@ func (h *PageHandler) WorktreeHome(w http.ResponseWriter, r *http.Request) {
 		Branch:         branch,
 		Cases:          openCases,
 		ClaudeSessions: claudeSessions,
+		CodexSessions:  codexSessions,
 		Terminals:      terminals,
 		TmuxSessionName: h.worktreeToSession(name),
 	}
@@ -814,6 +824,9 @@ func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
 	if len(c.Claude) > 0 {
 		h.caseManager.BackfillPreviews(worktreePath, caseID, c.Claude)
 	}
+	if len(c.Codex) > 0 {
+		h.caseManager.BackfillCodexPreviews(worktreePath, caseID, c.Codex)
+	}
 
 	// Populate staleness info by checking live session message counts
 	if h.claudeManager != nil && len(c.Claude) > 0 {
@@ -826,6 +839,19 @@ func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
 				c.Claude[i].CurrentMessageCount = -1
 			} else {
 				c.Claude[i].CurrentMessageCount = len(session.Messages())
+			}
+		}
+	}
+	if h.codexManager != nil && len(c.Codex) > 0 {
+		for i := range c.Codex {
+			if c.Codex[i].SourceSessionID == "" {
+				continue
+			}
+			session := h.codexManager.GetSession(c.Codex[i].SourceSessionID)
+			if session == nil {
+				c.Codex[i].CurrentMessageCount = -1
+			} else {
+				c.Codex[i].CurrentMessageCount = len(session.Messages())
 			}
 		}
 	}
@@ -925,6 +951,61 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page.WriteRender(w)
+}
+
+// CodexPage renders the Codex chat page for a specific session.
+func (h *PageHandler) CodexPage(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	sessionID := vars["session"]
+
+	var activeWorktree *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+	}
+
+	var sessionCreatedAt string
+	if h.codexManager != nil {
+		session := h.codexManager.GetSession(sessionID)
+		if session != nil {
+			sessionCreatedAt = session.Info().CreatedAt.Format(time.RFC3339)
+		}
+	}
+
+	page := &views.CodexPage{
+		BasePage: views.BasePage{
+			Title:    "Codex",
+			Worktree: activeWorktree,
+		},
+		WorktreeName:     worktreeName,
+		SessionID:        sessionID,
+		SessionCreatedAt: sessionCreatedAt,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// CodexRedirect redirects /codex/{worktree} to the first session or creates one.
+func (h *PageHandler) CodexRedirect(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+
+	if h.codexManager != nil {
+		sessions := h.codexManager.ListSessions(worktreeName)
+		if len(sessions) > 0 {
+			http.Redirect(w, r, "/codex/"+worktreeName+"/"+sessions[0].ID, http.StatusFound)
+			return
+		}
+		if h.worktrees != nil {
+			if wt, ok := h.worktrees.GetByName(worktreeName); ok {
+				session := h.codexManager.CreateSession(worktreeName, wt.Path, "")
+				http.Redirect(w, r, "/codex/"+worktreeName+"/"+session.ID(), http.StatusFound)
+				return
+			}
+		}
+	}
+	http.Redirect(w, r, "/worktree/"+worktreeName, http.StatusFound)
 }
 
 // ClaudeRedirect redirects /claude/{worktree} to the first session or creates one.

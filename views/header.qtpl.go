@@ -560,6 +560,7 @@ window.TrellisNav = (function() {
                     const localTerminals = (data.data.terminals || []).filter(t => !t.isRemote);
                     const remoteTerminals = (data.data.terminals || []).filter(t => t.isRemote);
                     const claudeSessions = data.data.claudeSessions || [];
+                    const codexSessions = data.data.codexSessions || [];
                     const worktrees = data.data.worktrees || [];
 
                     // Build a map of worktree name -> items
@@ -597,6 +598,18 @@ window.TrellisNav = (function() {
                                 select.appendChild(opt);
                             }
                         }
+
+                        // Codex sessions for this worktree
+                        for (const sess of codexSessions) {
+                            if (sess.worktree === wtData.name) {
+                                const opt = document.createElement('option');
+                                opt.value = sess.url;
+                                opt.dataset.isPage = 'true';
+                                opt.dataset.isCodex = 'true';
+                                opt.textContent = sess.display;
+                                select.appendChild(opt);
+                            }
+                        }
                     }
 
                     // Local terminals not matching any known worktree
@@ -622,6 +635,19 @@ window.TrellisNav = (function() {
                             opt.dataset.isClaude = 'true';
                             opt.dataset.claudeRunning = sess.running ? 'true' : 'false';
                             opt.textContent = sess.display;
+                            select.appendChild(opt);
+                        }
+                    }
+
+                    // Codex sessions not matching any known worktree
+                    for (const sess of codexSessions) {
+                        const matched = wtNames.some(n => sess.worktree === n);
+                        if (!matched) {
+                            const opt = document.createElement('option');
+                            opt.value = sess.url;
+                            opt.dataset.isPage = 'true';
+                            opt.dataset.isCodex = 'true';
+                            opt.textContent = sess.display + ' (codex)';
                             select.appendChild(opt);
                         }
                     }
@@ -900,38 +926,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 }
 
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 }
 
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 	return qs422016
-//line views/header.qtpl:859
+//line views/header.qtpl:885
 }
 
-//line views/header.qtpl:861
+//line views/header.qtpl:887
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:861
+//line views/header.qtpl:887
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -939,9 +965,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:867
+//line views/header.qtpl:893
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:867
+//line views/header.qtpl:893
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -1013,25 +1039,25 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:937
+//line views/header.qtpl:963
 	if p.Worktree != nil {
-//line views/header.qtpl:937
+//line views/header.qtpl:963
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:939
+//line views/header.qtpl:965
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:939
+//line views/header.qtpl:965
 		qw422016.N().S(` (`)
-//line views/header.qtpl:939
+//line views/header.qtpl:965
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:939
+//line views/header.qtpl:965
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:941
+//line views/header.qtpl:967
 	}
-//line views/header.qtpl:941
+//line views/header.qtpl:967
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
@@ -1089,13 +1115,13 @@ function showShortcutHelp() {
     var list = document.getElementById('shortcutHelpList');
     if (list) {
         // Built-in actions. `)
-//line views/header.qtpl:941
+//line views/header.qtpl:967
 	qw422016.N().S("`")
-//line views/header.qtpl:941
+//line views/header.qtpl:967
 	qw422016.N().S(`run`)
-//line views/header.qtpl:941
+//line views/header.qtpl:967
 	qw422016.N().S("`")
-//line views/header.qtpl:941
+//line views/header.qtpl:967
 	qw422016.N().S(` is resolved from the TrellisNav global so
         // we don't need to rely on function hoisting across scripts.
         var items = [
@@ -1190,45 +1216,45 @@ function showShortcutHelp() {
 <script src="/static/js/spa.js"></script>
 <script src="/static/js/command_palette.js"></script>
 `)
-//line views/header.qtpl:1090
+//line views/header.qtpl:1116
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:1090
+//line views/header.qtpl:1116
 	qw422016.N().S(`
 <main>
 <div class="page-container container-fluid mt-4">
 `)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 }
 
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 }
 
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 func (p *BasePage) Header() string {
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 	return qs422016
-//line views/header.qtpl:1093
+//line views/header.qtpl:1119
 }
 
-//line views/header.qtpl:1095
+//line views/header.qtpl:1121
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:1095
+//line views/header.qtpl:1121
 	qw422016.N().S(`
 </div>
 </main>
@@ -1236,31 +1262,31 @@ func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 }
 
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 }
 
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 	return qs422016
-//line views/header.qtpl:1101
+//line views/header.qtpl:1127
 }

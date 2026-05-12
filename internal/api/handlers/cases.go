@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
@@ -23,15 +24,17 @@ import (
 type CaseHandler struct {
 	caseMgr     *cases.Manager
 	claudeMgr   *claude.Manager
+	codexMgr    *codex.Manager
 	traceMgr    *trace.Manager
 	worktreeMgr worktree.Manager
 }
 
 // NewCaseHandler creates a new case handler.
-func NewCaseHandler(caseMgr *cases.Manager, claudeMgr *claude.Manager, traceMgr *trace.Manager, worktreeMgr worktree.Manager) *CaseHandler {
+func NewCaseHandler(caseMgr *cases.Manager, claudeMgr *claude.Manager, codexMgr *codex.Manager, traceMgr *trace.Manager, worktreeMgr worktree.Manager) *CaseHandler {
 	return &CaseHandler{
 		caseMgr:     caseMgr,
 		claudeMgr:   claudeMgr,
+		codexMgr:    codexMgr,
 		traceMgr:    traceMgr,
 		worktreeMgr: worktreeMgr,
 	}
@@ -421,6 +424,134 @@ func (h *CaseHandler) UpdateTranscript(w http.ResponseWriter, r *http.Request) {
 		"claude_ref_id": claudeID,
 		"message_count": transcript.Stats.MessageCount,
 	})
+}
+
+// SaveCodexTranscript exports a Codex session transcript and saves it to a case.
+func (h *CaseHandler) SaveCodexTranscript(w http.ResponseWriter, r *http.Request) {
+	wt, ok := h.resolveWorktree(r)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	vars := mux.Vars(r)
+	caseID := vars["id"]
+
+	var body struct {
+		SessionID string `json:"session_id"`
+		Title     string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON")
+		return
+	}
+	if body.SessionID == "" {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "session_id is required")
+		return
+	}
+	if h.codexMgr == nil {
+		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "Codex integration is not configured")
+		return
+	}
+
+	transcript, err := h.codexMgr.ExportSession(body.SessionID, "full")
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, fmt.Sprintf("codex session not found: %s", body.SessionID))
+		return
+	}
+	if body.Title == "" {
+		body.Title = transcript.Source.DisplayName
+	}
+
+	refID := uuid.New().String()[:8]
+	if err := h.caseMgr.SaveCodexTranscript(wt.Path, caseID, refID, body.Title, body.SessionID, transcript); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusCreated, map[string]string{
+		"codex_ref_id": refID,
+		"title":        body.Title,
+	})
+}
+
+// UpdateCodexTranscript re-exports a Codex session transcript and overwrites the saved copy.
+func (h *CaseHandler) UpdateCodexTranscript(w http.ResponseWriter, r *http.Request) {
+	wt, ok := h.resolveWorktree(r)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	vars := mux.Vars(r)
+	caseID := vars["id"]
+	codexID := vars["codex_id"]
+
+	if h.codexMgr == nil {
+		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "Codex integration is not configured")
+		return
+	}
+
+	c, err := h.caseMgr.Get(wt.Path, caseID)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		return
+	}
+	var sourceSessionID string
+	for _, ref := range c.Codex {
+		if ref.ID == codexID {
+			sourceSessionID = ref.SourceSessionID
+			break
+		}
+	}
+	if sourceSessionID == "" {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "codex transcript ref not found or has no source session")
+		return
+	}
+	transcript, err := h.codexMgr.ExportSession(sourceSessionID, "full")
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, fmt.Sprintf("source session not found: %s", sourceSessionID))
+		return
+	}
+	if err := h.caseMgr.UpdateCodexTranscript(wt.Path, caseID, codexID, transcript); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"codex_ref_id":  codexID,
+		"message_count": transcript.Stats.MessageCount,
+	})
+}
+
+// ContinueCodexTranscript reads a codex transcript from a case and imports it as a new Codex session.
+func (h *CaseHandler) ContinueCodexTranscript(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+	caseID := vars["id"]
+	codexID := vars["codex_id"]
+
+	wt, ok := h.worktreeMgr.GetByName(worktreeName)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	if h.codexMgr == nil {
+		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "Codex integration is not configured")
+		return
+	}
+
+	transcript, err := h.caseMgr.GetCodexTranscript(wt.Path, caseID, codexID)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		return
+	}
+	session, err := h.codexMgr.ImportSession(worktreeName, wt.Path, transcript)
+	if err != nil {
+		if _, ok := err.(*codex.TranscriptError); ok {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, err.Error())
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusCreated, session.Info())
 }
 
 // SaveTrace fetches a trace report and saves the full data to a case.

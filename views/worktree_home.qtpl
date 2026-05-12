@@ -3,6 +3,7 @@
 
 {% import "github.com/wingedpig/trellis/internal/cases" %}
 {% import "github.com/wingedpig/trellis/internal/claude" %}
+{% import "github.com/wingedpig/trellis/internal/codex" %}
 {% import "github.com/wingedpig/trellis/internal/terminal" %}
 
 {% code
@@ -12,6 +13,7 @@ type WorktreeHomePage struct {
     Branch          string
     Cases           []cases.CaseInfo
     ClaudeSessions  []*claude.SessionInfo
+    CodexSessions   []*codex.SessionInfo
     Terminals       []terminal.WindowInfo
     TmuxSessionName string // Empty if no tmux session exists
 }
@@ -126,6 +128,55 @@ type WorktreeHomePage struct {
         </div>
     </div>
 
+    <!-- Codex Sessions -->
+    <div class="section mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="fa-solid fa-microchip"></i> Codex Sessions</h4>
+            <div>
+                <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" onclick="toggleTrashedCodexSessions()">
+                    <i class="fa-solid fa-trash-can"></i> Show Trash
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="showNewCodexModal()">
+                    <i class="fa-solid fa-plus"></i> New Session
+                </button>
+            </div>
+        </div>
+
+        {% if len(p.CodexSessions) == 0 %}
+        <div class="empty-state">
+            <p class="text-muted">No Codex sessions yet. Create one to get started.</p>
+        </div>
+        {% else %}
+        <div class="list-group">
+            {% for _, sess := range p.CodexSessions %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="/codex/{%s p.WorktreeName %}/{%s sess.ID %}" class="text-decoration-none flex-grow-1 d-flex align-items-center">
+                    <i class="fa-solid fa-message"></i>
+                    <span class="ms-1">{%s sess.DisplayName %}</span>
+                    {% if !sess.LastUserInput.IsZero() %}
+                    <span class="text-muted ms-2 small">{%s FormatRelativeTime(sess.LastUserInput) %}</span>
+                    {% endif %}
+                </a>
+                <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameCodexSession('{%s JSAttr(sess.ID) %}', '{%s JSAttr(sess.DisplayName) %}')">
+                    <i class="fa-solid fa-pencil"></i>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Move to new worktree" onclick="showMoveCodexSessionModal('{%s JSAttr(sess.ID) %}', '{%s JSAttr(sess.DisplayName) %}')">
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteCodexSession('{%s JSAttr(sess.ID) %}')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div id="trashedCodexSessionsContainer" style="display:none;" class="mt-3">
+            <h6 class="text-muted">Trash</h6>
+            <div id="trashedCodexSessionsList" class="list-group"></div>
+        </div>
+    </div>
+
     <!-- Terminals -->
     <div class="section mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -179,6 +230,29 @@ type WorktreeHomePage struct {
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="createClaudeSession()">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Codex Session Modal -->
+<div class="modal fade" id="newCodexModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-microchip"></i> New Codex Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="codexSessionName" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="codexSessionName" placeholder="Session 1" autofocus>
+                    <div class="form-text">Leave blank for auto-naming.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createCodexSession()">Create</button>
             </div>
         </div>
     </div>
@@ -321,9 +395,9 @@ type WorktreeHomePage struct {
 // SPA re-fetches this page (e.g. after LRU eviction from the page cache).
 var WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
 
-var newTerminalModal, newClaudeModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
+var newTerminalModal, newClaudeModal, newCodexModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
 var renameConfirmCallback = null;
-var moveSessionState = { sessionId: null };
+var moveSessionState = { sessionId: null, agent: 'claude' };
 
 // Shared helper for select-all/none checkbox toggles.
 window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
@@ -349,6 +423,13 @@ function initWorktreeHomePage() {
         if (e.key === 'Enter') { e.preventDefault(); createCase(); }
     });
     newClaudeModal = new bootstrap.Modal(document.getElementById('newClaudeModal'));
+    newCodexModal = new bootstrap.Modal(document.getElementById('newCodexModal'));
+    document.getElementById('newCodexModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('codexSessionName').focus();
+    });
+    document.getElementById('newCodexModal').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); createCodexSession(); }
+    });
     document.getElementById('newClaudeModal').addEventListener('shown.bs.modal', function() {
         document.getElementById('claudeSessionName').focus();
     });
@@ -388,6 +469,119 @@ if (document.readyState === 'loading') {
 function showNewClaudeModal() {
     document.getElementById('claudeSessionName').value = '';
     newClaudeModal.show();
+}
+
+function showNewCodexModal() {
+    document.getElementById('codexSessionName').value = '';
+    newCodexModal.show();
+}
+
+function createCodexSession() {
+    const name = document.getElementById('codexSessionName').value.trim();
+    const body = name ? JSON.stringify({display_name: name}) : '{}';
+    fetch('/api/v1/codex/' + encodeURIComponent(WORKTREE_NAME) + '/sessions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body
+    })
+    .then(r => {
+        if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Create failed'); });
+        return r.json();
+    })
+    .then(data => {
+        const sess = data.data || data;
+        TrellisNav.pushToHistory(window.location.pathname);
+        window.location.href = '/codex/' + encodeURIComponent(WORKTREE_NAME) + '/' + sess.id;
+    })
+    .catch(err => alert('Failed to create session: ' + err));
+}
+
+function deleteCodexSession(sessionId) {
+    fetch('/api/v1/codex/sessions/' + sessionId, { method: 'DELETE' })
+    .then(() => window.location.reload())
+    .catch(err => alert('Failed to trash session: ' + err));
+}
+
+function renameCodexSession(sessionId, currentName) {
+    document.getElementById('renameModalTitle').textContent = 'Rename Codex Session';
+    document.getElementById('renameInput').value = currentName;
+    const btn = document.getElementById('renameConfirmBtn');
+    btn.onclick = function() {
+        const name = document.getElementById('renameInput').value.trim();
+        if (!name) return;
+        fetch('/api/v1/codex/sessions/' + sessionId, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({display_name: name})
+        })
+        .then(r => { if (!r.ok) throw new Error('Rename failed'); window.location.reload(); })
+        .catch(err => alert('Failed: ' + err));
+    };
+    renameModal.show();
+}
+
+let codexTrashedVisible = false;
+function toggleTrashedCodexSessions() {
+    const container = document.getElementById('trashedCodexSessionsContainer');
+    const btn = document.getElementById('showCodexTrashBtn');
+    if (codexTrashedVisible) {
+        container.style.display = 'none';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Show Trash';
+        codexTrashedVisible = false;
+        return;
+    }
+    fetch('/api/v1/codex/' + encodeURIComponent(WORKTREE_NAME) + '/sessions/trash')
+    .then(r => r.json())
+    .then(data => {
+        const sessions = data.data || data;
+        const list = document.getElementById('trashedCodexSessionsList');
+        list.innerHTML = '';
+        if (!sessions || sessions.length === 0) {
+            list.innerHTML = '<p class="text-muted p-2">No trashed sessions.</p>';
+        } else {
+            sessions.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                const name = document.createElement('span');
+                name.className = 'flex-grow-1';
+                name.innerHTML = '<i class="fa-solid fa-message"></i> <span class="ms-1">' + escapeHtml(s.display_name) + '</span>';
+                item.appendChild(name);
+                const restoreBtn = document.createElement('button');
+                restoreBtn.className = 'btn btn-outline-success btn-sm me-1';
+                restoreBtn.innerHTML = '<i class="fa-solid fa-trash-arrow-up"></i>';
+                restoreBtn.onclick = function() { restoreCodexSession(s.id); };
+                item.appendChild(restoreBtn);
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-outline-danger btn-sm';
+                deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                deleteBtn.onclick = function() { permanentDeleteCodexSession(s.id); };
+                item.appendChild(deleteBtn);
+                list.appendChild(item);
+            });
+        }
+        container.style.display = 'block';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Hide Trash';
+        codexTrashedVisible = true;
+    })
+    .catch(err => alert('Failed to load trashed sessions: ' + err));
+}
+
+function restoreCodexSession(sessionId) {
+    fetch('/api/v1/codex/sessions/' + sessionId + '/restore', { method: 'POST' })
+    .then(() => window.location.reload())
+    .catch(err => alert('Failed to restore session: ' + err));
+}
+
+function permanentDeleteCodexSession(sessionId) {
+    if (!confirm('Permanently delete this session? This cannot be undone.')) return;
+    fetch('/api/v1/codex/sessions/' + sessionId + '/permanent', { method: 'DELETE' })
+    .then(() => {
+        if (codexTrashedVisible) {
+            toggleTrashedCodexSessions();
+            toggleTrashedCodexSessions();
+        }
+    })
+    .catch(err => alert('Failed to delete session: ' + err));
 }
 
 function showNewTerminalModal() {
@@ -520,8 +714,12 @@ function deleteTerminal(windowName) {
     .catch(err => alert('Failed to delete terminal: ' + err));
 }
 
-function showMoveSessionModal(sessionId, sessionName) {
+function showMoveSessionModal(sessionId, sessionName) { showMoveSessionModalFor('claude', sessionId, sessionName); }
+function showMoveCodexSessionModal(sessionId, sessionName) { showMoveSessionModalFor('codex', sessionId, sessionName); }
+
+function showMoveSessionModalFor(agent, sessionId, sessionName) {
     moveSessionState.sessionId = sessionId;
+    moveSessionState.agent = agent;
     document.getElementById('moveSessionSubtitle').textContent = 'Moving "' + sessionName + '" from ' + WORKTREE_NAME;
     document.getElementById('moveSessionBranch').value = '';
     const listEl = document.getElementById('moveSessionFilesList');
@@ -529,7 +727,7 @@ function showMoveSessionModal(sessionId, sessionName) {
     listEl.innerHTML = '';
     statusEl.textContent = 'Loading…';
     statusEl.style.display = '';
-    fetch('/api/v1/claude/' + encodeURIComponent(WORKTREE_NAME) + '/git-status')
+    fetch('/api/v1/' + agent + '/' + encodeURIComponent(WORKTREE_NAME) + '/git-status')
     .then(r => r.json())
     .then(payload => {
         const data = payload.data || payload;
@@ -579,6 +777,7 @@ function showMoveSessionModal(sessionId, sessionName) {
 
 function submitMoveSession() {
     const sessionId = moveSessionState.sessionId;
+    const agent = moveSessionState.agent || 'claude';
     if (!sessionId) return;
     const branch = document.getElementById('moveSessionBranch').value.trim();
     if (!branch) {
@@ -590,7 +789,7 @@ function submitMoveSession() {
         .map(cb => cb.value);
     const btn = document.getElementById('moveSessionConfirmBtn');
     btn.disabled = true;
-    fetch('/api/v1/claude/sessions/' + encodeURIComponent(sessionId) + '/move', {
+    fetch('/api/v1/' + agent + '/sessions/' + encodeURIComponent(sessionId) + '/move', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ branch: branch, files: files })
