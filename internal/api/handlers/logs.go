@@ -20,6 +20,68 @@ import (
 	"github.com/wingedpig/trellis/internal/logs"
 )
 
+// readHistoricalBefore returns up to `limit` of the newest historical
+// entries with timestamp strictly before `beforeTime`. Used by the WS
+// load_more handler when the in-memory ring buffer is exhausted.
+//
+// We try progressively wider time windows ending at `beforeTime`, stopping
+// as soon as we have at least `limit` entries OR we've exceeded the longest
+// lookback horizon. Two reasons for the progressive approach:
+//
+//   1. SSH/file sources sometimes build per-day grep patterns from the
+//      start/end range — a window starting at the zero time would generate
+//      a regex of thousands of date prefixes and blow past ARG_MAX.
+//   2. For dense logs, the most recent hour usually has plenty of entries
+//      and we can avoid scanning the whole history.
+//
+// StreamHistoricalEntries emits in chronological order with no built-in
+// "from the end" knob, so we keep a sliding window of size `limit` and
+// drop older entries as newer (but still < beforeTime) ones arrive.
+func readHistoricalBefore(ctx context.Context, viewer *logs.Viewer, beforeTime time.Time, limit int, filter *logs.Filter) []logs.LogEntry {
+	if limit <= 0 || beforeTime.IsZero() {
+		return nil
+	}
+	// Widen the window each pass; bounded so the SSH date-pattern regex
+	// stays well under any plausible ARG_MAX. Final pass at ~3 years.
+	windows := []time.Duration{
+		1 * time.Hour,
+		24 * time.Hour,
+		7 * 24 * time.Hour,
+		30 * 24 * time.Hour,
+		365 * 24 * time.Hour,
+		3 * 365 * 24 * time.Hour,
+	}
+	var window []logs.LogEntry
+	for _, lookback := range windows {
+		if err := ctx.Err(); err != nil {
+			break
+		}
+		start := beforeTime.Add(-lookback)
+		window = window[:0]
+		_ = viewer.StreamHistoricalEntries(ctx, start, beforeTime, filter, 0, "", 0, 0, func(e logs.LogEntry) error {
+			if !e.Timestamp.Before(beforeTime) {
+				return nil
+			}
+			if len(window) < limit {
+				window = append(window, e)
+			} else {
+				copy(window, window[1:])
+				window[limit-1] = e
+			}
+			return nil
+		})
+		if len(window) >= limit {
+			break
+		}
+	}
+	if len(window) == 0 {
+		return nil
+	}
+	out := make([]logs.LogEntry, len(window))
+	copy(out, window)
+	return out
+}
+
 // isConnectionClosed checks if an error indicates a normal connection close
 // (broken pipe, connection reset, etc.) that shouldn't be logged as an error.
 func isConnectionClosed(err error) bool {
@@ -481,11 +543,13 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 			// Parse client message
 			var clientMsg struct {
-				Type      string `json:"type"`
-				Query     string `json:"query"`
-				SeekTS    string `json:"timestamp"`
-				BeforeSeq uint64 `json:"before_seq"`
-				Limit     int    `json:"limit"`
+				Type          string              `json:"type"`
+				Query         string              `json:"query"`
+				SeekTS        string              `json:"timestamp"`
+				BeforeSeq     uint64              `json:"before_seq"`
+				BeforeTime    string              `json:"before_time"`
+				HistoryCursor *logs.BackwardCursor `json:"history_cursor,omitempty"`
+				Limit         int                 `json:"limit"`
 			}
 			if err := json.Unmarshal(msg, &clientMsg); err != nil {
 				continue
@@ -521,29 +585,99 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 				// Client wants to resume streaming
 				paused.Store(false)
 			case "load_more":
-				// Client wants older entries (scrolled to top)
+				// Client wants older entries (scrolled to top). Three-stage
+				// fallback:
+				//   1. In-memory ring buffer (fast, sequence-keyed).
+				//   2. Byte-offset backward reader (BackwardReader). For
+				//      file/SSH sources this paginates large histories
+				//      cheaply via stat + tail|head.
+				//   3. Time-window historical reader. Used for source
+				//      types without a seekable byte stream (Docker, K8s,
+				//      Command) AND as a fallback when the byte-offset
+				//      reader runs out of *uncompressed* files — those it
+				//      skips, but time-window reads them via decompress.
 				limit := clientMsg.Limit
 				if limit <= 0 || limit > 100 {
 					limit = 100
 				}
+
 				olderEntries := viewer.GetEntriesBefore(clientMsg.BeforeSeq, limit)
-				if len(olderEntries) > 0 {
-					writeMu.Lock()
-					conn.WriteJSON(map[string]interface{}{
-						"type":    "older_entries",
-						"entries": olderEntries,
-					})
-					writeMu.Unlock()
-				} else {
-					// Signal no more entries available
-					writeMu.Lock()
-					conn.WriteJSON(map[string]interface{}{
-						"type":     "older_entries",
-						"entries":  []logs.LogEntry{},
-						"no_more":  true,
-					})
-					writeMu.Unlock()
+				source := "memory"
+				var nextCursor *logs.BackwardCursor
+				byteOffsetDone := false
+
+				if len(olderEntries) == 0 {
+					filterMu.RLock()
+					f := filter
+					filterMu.RUnlock()
+					hCtx, hCancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+					// Parse before_time once — needed both for the byte-
+					// offset seek and the time-window fallback below.
+					var beforeTime time.Time
+					if clientMsg.BeforeTime != "" {
+						if t, perr := time.Parse(time.RFC3339Nano, clientMsg.BeforeTime); perr == nil {
+							beforeTime = t
+						} else if t, perr := time.Parse(time.RFC3339, clientMsg.BeforeTime); perr == nil {
+							beforeTime = t
+						}
+					}
+
+					// Stage 2: byte-offset reader if the source supports it.
+					cur := logs.BackwardCursor{Offset: -1}
+					if clientMsg.HistoryCursor != nil {
+						cur = *clientMsg.HistoryCursor
+					}
+					entries, c, d, skippedCompressed, err := viewer.ReadEntriesBackward(hCtx, cur, limit, f, beforeTime)
+					if err == nil {
+						olderEntries = entries
+						nc := c
+						nextCursor = &nc
+						byteOffsetDone = d
+						source = "history"
+					} else {
+						log.Printf("logs[%s]: byte-offset reader failed at cursor %+v: %v", name, cur, err)
+					}
+
+					// Stage 3: time-window fallback. Only when there's
+					// reason to believe time-window can find content
+					// byte-offset missed — i.e. the byte-offset reader
+					// skipped one or more compressed (.gz) rotated files.
+					// Without compressed files, byte-offset has read
+					// everything the source can offer; running time-
+					// window's date-pattern grep against the same files
+					// would just re-find the same content (or nothing).
+					if len(olderEntries) == 0 && skippedCompressed && !beforeTime.IsZero() {
+						olderEntries = readHistoricalBefore(hCtx, viewer, beforeTime, limit, f)
+						if len(olderEntries) > 0 {
+							source = "history-timewindow"
+						}
+					}
+					hCancel()
 				}
+
+				// Build response.
+				//
+				// no_more is set only when we genuinely have no more
+				// history to offer: byte-offset is done AND time-window
+				// found nothing. Either of those returning entries means
+				// the client should keep scrolling.
+				payload := map[string]interface{}{
+					"type":    "older_entries",
+					"entries": olderEntries,
+				}
+				if len(olderEntries) > 0 {
+					payload["source"] = source
+				}
+				if nextCursor != nil {
+					payload["next_cursor"] = nextCursor
+				}
+				if len(olderEntries) == 0 && byteOffsetDone {
+					payload["no_more"] = true
+				}
+				writeMu.Lock()
+				conn.WriteJSON(payload)
+				writeMu.Unlock()
 			}
 		}
 	}()

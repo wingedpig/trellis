@@ -27,15 +27,30 @@ function renderKvPairs(entry, keys, maxPairs) {
     return pairs.join(' | ');
 }
 
-// Format timestamp for display (absolute or relative)
+// Format timestamp for display (absolute or relative).
+//
+// Absolute mode shows HH:MM:SS.mmm by default, but if the entry's calendar
+// day differs from today's, the date is prepended ("May 07 14:23:01.123")
+// — otherwise scrolling back across midnight quietly resets the clock and
+// the user can't tell that the rows above are from yesterday.
 function formatTimestamp(timestamp, useAbsolute) {
     if (!timestamp) return '';
     try {
         const date = new Date(timestamp);
         if (isNaN(date.getTime())) return String(timestamp);
         if (useAbsolute) {
-            return date.toLocaleTimeString('en-US', { hour12: false }) + '.' +
+            const t = date.toLocaleTimeString('en-US', { hour12: false }) + '.' +
                    String(date.getMilliseconds()).padStart(3, '0');
+            const now = new Date();
+            const sameDay = date.getFullYear() === now.getFullYear() &&
+                            date.getMonth() === now.getMonth() &&
+                            date.getDate() === now.getDate();
+            if (sameDay) return t;
+            // Include year only when the entry is from a different year.
+            const opts = (date.getFullYear() === now.getFullYear())
+                ? { month: 'short', day: '2-digit' }
+                : { year: 'numeric', month: 'short', day: '2-digit' };
+            return date.toLocaleDateString('en-US', opts) + ' ' + t;
         } else {
             const now = new Date();
             const diffMs = now - date;

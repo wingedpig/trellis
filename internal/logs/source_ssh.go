@@ -212,6 +212,208 @@ func (s *SSHSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error)
 	return files, nil
 }
 
+// backwardFiles is the SSH-side equivalent of FileSource.backwardFiles: the
+// active file at index 0, then rotated files newest-first.
+//
+// For SSHSource, cfg.Path is the directory containing logs and cfg.Current
+// (e.g. "current") is the filename of the active log within that directory.
+// We mirror the same path-joining logic ReadRange uses so the byte-offset
+// reader sees the same active file.
+func (s *SSHSource) backwardFiles(ctx context.Context) ([]RotatedFile, []RotatedFile, error) {
+	var active []RotatedFile
+	curPath := ""
+	if s.cfg.Current != "" {
+		if path.IsAbs(s.cfg.Current) {
+			curPath = s.cfg.Current
+		} else {
+			curPath = path.Join(s.cfg.Path, s.cfg.Current)
+		}
+	} else if s.cfg.Path != "" {
+		// Older configs may set Path directly to the file; only fall back
+		// to that when Current isn't given.
+		curPath = s.cfg.Path
+	}
+	if curPath != "" {
+		size, mtime, err := s.remoteStat(ctx, curPath)
+		if err == nil {
+			active = append(active, RotatedFile{
+				Name:       path.Base(curPath),
+				Path:       curPath,
+				Size:       size,
+				ModTime:    mtime,
+				Compressed: false,
+			})
+		}
+	}
+	rotated, err := s.ListRotatedFiles(ctx)
+	if err != nil {
+		return active, nil, err
+	}
+	return active, rotated, nil
+}
+
+// remoteStat returns size + mtime for a remote file via one SSH call.
+func (s *SSHSource) remoteStat(ctx context.Context, p string) (int64, time.Time, error) {
+	// Use ls --time-style=full-iso so we get a parseable timestamp. wc -c
+	// would be simpler but we also want mtime to detect rotation.
+	remoteCmd := fmt.Sprintf("/usr/bin/ls -l --time-style=full-iso %s 2>/dev/null", shellQuote(p))
+	cmd := exec.CommandContext(ctx, "ssh", s.cfg.Host, remoteCmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) < 8 {
+		return 0, time.Time{}, fmt.Errorf("unexpected stat output: %q", string(out))
+	}
+	var size int64
+	fmt.Sscanf(fields[4], "%d", &size)
+	mtime, err := time.Parse("2006-01-02 15:04:05.999999999 -0700", fields[5]+" "+fields[6]+" "+fields[7])
+	if err != nil {
+		mtime, _ = time.Parse("2006-01-02 15:04:05 -0700", fields[5]+" "+fields[6]+" "+fields[7])
+	}
+	return size, mtime, nil
+}
+
+// readRemoteRange fetches [offset, offset+length) of a remote file via
+// `tail -c +N | head -c M`. Both utilities seek for regular files, so this
+// is efficient even for multi-GB logs.
+func (s *SSHSource) readRemoteRange(ctx context.Context, p string, offset, length int64) ([]byte, error) {
+	if length <= 0 {
+		return nil, nil
+	}
+	// tail -c +N takes a 1-indexed byte position.
+	remoteCmd := fmt.Sprintf("tail -c +%d %s 2>/dev/null | head -c %d",
+		offset+1, shellQuote(p), length)
+	cmd := exec.CommandContext(ctx, "ssh", s.cfg.Host, remoteCmd)
+	return cmd.Output()
+}
+
+// shellQuote escapes a path for safe use in a remote shell command. The
+// SSH connection passes the whole string to the remote shell as a single
+// argument, so any spaces or special chars need quoting.
+func shellQuote(s string) string {
+	// Single-quote and escape any embedded single quotes.
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// sshBackwardReader is a per-file ReaderAt that fetches byte ranges over
+// SSH on demand. Caches fetched bytes so successive ReadAt calls within
+// the same backward-paging pass don't redundantly round-trip.
+type sshBackwardReader struct {
+	ctx  context.Context
+	src  *SSHSource
+	path string
+
+	// Cache the most recently fetched range. ReadAt is called with
+	// adjacent backward ranges so a single cached chunk is enough; if a
+	// future request falls outside it we just re-fetch.
+	cacheStart int64
+	cacheEnd   int64
+	cache      []byte
+}
+
+func (r *sshBackwardReader) ReadAt(p []byte, off int64) (int, error) {
+	want := int64(len(p))
+	if want == 0 {
+		return 0, nil
+	}
+	// Serve from cache if fully covered.
+	if r.cache != nil && off >= r.cacheStart && off+want <= r.cacheEnd {
+		copy(p, r.cache[off-r.cacheStart:off-r.cacheStart+want])
+		return int(want), nil
+	}
+	// Fetch a chunk slightly larger than requested to amortize RTT — but
+	// not so large we waste bandwidth on most calls.
+	fetchLen := want
+	if fetchLen < 64*1024 {
+		fetchLen = 64 * 1024
+	}
+	// Don't pad past start of file.
+	start := off
+	if start < 0 {
+		start = 0
+	}
+	data, err := r.src.readRemoteRange(r.ctx, r.path, start, fetchLen)
+	if err != nil {
+		return 0, err
+	}
+	r.cache = data
+	r.cacheStart = start
+	r.cacheEnd = start + int64(len(data))
+	// Now serve.
+	if off < r.cacheStart || off+want > r.cacheEnd {
+		// Returned less than requested. Caller in our backward driver only
+		// asks for ranges <= file size, so this happens at the end of the
+		// file — return what we have.
+		if off < r.cacheStart {
+			return 0, fmt.Errorf("read at %d returned no bytes", off)
+		}
+		n := copy(p, r.cache[off-r.cacheStart:])
+		return n, nil
+	}
+	copy(p, r.cache[off-r.cacheStart:off-r.cacheStart+want])
+	return int(want), nil
+}
+
+// sshBackwardOpener adapts a slice of RotatedFile to the readBackwardOpener
+// interface, opening each as an sshBackwardReader on demand.
+type sshBackwardOpener struct {
+	ctx   context.Context
+	src   *SSHSource
+	files []RotatedFile
+}
+
+func (o *sshBackwardOpener) openBackward(_ context.Context, idx int) (readerAt, func(), int64, string, bool, bool) {
+	if idx < 0 || idx >= len(o.files) {
+		return nil, nil, 0, "", false, false
+	}
+	f := o.files[idx]
+	if f.Compressed {
+		return nil, nil, f.Size, f.Path, true, true
+	}
+	// Refresh size if the file is the active (index 0) one: it may have
+	// grown since we last stat'd. Otherwise trust the cached size.
+	size := f.Size
+	if idx == 0 {
+		if s2, _, err := o.src.remoteStat(o.ctx, f.Path); err == nil {
+			size = s2
+		}
+	}
+	r := &sshBackwardReader{ctx: o.ctx, src: o.src, path: f.Path}
+	return r, nil, size, f.Path, false, true
+}
+
+// ReadBackward pages backward through the remote source's files using
+// byte-offset reads (tail -c +N | head -c M). Compressed rotated files are
+// skipped — the WS handler falls back to the time-window path for those.
+func (s *SSHSource) ReadBackward(ctx context.Context, cursor BackwardCursor, maxLines int) (BackwardResult, error) {
+	active, rotated, err := s.backwardFiles(ctx)
+	if err != nil && len(active) == 0 && len(rotated) == 0 {
+		return BackwardResult{NextCursor: cursor}, err
+	}
+	files := append(active, rotated...)
+	opener := &sshBackwardOpener{ctx: ctx, src: s, files: files}
+	return readBackwardAcrossFiles(ctx, opener, len(files), cursor, maxLines)
+}
+
+// SeekToTime binary-searches the remote active file for an offset whose
+// first complete line has timestamp >= target. Each probe is a single
+// `tail -c +N | head -c 4096` round-trip; ~log2(filesize/4KB) probes
+// total. Without this, transitioning from the in-memory buffer to byte-
+// offset paging would start at end-of-file and replay content the buffer
+// already showed.
+func (s *SSHSource) SeekToTime(ctx context.Context, target time.Time, parseTS func(line string) time.Time) (BackwardCursor, error) {
+	active, _, err := s.backwardFiles(ctx)
+	if err != nil || len(active) == 0 {
+		return BackwardCursor{Offset: -1}, err
+	}
+	f := active[0]
+	reader := &sshBackwardReader{ctx: ctx, src: s, path: f.Path}
+	off := findOffsetForTime(ctx, reader, f.Size, target, parseTS)
+	return BackwardCursor{FileIndex: 0, Offset: off, FilePath: f.Path}, nil
+}
+
 // ReadRange reads log lines from a time range in rotated files.
 func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
 	log.Printf("SSH ReadRange: start=%v end=%v grep=%q before=%d after=%d", start, end, grep, grepBefore, grepAfter)

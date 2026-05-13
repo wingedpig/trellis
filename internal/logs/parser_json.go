@@ -25,6 +25,38 @@ func (p *JSONParser) Name() string {
 	return "json"
 }
 
+// ExtractTimestamp implements TimestampExtractor. Returns (ts, true) only
+// when the line is valid JSON, the configured timestamp field is present,
+// and its value parses cleanly. Crucially, this does NOT fall back to
+// time.Now() the way Parse does — callers that need to distinguish
+// "parsed from line" from "fallback" (such as the byte-offset reader's
+// binary search) rely on this.
+func (p *JSONParser) ExtractTimestamp(line string) (time.Time, bool) {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(line), &data); err != nil {
+		return time.Time{}, false
+	}
+	tsField := p.GetFieldName("timestamp")
+	tsVal, ok := data[tsField]
+	if !ok {
+		return time.Time{}, false
+	}
+	switch v := tsVal.(type) {
+	case string:
+		ts, err := p.ParseTimestamp(v)
+		if err != nil {
+			return time.Time{}, false
+		}
+		return ts, true
+	case float64:
+		if v > 1e12 {
+			return time.Unix(int64(v/1000), int64(v)%1000*1e6), true
+		}
+		return time.Unix(int64(v), 0), true
+	}
+	return time.Time{}, false
+}
+
 // Parse parses a JSON log line.
 func (p *JSONParser) Parse(line string) LogEntry {
 	entry := LogEntry{

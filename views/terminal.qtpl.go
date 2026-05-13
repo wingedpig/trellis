@@ -1836,9 +1836,11 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     let logViewerLayout = [];           // Full layout config (for kvpairs support)
     let logViewerFieldMap = {};         // Maps column names to entry fields (e.g., "time" -> timestamp)
     let logViewerFieldNames = { timestamp: 'timestamp', level: 'level', message: 'message' }; // Original field names from config
-    let logViewerOldestSeq = null;      // Oldest sequence number we have (for loading more)
+    let logViewerOldestSeq = null;      // Oldest sequence number we have (for loading more from in-memory buffer)
+    let logViewerOldestTime = null;     // Oldest entry timestamp (ISO string); used as a fallback to load from rotated history when no cursor is established yet
+    let logViewerHistoryCursor = null;  // Server-provided cursor for byte-offset paging through rotated history; opaque to the client
     let logViewerLoadingMore = false;   // Prevent multiple load requests
-    let logViewerNoMoreEntries = false; // True when buffer exhausted
+    let logViewerNoMoreEntries = false; // True when both in-memory buffer AND rotated history are exhausted
     let logViewerFileField = null;      // Parser's file field name for current log viewer
     let logViewerLineField = null;      // Parser's line field name for current log viewer
     let cachedWorktrees = null;         // Cached worktree list for log viewer "Open in Editor" picker
@@ -4939,6 +4941,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         logViewerFilter = '';
         logViewerSelectedEntry = null;
         logViewerOldestSeq = null;
+        logViewerOldestTime = null;
+        logViewerHistoryCursor = null;
         logViewerLoadingMore = false;
         logViewerNoMoreEntries = false;
 
@@ -5028,8 +5032,20 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 if (data.type === 'older_entries') {
                     // Older entries loaded via scroll-to-top
                     logViewerLoadingMore = false;
-                    if (data.no_more || !data.entries || data.entries.length === 0) {
+                    // Server returns a next_cursor whenever it advanced
+                    // through historical files via the byte-offset reader.
+                    // Stash it for the next request regardless of whether
+                    // this response was empty.
+                    if (data.next_cursor) {
+                        logViewerHistoryCursor = data.next_cursor;
+                    }
+                    if (data.no_more) {
                         logViewerNoMoreEntries = true;
+                        return;
+                    }
+                    if (!data.entries || data.entries.length === 0) {
+                        // No entries this round but server may have more.
+                        // Don't set no_more — the next scroll will retry.
                         return;
                     }
                     prependLogViewerEntries(data.entries);
@@ -5088,15 +5104,24 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 logViewerOldestSeq = entry.sequence;
             }
         }
+        // Also track the oldest timestamp — used to fall through to the
+        // rotated history files once the in-memory buffer is exhausted.
+        if (entry.timestamp) {
+            if (!logViewerOldestTime || entry.timestamp < logViewerOldestTime) {
+                logViewerOldestTime = entry.timestamp;
+            }
+        }
 
-        // Limit entries to prevent memory issues
+        // Limit entries to prevent memory issues. Note: we deliberately do
+        // NOT bump logViewerOldestSeq after trimming. The DOM and
+        // logViewerFilteredEntries still contain the older rendered rows,
+        // and oldestSeq must track the oldest *rendered* sequence — not the
+        // oldest in the cap-bounded backing array. Bumping it up here caused
+        // scroll-back to ask the server for entries we already had on
+        // screen, producing duplicates.
         const maxEntries = 10000;
         if (logViewerEntries.length > maxEntries) {
             logViewerEntries = logViewerEntries.slice(-maxEntries);
-            // Update oldest sequence after trimming
-            if (logViewerEntries.length > 0 && logViewerEntries[0].sequence !== undefined) {
-                logViewerOldestSeq = logViewerEntries[0].sequence;
-            }
         }
 
         // Check if entry matches current filter
@@ -5125,11 +5150,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         // Prepend to entries array
         logViewerEntries = entries.concat(logViewerEntries);
 
-        // Update oldest sequence
+        // Update oldest sequence + timestamp from the prepended batch.
         for (const entry of entries) {
-            if (entry.sequence !== undefined) {
+            if (entry.sequence !== undefined && entry.sequence > 0) {
                 if (logViewerOldestSeq === null || entry.sequence < logViewerOldestSeq) {
                     logViewerOldestSeq = entry.sequence;
+                }
+            }
+            if (entry.timestamp) {
+                if (!logViewerOldestTime || entry.timestamp < logViewerOldestTime) {
+                    logViewerOldestTime = entry.timestamp;
                 }
             }
         }
@@ -5262,7 +5292,8 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         // Load more entries when scrolled near top
-        if (isNearTop && !logViewerLoadingMore && !logViewerNoMoreEntries && logViewerOldestSeq !== null) {
+        if (isNearTop && !logViewerLoadingMore && !logViewerNoMoreEntries &&
+            (logViewerOldestSeq !== null || logViewerOldestTime !== null)) {
             loadMoreLogViewerEntries();
         }
     }
@@ -5270,14 +5301,26 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     function loadMoreLogViewerEntries() {
         if (!logViewerWs || logViewerWs.readyState !== WebSocket.OPEN) return;
         if (logViewerLoadingMore || logViewerNoMoreEntries) return;
-        if (logViewerOldestSeq === null) return;
+        if (logViewerOldestSeq === null && logViewerOldestTime === null &&
+            logViewerHistoryCursor === null) return;
 
         logViewerLoadingMore = true;
-        logViewerWs.send(JSON.stringify({
+        // The server tries three paths in order:
+        //   1. before_seq → in-memory ring buffer (fastest)
+        //   2. history_cursor → byte-offset reader (rotated files)
+        //   3. before_time → time-window fallback (for non-seekable sources
+        //      or compressed history that the byte-offset reader skipped)
+        // We send whatever we have for each; the server picks.
+        const msg = {
             type: 'load_more',
-            before_seq: logViewerOldestSeq,
-            limit: 100
-        }));
+            before_seq: logViewerOldestSeq || 0,
+            before_time: logViewerOldestTime || '',
+            limit: 100,
+        };
+        if (logViewerHistoryCursor) {
+            msg.history_cursor = logViewerHistoryCursor;
+        }
+        logViewerWs.send(JSON.stringify(msg));
     }
 
     function toggleLogViewerFollowing() {
@@ -5817,36 +5860,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 </script>
 
 `)
-//line views/terminal.qtpl:5262
+//line views/terminal.qtpl:5305
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5262
+//line views/terminal.qtpl:5305
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 }
 
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 }
 
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 	return qs422016
-//line views/terminal.qtpl:5263
+//line views/terminal.qtpl:5306
 }

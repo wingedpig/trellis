@@ -162,6 +162,106 @@ func (s *FileSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error
 	return files, nil
 }
 
+// backwardFiles returns the files for backward paging in newest-first
+// order: the active file at index 0, then rotated files by mod-time.
+//
+// Mirrors the active-file resolution ReadRange uses: Current (relative to
+// Dir(Path)) if set, otherwise Path itself. FileSource treats Path as a
+// file; SSHSource treats it as a directory — see SSHSource.backwardFiles
+// for that variant.
+func (s *FileSource) backwardFiles(ctx context.Context) ([]RotatedFile, error) {
+	var files []RotatedFile
+	curPath := ""
+	if s.cfg.Current != "" {
+		if filepath.IsAbs(s.cfg.Current) {
+			curPath = s.cfg.Current
+		} else {
+			curPath = filepath.Join(filepath.Dir(s.cfg.Path), s.cfg.Current)
+		}
+	} else if s.cfg.Path != "" {
+		curPath = s.cfg.Path
+	}
+	if curPath != "" {
+		if info, err := os.Stat(curPath); err == nil {
+			files = append(files, RotatedFile{
+				Name:       filepath.Base(curPath),
+				Path:       curPath,
+				Size:       info.Size(),
+				ModTime:    info.ModTime(),
+				Compressed: false,
+			})
+		}
+	}
+	rotated, err := s.ListRotatedFiles(ctx)
+	if err != nil {
+		return files, err
+	}
+	files = append(files, rotated...)
+	return files, nil
+}
+
+// fileBackwardOpener adapts a slice of RotatedFile to the readBackwardOpener
+// interface so the shared driver can step through them.
+type fileBackwardOpener struct{ files []RotatedFile }
+
+func (o *fileBackwardOpener) openBackward(_ context.Context, idx int) (readerAt, func(), int64, string, bool, bool) {
+	if idx < 0 || idx >= len(o.files) {
+		return nil, nil, 0, "", false, false
+	}
+	f := o.files[idx]
+	if f.Compressed {
+		return nil, nil, f.Size, f.Path, true, true
+	}
+	fh, err := os.Open(f.Path)
+	if err != nil {
+		return nil, nil, 0, "", false, false
+	}
+	// Stat again at open time so we have a current size — the active file
+	// is being appended to.
+	info, err := fh.Stat()
+	if err != nil {
+		fh.Close()
+		return nil, nil, 0, "", false, false
+	}
+	return fh, func() { fh.Close() }, info.Size(), f.Path, false, true
+}
+
+// ReadBackward pages backward through the source's files, returning the
+// next maxLines newest-first lines whose offset is < cursor.Offset.
+func (s *FileSource) ReadBackward(ctx context.Context, cursor BackwardCursor, maxLines int) (BackwardResult, error) {
+	files, err := s.backwardFiles(ctx)
+	if err != nil && len(files) == 0 {
+		return BackwardResult{NextCursor: cursor}, err
+	}
+	opener := &fileBackwardOpener{files: files}
+	return readBackwardAcrossFiles(ctx, opener, len(files), cursor, maxLines)
+}
+
+// SeekToTime binary-searches the active file for an offset whose first
+// complete line has timestamp >= target. Used when transitioning from the
+// in-memory buffer to byte-offset paging.
+func (s *FileSource) SeekToTime(ctx context.Context, target time.Time, parseTS func(line string) time.Time) (BackwardCursor, error) {
+	files, err := s.backwardFiles(ctx)
+	if err != nil || len(files) == 0 {
+		return BackwardCursor{Offset: -1}, err
+	}
+	active := files[0]
+	if active.Compressed {
+		return BackwardCursor{Offset: -1}, nil
+	}
+	fh, err := os.Open(active.Path)
+	if err != nil {
+		return BackwardCursor{Offset: -1}, err
+	}
+	defer fh.Close()
+	info, err := fh.Stat()
+	if err != nil {
+		return BackwardCursor{Offset: -1}, err
+	}
+	off := findOffsetForTime(ctx, fh, info.Size(), target, parseTS)
+	return BackwardCursor{FileIndex: 0, Offset: off, FilePath: active.Path}, nil
+}
+
 // ReadRange reads log lines from a time range in rotated files.
 // For FileSource, grep filtering is done client-side after reading (local files are fast).
 func (s *FileSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {

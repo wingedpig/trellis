@@ -50,6 +50,70 @@ type SourceStatus struct {
 	LinesRead   int64     `json:"lines_read"`
 }
 
+// BackwardReader is an optional capability for sources whose underlying log
+// store is a seekable byte stream (local files, remote files over SSH). It
+// lets the viewer page backward through the log a fixed number of lines at
+// a time without re-scanning earlier history on every request.
+//
+// Sources that don't have seekable streams (Docker logs, Kubernetes,
+// streaming commands) don't implement this; the viewer falls back to its
+// time-window-based historical reader for those.
+type BackwardReader interface {
+	// ReadBackward returns the most recent `maxLines` raw log lines whose
+	// byte position is strictly less than cursor.Offset within the file at
+	// cursor.FileIndex (and earlier files if the current file is exhausted
+	// before we have enough lines).
+	//
+	// On the very first call, cursor.Offset may be -1 to mean "start at end
+	// of file". Returned Lines are in chronological order (oldest first).
+	// NextCursor points at where the next backward read should start;
+	// callers should pass it back verbatim on the next call. Done is true
+	// when no older history is available — further calls would return
+	// nothing.
+	ReadBackward(ctx context.Context, cursor BackwardCursor, maxLines int) (BackwardResult, error)
+
+	// SeekToTime returns an initial cursor positioned such that reading
+	// backward from it yields lines with timestamp strictly less than
+	// target. Used when the client falls through from the in-memory ring
+	// buffer to byte-offset paging — otherwise byte-offset would start at
+	// end-of-file and replay content the in-memory buffer already showed.
+	//
+	// Implementations typically binary-search the active file using
+	// parseTS to extract timestamps from probed lines. probeTimestamp
+	// should return the zero time for lines it can't parse — those are
+	// treated as "old enough" (bias toward returning more history rather
+	// than less).
+	//
+	// Returns the zero cursor if seeking isn't possible (empty file, no
+	// parseable lines, target older than any line in the file).
+	SeekToTime(ctx context.Context, target time.Time, parseTS func(line string) time.Time) (BackwardCursor, error)
+}
+
+// BackwardCursor identifies a position in the log history for backward
+// paging. FileIndex is 0 for the currently-active file, 1+ for rotated
+// files in newest-first order. Offset is the byte position within that
+// file; -1 means "start at end of file" (used for the very first call).
+type BackwardCursor struct {
+	FileIndex int   `json:"file_index"`
+	Offset    int64 `json:"offset"`
+	// FilePath is informational: lets clients detect when active rotation
+	// has shifted the file under our feet and they should reset the cursor.
+	FilePath string `json:"file_path,omitempty"`
+}
+
+// BackwardResult is the response from a BackwardReader.ReadBackward call.
+type BackwardResult struct {
+	Lines      []string       // chronological order
+	NextCursor BackwardCursor // pass back unchanged on the next call
+	Done       bool           // no older history is available
+	// SkippedCompressed is true when the driver advanced past one or
+	// more `.gz` rotated files without reading them. The caller can use
+	// this to decide whether the time-window decompress-and-grep
+	// fallback is worth running — if no compressed files were skipped,
+	// there's no older content the byte-offset reader missed.
+	SkippedCompressed bool
+}
+
 // RotatedFile represents a rotated log file.
 type RotatedFile struct {
 	Name       string    `json:"name"`

@@ -213,6 +213,124 @@ func (v *Viewer) GetEntriesBefore(beforeSeq uint64, limit int) []LogEntry {
 	return v.buffer.GetBefore(beforeSeq, limit)
 }
 
+// ReadEntriesBackward pages backward through the source's historical files
+// using byte-offset reads, parses the raw lines, applies the given filter,
+// and returns up to `limit` matching entries. Returns the lines (newest
+// first within result), the next cursor, and a Done flag indicating no
+// older history is available.
+//
+// Only sources that implement BackwardReader (FileSource, SSHSource) are
+// supported; for other source types the caller should fall back to the
+// time-window-based StreamHistoricalEntries. If the source can produce raw
+// lines from compressed files but the byte-offset reader skipped them, the
+// caller is expected to fall back too.
+//
+// Filtering is applied after parsing; we keep reading more lines from the
+// source until either `limit` matching entries have accumulated or the
+// source is exhausted. To keep total work bounded, the function will not
+// scan more than `maxLinesScanned` raw lines per call.
+func (v *Viewer) ReadEntriesBackward(ctx context.Context, cursor BackwardCursor, limit int, filter *Filter, beforeTime time.Time) ([]LogEntry, BackwardCursor, bool, bool, error) {
+	reader, ok := v.source.(BackwardReader)
+	if !ok {
+		return nil, cursor, false, false, errors.New("source does not support backward reading")
+	}
+
+	// On a fresh cursor (the client just transitioned from the in-memory
+	// ring buffer to byte-offset paging), the natural starting point is
+	// end-of-file — but that's exactly the region the in-memory buffer
+	// already covered. Skip past it by binary-searching the file for the
+	// first byte whose line has timestamp >= beforeTime; reading backward
+	// from there yields only content older than what the client already
+	// shows.
+	//
+	// When SeekToTime returns Offset==0 it means the target is older than
+	// every line in the file — so there's nothing to read backward. We
+	// honor that by advancing the cursor PAST the active file (FileIndex
+	// = -1 sentinel handled below) rather than falling back to Offset<0
+	// which would re-read the file from end and hand the client lines it
+	// already has.
+	if cursor.Offset < 0 && !beforeTime.IsZero() {
+		// Use the parser's ExtractTimestamp if available — it returns
+		// the zero time when the line had no parseable timestamp,
+		// which is what findOffsetForTime needs to skip unparseable
+		// probes. Falling back to Parse().Timestamp gives us time.Now()
+		// for unparseable lines, which would bias the binary search
+		// toward 0 and re-introduce the today-leak / halt bugs.
+		parseTS := func(line string) time.Time {
+			if ex, ok := v.parser.(TimestampExtractor); ok {
+				if ts, ok := ex.ExtractTimestamp(line); ok {
+					return ts
+				}
+				return time.Time{}
+			}
+			return v.parser.Parse(line).Timestamp
+		}
+		seeked, err := reader.SeekToTime(ctx, beforeTime, parseTS)
+		if err != nil {
+			log.Printf("logs[%s]: SeekToTime error (%v); reading from end of file (may produce overlap)", v.name, err)
+		} else if seeked.Offset > 0 {
+			cursor = seeked
+		} else {
+			// Offset==0 means "target is older than everything in this
+			// file". Mark the cursor so readBackwardAcrossFiles advances
+			// past the active file to whatever's behind it.
+			log.Printf("logs[%s]: SeekToTime says target %v is older than active file; advancing past", v.name, beforeTime)
+			cursor = BackwardCursor{FileIndex: 1, Offset: -1}
+		}
+	}
+
+	const maxLinesScanned = 10000
+	scanned := 0
+	cur := cursor
+	var entries []LogEntry
+	skippedCompressed := false
+	for len(entries) < limit && scanned < maxLinesScanned {
+		want := limit - len(entries)
+		// With a filter, lines may be rejected at a high rate; ask for a
+		// larger raw batch to amortize per-call overhead. Without a
+		// filter every parsed line is kept, so honor `limit` exactly.
+		if filter != nil && want < 100 {
+			want = 100
+		}
+		res, err := reader.ReadBackward(ctx, cur, want)
+		if err != nil {
+			log.Printf("logs[%s]: ReadBackward error at cursor %+v: %v", v.name, cur, err)
+			return entries, cur, false, skippedCompressed, err
+		}
+		scanned += len(res.Lines)
+		cur = res.NextCursor
+		if res.SkippedCompressed {
+			skippedCompressed = true
+		}
+		// Parse + filter. Stop appending once we've reached `limit` even
+		// if there are more lines in this batch (only happens for
+		// filtered reads where we asked for more than `limit` raw lines).
+		for _, raw := range res.Lines {
+			if len(entries) >= limit {
+				break
+			}
+			e := v.parser.Parse(raw)
+			e.Source = v.name
+			if v.deriver != nil {
+				v.deriver.Apply(&e)
+			}
+			if filter != nil && !filter.Match(e) {
+				continue
+			}
+			entries = append(entries, e)
+		}
+		if res.Done {
+			return entries, cur, true, skippedCompressed, nil
+		}
+		if len(res.Lines) == 0 {
+			// Defensive: source returned nothing but didn't set Done. Stop
+			// so we don't spin.
+			break
+		}
+	}
+	return entries, cur, false, skippedCompressed, nil
+}
+
 // GetEntriesRange returns entries in the given time range.
 func (v *Viewer) GetEntriesRange(start, end time.Time, limit int) []LogEntry {
 	return v.buffer.GetRange(start, end, limit)

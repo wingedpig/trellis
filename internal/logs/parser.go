@@ -31,6 +31,20 @@ const (
 	ParserTypeNone   ParserType = "none"
 )
 
+// TimestampExtractor is an optional interface a parser may implement to
+// expose timestamp extraction separately from full line parsing. Returns
+// ok=true ONLY if the timestamp was extracted from the line itself —
+// callers like the byte-offset reader's binary search must be able to
+// tell "extracted from this line" from "fell back to time.Now()" (which
+// is what Parse does when timestamp extraction fails).
+//
+// Parsers that don't implement this — older ones or ones where the
+// timestamp source is ambiguous — make the seek path treat unparseable
+// lines as zero-time, biasing the binary search toward broader windows.
+type TimestampExtractor interface {
+	ExtractTimestamp(line string) (time.Time, bool)
+}
+
 // NewParser creates a new LogParser from configuration.
 func NewParser(cfg config.LogParserConfig) (LogParser, error) {
 	switch ParserType(cfg.Type) {
