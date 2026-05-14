@@ -346,6 +346,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/codex/sessions/{session}/permanent", codexHandler.PermanentDeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/codex/sessions/{session}/fork", codexHandler.ForkSessionAPI).Methods("POST")
 		api.HandleFunc("/codex/sessions/{session}/move", codexHandler.MoveSessionAPI).Methods("POST")
+		api.HandleFunc("/codex/sessions/{session}/items/{item}/output", codexHandler.ItemOutput).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/sessions/import", codexHandler.ImportSessionAPI).Methods("POST")
 		api.HandleFunc("/codex/{worktree}/sessions/trash", codexHandler.ListTrashedSessionsAPI).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/git-status", codexHandler.GitStatus).Methods("GET")

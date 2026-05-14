@@ -44,11 +44,13 @@
     if (typeof marked !== 'undefined') {
         marked.setOptions({
             highlight: function (code, lang) {
-                if (typeof hljs === 'undefined') return code;
-                if (lang && hljs.getLanguage(lang)) {
+                // Only highlight when we know the language. highlightAuto is
+                // tens of ms per block and made history re-renders block the
+                // main thread; un-tagged fences stay as plain escaped text.
+                if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
                     return hljs.highlight(code, { language: lang }).value;
                 }
-                return hljs.highlightAuto(code).value;
+                return escapeHtml(code);
             },
             breaks: false,
             gfm: true,
@@ -157,7 +159,33 @@
         ws.onmessage = function (e) {
             if (typeof e.data !== 'string' || !e.data) return;
             try {
-                handleServerMessage(JSON.parse(e.data));
+                // Temporary perf instrumentation — remove once history-render
+                // cold-load slowness is resolved.
+                const isHistory = e.data.length > 1000 && e.data.indexOf('"type":"history"') !== -1;
+                const t0 = isHistory ? performance.now() : 0;
+                const parsed = JSON.parse(e.data);
+                const t1 = isHistory ? performance.now() : 0;
+                handleServerMessage(parsed);
+                if (isHistory) {
+                    const t2 = performance.now();
+                    console.log('[codex perf] history payload=' + (e.data.length / 1024).toFixed(1) + 'KB' +
+                        ' messages=' + (parsed.messages ? parsed.messages.length : 0) +
+                        ' JSON.parse=' + (t1 - t0).toFixed(0) + 'ms' +
+                        ' handle=' + (t2 - t1).toFixed(0) + 'ms');
+                    // Measure gap from JS completion to next event-loop tick
+                    // (catches GC pauses and browser internal work) and to
+                    // next paint.
+                    setTimeout(function () {
+                        console.log('[codex perf] post-handle event-loop gap=' +
+                            (performance.now() - t2).toFixed(0) + 'ms');
+                    }, 0);
+                    requestAnimationFrame(function () {
+                        requestAnimationFrame(function () {
+                            console.log('[codex perf] post-handle paint gap=' +
+                                (performance.now() - t2).toFixed(0) + 'ms');
+                        });
+                    });
+                }
             } catch (err) {
                 console.error('codex: bad WS message', err, e.data);
             }
@@ -533,14 +561,28 @@
         const body = document.createElement('div');
         body.className = 'codex-tool-body';
 
+        let hydrate = null;
+        let hydrated = false;
         header.addEventListener('click', function () {
+            if (!hydrated && hydrate) {
+                hydrated = true;
+                try { hydrate(); } catch (e) { console.error('codex: hydrate failed', e); }
+            }
             header.classList.toggle('expanded');
             body.classList.toggle('show');
         });
 
         root.appendChild(header);
         root.appendChild(body);
-        return { root: root, header: header, body: body };
+        return {
+            root: root,
+            header: header,
+            body: body,
+            // Register a one-shot callback that runs the first time the user
+            // expands the body. Use this for hljs work so collapsed bodies
+            // stay off the cold-load critical path.
+            onFirstExpand: function (fn) { hydrate = fn; },
+        };
     }
 
     function setSubtitle(header, text) {
@@ -604,7 +646,9 @@
         setSummary(tool.header, commandSummaryHTML(item, completed));
 
         // Render the command in the body as `$ <command>` styled the same
-        // way Claude renders bash input.
+        // way Claude renders bash input. Body is collapsed by default —
+        // highlight on first expand instead of eagerly during history render.
+        let cmdCodeEl = null;
         if (cmdText) {
             const cmdBlock = document.createElement('div');
             cmdBlock.className = 'codex-bash-block';
@@ -613,24 +657,35 @@
             const prompt = document.createElement('span');
             prompt.className = 'codex-bash-prompt';
             prompt.textContent = '$ ';
-            const code = document.createElement('code');
-            try {
-                if (typeof hljs !== 'undefined') {
-                    code.innerHTML = hljs.highlight(cmdText, { language: 'bash' }).value;
-                } else {
-                    code.textContent = cmdText;
-                }
-            } catch (e) { code.textContent = cmdText; }
+            cmdCodeEl = document.createElement('code');
+            cmdCodeEl.textContent = cmdText;
             cmdLine.appendChild(prompt);
-            cmdLine.appendChild(code);
+            cmdLine.appendChild(cmdCodeEl);
             cmdBlock.appendChild(cmdLine);
             tool.body.appendChild(cmdBlock);
         }
 
         const out = document.createElement('pre');
         out.className = 'codex-bash-output';
-        out.textContent = item.output || '';
         tool.body.appendChild(out);
+
+        tool.onFirstExpand(function () {
+            // textContent on multi-MB command output is the actual bottleneck
+            // during cold-load history render — defer it to first expand.
+            if (item.output) out.textContent = item.output;
+            if (cmdCodeEl && cmdText && typeof hljs !== 'undefined') {
+                try {
+                    cmdCodeEl.innerHTML = hljs.highlight(cmdText, { language: 'bash' }).value;
+                } catch (e) { /* leave as plain text */ }
+            }
+            if (item.output_truncated && item.id) {
+                fetchFullItemContent(item.id, function (full) {
+                    if (full && typeof full.output === 'string') {
+                        out.textContent = full.output;
+                    }
+                });
+            }
+        });
         return tool.root;
     }
 
@@ -642,13 +697,44 @@
         if (item.diff) {
             const pre = document.createElement('pre');
             pre.className = 'codex-file-diff';
-            pre.innerHTML = '<code class="language-diff">' + escapeHtml(item.diff) + '</code>';
-            if (typeof hljs !== 'undefined') {
-                try { hljs.highlightElement(pre.querySelector('code')); } catch (e) {}
-            }
+            const codeEl = document.createElement('code');
+            codeEl.className = 'language-diff';
+            pre.appendChild(codeEl);
             tool.body.appendChild(pre);
+            tool.onFirstExpand(function () {
+                // Defer both the escapeHtml of the diff body and the hljs
+                // pass — both scale with diff size and were freezing the
+                // main thread during cold-load history render.
+                codeEl.innerHTML = escapeHtml(item.diff);
+                if (typeof hljs !== 'undefined') {
+                    try { hljs.highlightElement(codeEl); } catch (e) {}
+                }
+                if (item.diff_truncated && item.id) {
+                    fetchFullItemContent(item.id, function (full) {
+                        if (full && typeof full.diff === 'string') {
+                            codeEl.innerHTML = escapeHtml(full.diff);
+                            if (typeof hljs !== 'undefined') {
+                                try { hljs.highlightElement(codeEl); } catch (e) {}
+                            }
+                        }
+                    });
+                }
+            });
         }
         return tool.root;
+    }
+
+    // Fetch the full Output/Diff for a single item — used after first expand
+    // for items that were truncated in the initial history dump.
+    function fetchFullItemContent(itemId, cb) {
+        if (!window.CODEX_SESSION || !itemId) return;
+        const url = '/api/v1/codex/sessions/' +
+            encodeURIComponent(window.CODEX_SESSION) +
+            '/items/' + encodeURIComponent(itemId) + '/output';
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) { if (data) cb(data); })
+            .catch(function (err) { console.warn('codex: fetch full content failed', err); });
     }
 
     function commandToString(cmd) {

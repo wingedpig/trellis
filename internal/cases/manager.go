@@ -409,7 +409,13 @@ func (m *Manager) SaveCodexTranscript(worktreePath, caseID, refID, title, source
 	transcriptsDir := filepath.Join(caseDir, "codex_transcripts")
 	jsonlPath := filepath.Join(transcriptsDir, refID+".jsonl")
 	metaPath := filepath.Join(transcriptsDir, refID+".json")
-	if err := codex.WriteTranscriptSplit(jsonlPath, metaPath, transcript); err != nil {
+	// Cap oversized Output / Diff fields. Wrap-up commits this file into the
+	// repo; without truncation a single big `find` or `grep` can push it past
+	// GitHub's 100MB blob limit. The live codex session keeps the full data
+	// under .trellis/codex/messages/.
+	truncated := *transcript
+	truncated.Messages = codex.TruncateMessages(transcript.Messages)
+	if err := codex.WriteTranscriptSplit(jsonlPath, metaPath, &truncated); err != nil {
 		return fmt.Errorf("write codex transcript: %w", err)
 	}
 
@@ -440,7 +446,9 @@ func (m *Manager) UpdateCodexTranscript(worktreePath, caseID, refID string, tran
 			transcriptsDir := filepath.Join(caseDir, "codex_transcripts")
 			jsonlPath := filepath.Join(transcriptsDir, refID+".jsonl")
 			metaPath := filepath.Join(transcriptsDir, refID+".json")
-			if err := codex.WriteTranscriptSplit(jsonlPath, metaPath, transcript); err != nil {
+			truncated := *transcript
+			truncated.Messages = codex.TruncateMessages(transcript.Messages)
+			if err := codex.WriteTranscriptSplit(jsonlPath, metaPath, &truncated); err != nil {
 				return fmt.Errorf("write codex transcript: %w", err)
 			}
 			c.Codex[i].Filename = refID + ".jsonl"

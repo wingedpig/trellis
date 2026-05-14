@@ -144,20 +144,30 @@ type itemEvent struct {
 
 // Item is an event-stream item. Most fields are optional and depend on Type.
 type Item struct {
-	ID     string          `json:"id"`
-	Type   string          `json:"type"`
-	Status string          `json:"status,omitempty"`
-	Text   string          `json:"text,omitempty"`
+	ID     string `json:"id"`
+	Type   string `json:"type"`
+	Status string `json:"status,omitempty"`
+	Text   string `json:"text,omitempty"`
 
 	// Tool / command-execution fields
-	Command   json.RawMessage `json:"command,omitempty"`
-	Output    string          `json:"output,omitempty"`
-	ExitCode  *int            `json:"exitCode,omitempty"`
+	Command  json.RawMessage `json:"command,omitempty"`
+	Output   string          `json:"output,omitempty"`
+	ExitCode *int            `json:"exitCode,omitempty"`
+
+	// Wire-only truncation markers — set by truncateItemsForWire when Output
+	// is too big to ship in the initial history dump. The client fetches the
+	// full output on demand via /api/v1/codex/sessions/{id}/items/{itemId}/output.
+	OutputTruncated bool `json:"output_truncated,omitempty"`
+	OutputBytes     int  `json:"output_bytes,omitempty"`
 
 	// File-change fields
-	Path   string          `json:"path,omitempty"`
-	Diff   string          `json:"diff,omitempty"`
-	Change string          `json:"changeType,omitempty"`
+	Path   string `json:"path,omitempty"`
+	Diff   string `json:"diff,omitempty"`
+	Change string `json:"changeType,omitempty"`
+
+	// Same scheme for large diffs.
+	DiffTruncated bool `json:"diff_truncated,omitempty"`
+	DiffBytes     int  `json:"diff_bytes,omitempty"`
 
 	// Pass-through for fields we don't model
 	Raw json.RawMessage `json:"-"`

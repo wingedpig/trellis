@@ -115,10 +115,14 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 	}
 
 	// Initial history dump including in-progress turn + last token usage.
+	// MessagesForWire caps oversized command output / diffs so we don't ship
+	// tens of MB and lock up the browser's main thread on JSON.parse + GC.
+	// Truncated items carry markers; the client fetches full content lazily
+	// via /api/v1/codex/sessions/{id}/items/{itemId}/output.
 	usage := session.TokenUsage()
 	writeJSON(codexServerMessage{
 		Type:       "history",
-		Messages:   session.MessagesWithPending(),
+		Messages:   session.MessagesForWire(),
 		Generating: session.IsGenerating(),
 		TokenUsage: &usage,
 	})
@@ -215,6 +219,27 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 func (h *CodexHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	WriteJSON(w, http.StatusOK, h.manager.ListSessions(vars["worktree"]))
+}
+
+// ItemOutput returns the full Output / Diff content for a single item.
+// The initial history dump caps these fields to keep the wire payload small;
+// the client calls this on first expand to fetch the full content.
+func (h *CodexHandler) ItemOutput(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	session := h.manager.GetSession(vars["session"])
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	item, ok := session.FindItem(vars["item"])
+	if !ok {
+		http.Error(w, "item not found", http.StatusNotFound)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]string{
+		"output": item.Output,
+		"diff":   item.Diff,
+	})
 }
 
 // CreateSessionAPI creates a new Codex session for a worktree.

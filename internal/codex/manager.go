@@ -190,6 +190,106 @@ func (s *Session) MessagesWithPending() []Message {
 	return out
 }
 
+// wireOutputLimit is the largest Output / Diff (in bytes) we'll ship inline in
+// a `history` WS frame. Anything larger gets replaced with a head+tail preview
+// and the client fetches the full content on demand. Empirically a single
+// 70MB grep output for a 2-message conversation triggers ~half-second GC
+// pauses in the browser after JSON.parse — clamping the wire payload makes
+// page-load instant regardless of how chatty the session's commands were.
+const wireOutputLimit = 64 * 1024
+
+// wirePreviewHead / wirePreviewTail control how much of an over-long string
+// we keep, split between the start and end. Most users want either the
+// command that ran (top) or the tail of its output (bottom); the
+// `[... N bytes truncated ...]` marker tells them to fetch the full content
+// if they need the middle.
+const wirePreviewHead = 16 * 1024
+const wirePreviewTail = 16 * 1024
+
+// FindItem returns the first item with the given ID from any persisted
+// message. Used by the on-demand "fetch full output" endpoint that backs
+// truncated history items.
+func (s *Session) FindItem(itemID string) (Item, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, msg := range s.messages {
+		for _, it := range msg.Items {
+			if it.ID == itemID {
+				return it, true
+			}
+		}
+	}
+	for _, it := range s.currentItems {
+		if it != nil && it.ID == itemID {
+			return *it, true
+		}
+	}
+	return Item{}, false
+}
+
+// MessagesForWire is like MessagesWithPending but caps Output / Diff fields
+// to wireOutputLimit bytes so the initial history dump stays small. Truncated
+// items carry OutputTruncated / DiffTruncated flags and the original byte
+// count, letting the client fetch the full content on expand.
+func (s *Session) MessagesForWire() []Message {
+	return TruncateMessages(s.MessagesWithPending())
+}
+
+// TruncateMessages returns a copy of messages with each item's Output / Diff
+// capped to wireOutputLimit bytes (head + tail preview, with a truncation
+// marker). Used by both the WS history dump and the case-transcript writer
+// so neither produces multi-MB artifacts when commands emit huge stdout.
+func TruncateMessages(messages []Message) []Message {
+	out := make([]Message, len(messages))
+	for i, m := range messages {
+		wm := m
+		if len(m.Items) > 0 {
+			items := make([]Item, len(m.Items))
+			for j, it := range m.Items {
+				items[j] = truncateItemForWire(it)
+			}
+			wm.Items = items
+		}
+		out[i] = wm
+	}
+	return out
+}
+
+func truncateItemForWire(it Item) Item {
+	if len(it.Output) > wireOutputLimit {
+		it.OutputBytes = len(it.Output)
+		it.Output = previewString(it.Output)
+		it.OutputTruncated = true
+	}
+	if len(it.Diff) > wireOutputLimit {
+		it.DiffBytes = len(it.Diff)
+		it.Diff = previewString(it.Diff)
+		it.DiffTruncated = true
+	}
+	return it
+}
+
+func previewString(s string) string {
+	if len(s) <= wirePreviewHead+wirePreviewTail {
+		return s
+	}
+	omitted := len(s) - wirePreviewHead - wirePreviewTail
+	return s[:wirePreviewHead] +
+		"\n\n[... " + formatBytes(omitted) + " truncated — expand to load full content ...]\n\n" +
+		s[len(s)-wirePreviewTail:]
+}
+
+func formatBytes(n int) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d B", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	}
+}
+
 // IsGenerating returns whether a turn is in flight.
 func (s *Session) IsGenerating() bool {
 	s.mu.Lock()
