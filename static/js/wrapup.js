@@ -1,15 +1,26 @@
 // Copyright (c) 2026 Groups.io, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Wrap-up modal logic shared between Claude chat page and case detail page.
+// Shared modal for Commit and Wrap Up flows.
+//
+// Both flows use the same DOM (the #wrapUpModal subtree defined inline by the
+// Claude / Codex / case-detail pages). The `mode` parameter controls which
+// sections are visible and which API endpoint the confirm button hits:
+//   - mode: 'commit'  → POST /api/v1/{agent}/{worktree}/commit
+//   - mode: 'wrapup'  → POST /api/v1/{agent}/{worktree}/wrap-up
+//
+// The trace/related-session/links sections are hidden in commit mode — those
+// are wrap-up-only concerns.
+//
 // Requires globals set by the including page:
-//   WRAPUP_WORKTREE  — worktree name (string)
-//   WRAPUP_SESSION_ID — session ID (string or null)
-//   WRAPUP_SESSION_CREATED — ISO 8601 timestamp of session creation (string)
-//   WRAPUP_CASE      — {id, title, kind} or null
+//   WRAPUP_WORKTREE         — worktree name (string)
+//   WRAPUP_SESSION_ID       — session ID (string or null)
+//   WRAPUP_SESSION_CREATED  — ISO 8601 timestamp of session creation (string)
+//   WRAPUP_CASE             — {id, title, kind} or null
+//   WRAPUP_AGENT            — 'claude' or 'codex' (defaults to 'claude')
+//   WRAPUP_WORKTREE_NAME_HUMANIZED — optional humanized worktree name for
+//                              prefilling the title when no case exists
 
-// Shared helper: set every checkbox inside #<containerId> to `checked`.
-// Used by select-all/none links above file/trace lists.
 window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
     var container = document.getElementById(containerId);
     if (!container) return;
@@ -17,63 +28,127 @@ window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId,
     boxes.forEach(function(cb) { cb.checked = !!checked; });
 };
 
-function showWrapUpModal() {
+// Internal: state remembered between modal open and confirm.
+var _modalState = {
+    mode: 'wrapup',           // 'commit' | 'wrapup'
+    generatedDescription: '', // last per-commit case description from the model
+    generationInflight: false,
+    userTouchedMessage: false,
+    // Wrap-up only: the full summary returned by /generate-summary. Stored
+    // so we can ship it back on confirm with the user's chip edits applied.
+    // null when no summary has been generated (or generation failed).
+    generatedSummary: null,
+    summaryInflight: false,
+    components: [],
+    keywords: [],
+};
+
+function _agent() {
+    return (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT) ? WRAPUP_AGENT : 'claude';
+}
+
+function _apiBase() {
+    return '/api/v1/' + _agent() + '/' + encodeURIComponent(WRAPUP_WORKTREE);
+}
+
+// Public entry point.
+function showCommitModal(mode) {
+    _modalState.mode = (mode === 'commit') ? 'commit' : 'wrapup';
+    _modalState.generatedDescription = '';
+    _modalState.generationInflight = false;
+    _modalState.userTouchedMessage = false;
+    _modalState.generatedSummary = null;
+    _modalState.summaryInflight = false;
+    _modalState.components = [];
+    _modalState.keywords = [];
+
     var modal = document.getElementById('wrapUpModal');
     if (!modal) return;
 
-    // Reset state
+    // Mode-driven label and button text.
+    var isCommit = _modalState.mode === 'commit';
+    var titleEl = modal.querySelector('.modal-title');
+    if (titleEl) {
+        titleEl.innerHTML = isCommit
+            ? '<i class="fa-solid fa-code-commit"></i> Commit'
+            : '<i class="fa-solid fa-flag-checkered"></i> Wrap Up';
+    }
+    var confirmBtn = document.getElementById('wrapUpConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.innerHTML = isCommit
+            ? '<i class="fa-solid fa-code-commit"></i> Commit'
+            : '<i class="fa-solid fa-flag-checkered"></i> Wrap Up';
+        confirmBtn.disabled = false;
+    }
+
+    // Reset feedback panes.
     document.getElementById('wrapUpError').style.display = 'none';
     document.getElementById('wrapUpSuccess').style.display = 'none';
-    document.getElementById('wrapUpConfirmBtn').disabled = false;
-    document.getElementById('wrapUpConfirmBtn').innerHTML = '<i class="fa-solid fa-flag-checkered"></i> Wrap Up';
-    document.getElementById('wrapUpLinks').innerHTML = '';
+    var linksEl = document.getElementById('wrapUpLinks');
+    if (linksEl) linksEl.innerHTML = '';
     document.getElementById('wrapUpFileList').innerHTML = '<div class="text-muted">Loading...</div>';
-    document.getElementById('wrapUpCommitMsg').value = '';
+    var msgEl = document.getElementById('wrapUpCommitMsg');
+    msgEl.value = '';
+    msgEl.placeholder = 'Generating commit message…';
 
-    // Detect existing case
-    var existingCase = typeof WRAPUP_CASE !== 'undefined' ? WRAPUP_CASE : null;
+    // Track whether the user has typed in the message field — once they do,
+    // we never overwrite their text with generated output.
+    if (!msgEl._touchHookInstalled) {
+        msgEl._touchHookInstalled = true;
+        msgEl.addEventListener('input', function() { _modalState.userTouchedMessage = true; });
+    }
+
+    // Install the Regenerate button next to the message field (idempotent).
+    _ensureRegenerateButton();
+
+    // Hide wrap-up-only sections in commit mode. (Tags section starts hidden
+    // and is only shown once /generate-summary returns a result.)
+    var hideForCommit = ['wrapUpTraceSection', 'wrapUpRelatedSection', 'wrapUpLinksSection', 'wrapUpTagsSection'];
+    hideForCommit.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    var existingCase = (typeof WRAPUP_CASE !== 'undefined' && WRAPUP_CASE) ? WRAPUP_CASE : null;
 
     var promises = [];
 
-    // Fetch git status
     promises.push(
-        fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/git-status')
-        .then(function(r) { return r.json(); })
-        .then(function(d) { return d.data || d; })
+        fetch(_apiBase() + '/git-status')
+            .then(function(r) { return r.json(); })
+            .then(function(d) { return d.data || d; })
     );
 
-    // If we have a session ID and no existing case, check for linked case
     if (WRAPUP_SESSION_ID && !existingCase) {
         promises.push(
-            fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/session-case?session_id=' + encodeURIComponent(WRAPUP_SESSION_ID))
-            .then(function(r) {
-                if (!r.ok) return null;
-                return r.json().then(function(d) { return d.data || d; });
-            })
-            .catch(function() { return null; })
+            fetch(_apiBase() + '/session-case?session_id=' + encodeURIComponent(WRAPUP_SESSION_ID))
+                .then(function(r) { return r.ok ? r.json().then(function(d) { return d.data || d; }) : null; })
+                .catch(function() { return null; })
         );
     } else {
         promises.push(Promise.resolve(null));
     }
 
-    // Fetch trace reports
-    promises.push(
-        fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/trace-reports')
-        .then(function(r) { return r.json(); })
-        .then(function(d) { return (d.data || d).reports || []; })
-        .catch(function() { return []; })
-    );
-
-    // Fetch the *other* agent's open sessions for this worktree so the user
-    // can opt to wrap up cross-agent collaborative work in one go.
-    var thisAgent = (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT) ? WRAPUP_AGENT : 'claude';
-    var otherAgent = thisAgent === 'codex' ? 'claude' : 'codex';
-    promises.push(
-        fetch('/api/v1/' + otherAgent + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/sessions')
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(d) { return d ? (d.data || d) : []; })
-        .catch(function() { return []; })
-    );
+    // Trace reports and related-agent sessions are wrap-up-only.
+    if (isCommit) {
+        promises.push(Promise.resolve([]));
+        promises.push(Promise.resolve([]));
+    } else {
+        promises.push(
+            fetch(_apiBase() + '/trace-reports')
+                .then(function(r) { return r.json(); })
+                .then(function(d) { return (d.data || d).reports || []; })
+                .catch(function() { return []; })
+        );
+        var thisAgent = _agent();
+        var otherAgent = thisAgent === 'codex' ? 'claude' : 'codex';
+        promises.push(
+            fetch('/api/v1/' + otherAgent + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/sessions')
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(d) { return d ? (d.data || d) : []; })
+                .catch(function() { return []; })
+        );
+    }
 
     Promise.all(promises).then(function(results) {
         var status = results[0];
@@ -81,11 +156,8 @@ function showWrapUpModal() {
         var traceReports = results[2];
         var relatedSessions = results[3] || [];
 
-        if (linkedCase) {
-            existingCase = linkedCase;
-        }
+        if (linkedCase) existingCase = linkedCase;
 
-        // Populate case info section
         var caseInfoEl = document.getElementById('wrapUpCaseInfo');
         var newCaseEl = document.getElementById('wrapUpNewCase');
         if (existingCase) {
@@ -94,37 +166,250 @@ function showWrapUpModal() {
             document.getElementById('wrapUpCaseId').textContent = existingCase.case_id || existingCase.id;
             document.getElementById('wrapUpCaseTitle').textContent = existingCase.title;
             document.getElementById('wrapUpCaseKind').textContent = existingCase.kind;
-            // Store for submit
             modal.dataset.caseId = existingCase.case_id || existingCase.id;
             modal.dataset.isNewCase = 'false';
         } else {
             caseInfoEl.style.display = 'none';
             newCaseEl.style.display = '';
-            document.getElementById('wrapUpNewTitle').value = '';
-            document.getElementById('wrapUpNewKind').value = 'task';
+            var prefillTitle = (typeof WRAPUP_WORKTREE_NAME_HUMANIZED !== 'undefined' && WRAPUP_WORKTREE_NAME_HUMANIZED)
+                ? WRAPUP_WORKTREE_NAME_HUMANIZED
+                : '';
+            document.getElementById('wrapUpNewTitle').value = prefillTitle;
+            // Commit mode defaults to 'feature'; wrap-up keeps 'task' for
+            // legacy compatibility (was 'task' before this change).
+            document.getElementById('wrapUpNewKind').value = isCommit ? 'feature' : 'task';
             modal.dataset.caseId = '';
             modal.dataset.isNewCase = 'true';
         }
 
-        // Render files
         renderWrapUpFiles(status);
 
-        // Render traces
         var sessionCreated = (typeof WRAPUP_SESSION_CREATED !== 'undefined' && WRAPUP_SESSION_CREATED) ? WRAPUP_SESSION_CREATED : null;
         renderWrapUpTraces(traceReports, sessionCreated);
-
-        // Render related (other-agent) sessions for the same worktree.
+        var otherAgent = _agent() === 'codex' ? 'claude' : 'codex';
         renderWrapUpRelatedSessions(relatedSessions, otherAgent);
 
-        // Pre-fill commit message
-        updateWrapUpCommitMsg();
+        // Kick off generation. The result only lands if the user hasn't
+        // started typing in the message field by the time it arrives.
+        _generateMessage();
+
+        // Wrap-up only: also pre-generate the case summary so the user can
+        // review and prune the tags before committing.
+        if (!isCommit) {
+            _generateSummary();
+            // For the new-case path the title input starts empty, so the
+            // initial summary call asks the user to enter a title.
+            // Re-fire generation when they blur the title field so the
+            // chips show up without an explicit click.
+            _wireNewCaseTitleBlur();
+        }
 
         var bsModal = new bootstrap.Modal(modal);
         bsModal.show();
     }).catch(function(err) {
-        alert('Failed to load wrap-up data: ' + err);
+        alert('Failed to load modal data: ' + err);
     });
 }
+
+// Back-compat shim: pages that haven't migrated still call showWrapUpModal().
+function showWrapUpModal() { showCommitModal('wrapup'); }
+
+function _ensureRegenerateButton() {
+    var msgEl = document.getElementById('wrapUpCommitMsg');
+    if (!msgEl) return;
+    var existing = document.getElementById('wrapUpRegenerateBtn');
+    if (existing) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'wrapUpRegenerateBtn';
+    btn.className = 'btn btn-outline-secondary btn-sm mt-1';
+    btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Regenerate';
+    btn.onclick = function() {
+        _modalState.userTouchedMessage = false;
+        msgEl.value = '';
+        msgEl.placeholder = 'Generating commit message…';
+        _generateMessage(true);
+    };
+    msgEl.parentNode.appendChild(btn);
+}
+
+function _generateMessage(force) {
+    if (_modalState.generationInflight) return;
+
+    // Pin generation to exactly the files the user has checked. This must
+    // match the set we'll pass to /commit or /wrap-up — otherwise the
+    // generated message describes work that won't be in the commit.
+    var msgEl = document.getElementById('wrapUpCommitMsg');
+    var modal = document.getElementById('wrapUpModal');
+    var files = [];
+    document.querySelectorAll('#wrapUpFileList .form-check-input:checked').forEach(function(cb) {
+        files.push(cb.value);
+    });
+    if (files.length === 0) {
+        msgEl.placeholder = 'Select at least one file to generate a message.';
+        return;
+    }
+    _modalState.generationInflight = true;
+
+    var body = { files: files };
+    if (typeof WRAPUP_SESSION_ID !== 'undefined' && WRAPUP_SESSION_ID) body.session_id = WRAPUP_SESSION_ID;
+    if (modal.dataset.isNewCase === 'true') {
+        body.title = (document.getElementById('wrapUpNewTitle').value || '').trim();
+        body.kind = document.getElementById('wrapUpNewKind').value;
+    } else {
+        body.case_id = modal.dataset.caseId;
+    }
+
+    fetch(_apiBase() + '/generate-commit-message', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(result) {
+        _modalState.generationInflight = false;
+        if (!result.ok) {
+            msgEl.placeholder = 'Generation failed — type your message.';
+            return;
+        }
+        var d = result.data.data || result.data;
+        if (force || !_modalState.userTouchedMessage) {
+            msgEl.value = d.message || '';
+            _modalState.userTouchedMessage = false;
+            _modalState.generatedDescription = d.description || '';
+        }
+    })
+    .catch(function() {
+        _modalState.generationInflight = false;
+        msgEl.placeholder = 'Generation failed — type your message.';
+    });
+}
+
+// _wireNewCaseTitleBlur ensures the title input on the new-case form
+// triggers summary generation when the user finishes editing it. Idempotent
+// — multiple modal opens reuse the same listener.
+function _wireNewCaseTitleBlur() {
+    var titleEl = document.getElementById('wrapUpNewTitle');
+    if (!titleEl || titleEl._blurHookInstalled) return;
+    titleEl._blurHookInstalled = true;
+    titleEl.addEventListener('blur', function() {
+        var modal = document.getElementById('wrapUpModal');
+        if (!modal || modal.dataset.isNewCase !== 'true') return;
+        if (_modalState.mode !== 'wrapup') return;
+        if (_modalState.summaryInflight) return;
+        // Only fire if we don't yet have a generated summary, OR if the
+        // user is changing the title for a fresh attempt after a prior
+        // "Enter a title" prompt.
+        if (_modalState.generatedSummary) return;
+        if (!titleEl.value.trim()) return;
+        _generateSummary();
+    });
+}
+
+// _generateSummary pre-generates the case summary so the user can review
+// and prune the generated components / keywords before confirming wrap-up.
+// The selected files are passed through so the model's diff input matches
+// what will actually be committed.
+function _generateSummary() {
+    if (_modalState.summaryInflight) return;
+    var modal = document.getElementById('wrapUpModal');
+    var statusEl = document.getElementById('wrapUpTagsStatus');
+    var section = document.getElementById('wrapUpTagsSection');
+
+    // The set of files is sent purely to scope the diff input. After a
+    // round of intermediate Commits the working tree will often be clean
+    // — that's fine, the summary still has notes / transcripts / commit
+    // descriptions to work from. Pass whatever is checked (may be empty).
+    var files = [];
+    document.querySelectorAll('#wrapUpFileList .form-check-input:checked').forEach(function(cb) {
+        files.push(cb.value);
+    });
+
+    _modalState.summaryInflight = true;
+    if (section) section.style.display = '';
+    if (statusEl) statusEl.textContent = 'Generating…';
+    _modalState.components = [];
+    _modalState.keywords = [];
+    _renderChips();
+
+    var body = { files: files };
+    if (modal.dataset.isNewCase === 'true') {
+        // Wrap-up is creating the case in this same submit. The server
+        // synthesizes a CaseJSON in memory from title/kind plus the
+        // active session's recent prompts.
+        body.title = (document.getElementById('wrapUpNewTitle').value || '').trim();
+        body.kind = document.getElementById('wrapUpNewKind').value;
+        if (typeof WRAPUP_SESSION_ID !== 'undefined' && WRAPUP_SESSION_ID) {
+            body.session_id = WRAPUP_SESSION_ID;
+        }
+        if (!body.title) {
+            // Without a title the model has nothing to anchor on. Wait
+            // for the user to fill it in (the title input's blur or
+            // submit handler can re-trigger generation if we want, but
+            // keep it manual for now via the Regenerate button on the
+            // commit-message field).
+            _modalState.summaryInflight = false;
+            if (statusEl) statusEl.textContent = 'Enter a title above to generate tags.';
+            return;
+        }
+    } else {
+        body.case_id = modal.dataset.caseId;
+    }
+
+    fetch(_apiBase() + '/generate-summary', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(result) {
+        _modalState.summaryInflight = false;
+        if (!result.ok) {
+            var msg = (result.data && result.data.error && result.data.error.message)
+                ? result.data.error.message
+                : 'failed';
+            if (statusEl) statusEl.textContent = 'Generation failed: ' + msg;
+            return;
+        }
+        var s = result.data.data || result.data;
+        _modalState.generatedSummary = s;
+        _modalState.components = (s.components || []).slice();
+        _modalState.keywords = (s.keywords || []).slice();
+        if (statusEl) statusEl.textContent = '';
+        _renderChips();
+    })
+    .catch(function(err) {
+        _modalState.summaryInflight = false;
+        if (statusEl) statusEl.textContent = 'Generation failed: ' + (err && err.message ? err.message : err);
+    });
+}
+
+// _renderChips paints the components and keywords lists from _modalState.
+// Each chip's × removes it from the in-memory list.
+function _renderChips() {
+    var compEl = document.getElementById('wrapUpComponentsList');
+    var kwEl = document.getElementById('wrapUpKeywordsList');
+    if (compEl) compEl.innerHTML = _chipHTML('component', _modalState.components) || '<span class="text-muted small">(none)</span>';
+    if (kwEl)   kwEl.innerHTML   = _chipHTML('keyword',   _modalState.keywords)   || '<span class="text-muted small">(none)</span>';
+}
+
+function _chipHTML(kind, values) {
+    return values.map(function(v, i) {
+        return '<span class="wrap-up-chip ' + kind + '">' +
+            escapeWrapUpHtml(v) +
+            '<button type="button" class="wrap-up-chip-remove" ' +
+            'aria-label="Remove" onclick="removeWrapUpChip(\'' + kind + '\', ' + i + ')">' +
+            '×</button></span>';
+    }).join('');
+}
+
+// Exposed globally so the chip buttons can find it.
+window.removeWrapUpChip = function(kind, index) {
+    var arr = (kind === 'component') ? _modalState.components : _modalState.keywords;
+    if (index < 0 || index >= arr.length) return;
+    arr.splice(index, 1);
+    _renderChips();
+};
 
 function renderWrapUpFiles(status) {
     var el = document.getElementById('wrapUpFileList');
@@ -161,8 +446,11 @@ function renderWrapUpTraces(reports, sessionCreatedAt) {
     var section = document.getElementById('wrapUpTraceSection');
     var el = document.getElementById('wrapUpTraceList');
     if (!section || !el) return;
+    if (_modalState.mode === 'commit') {
+        section.style.display = 'none';
+        return;
+    }
 
-    // Filter to only completed traces
     var completed = reports.filter(function(r) { return r.status === 'completed'; });
     if (completed.length === 0) {
         section.style.display = 'none';
@@ -179,7 +467,7 @@ function renderWrapUpTraces(reports, sessionCreatedAt) {
         var createdAt = new Date(r.created_at);
         var checked = sessionTime && createdAt.getTime() >= sessionTime ? ' checked' : '';
         var timeStr = createdAt.toLocaleString();
-        var detail = escapeWrapUpHtml(r.group) + ' \u00b7 ' + r.entry_count + ' entries \u00b7 ' + timeStr;
+        var detail = escapeWrapUpHtml(r.group) + ' · ' + r.entry_count + ' entries · ' + timeStr;
         html += '<div class="form-check">' +
             '<input class="form-check-input" type="checkbox" id="' + id + '" value="' + escapeWrapUpAttr(r.name) + '"' + checked + '>' +
             '<label class="form-check-label" for="' + id + '">' +
@@ -197,6 +485,10 @@ function renderWrapUpRelatedSessions(sessions, otherAgent) {
     var el = document.getElementById('wrapUpRelatedList');
     var label = document.getElementById('wrapUpRelatedLabel');
     if (!section || !el) return;
+    if (_modalState.mode === 'commit') {
+        section.style.display = 'none';
+        return;
+    }
 
     if (!sessions || sessions.length === 0) {
         section.style.display = 'none';
@@ -209,8 +501,6 @@ function renderWrapUpRelatedSessions(sessions, otherAgent) {
         label.textContent = 'Related ' + pretty + ' sessions to archive';
     }
 
-    // Skip the session being wrapped up itself (shouldn't appear under the
-    // *other* agent anyway, but guard against weirdness).
     var ownID = (typeof WRAPUP_SESSION_ID !== 'undefined' && WRAPUP_SESSION_ID) ? WRAPUP_SESSION_ID : '';
 
     var html = '';
@@ -247,25 +537,15 @@ function slugify(s) {
     return s;
 }
 
+// updateWrapUpCommitMsg is kept for back-compat with templates that wire
+// oninput handlers to it on the title field. It now only seeds an initial
+// fallback message when generation hasn't produced one yet.
 function updateWrapUpCommitMsg() {
     var modal = document.getElementById('wrapUpModal');
     var msgEl = document.getElementById('wrapUpCommitMsg');
-    var title, caseId;
-
-    if (modal.dataset.isNewCase === 'true') {
-        title = (document.getElementById('wrapUpNewTitle').value || '').trim();
-        if (!title) {
-            msgEl.value = '';
-            return;
-        }
-        var today = new Date().toISOString().slice(0, 10);
-        caseId = today + '__' + slugify(title);
-    } else {
-        caseId = modal.dataset.caseId;
-        title = document.getElementById('wrapUpCaseTitle').textContent;
-    }
-
-    msgEl.value = title + ' [case: ' + caseId + ']';
+    if (_modalState.userTouchedMessage) return;
+    if (msgEl.value && msgEl.value.trim() !== '') return;
+    // Don't overwrite a generation-in-flight placeholder.
 }
 
 function addWrapUpLink() {
@@ -287,13 +567,11 @@ function wrapUpConfirm() {
     errEl.style.display = 'none';
     successEl.style.display = 'none';
 
-    // Gather selected files
     var files = [];
     document.querySelectorAll('#wrapUpFileList .form-check-input:checked').forEach(function(cb) {
         files.push(cb.value);
     });
 
-    // Gather links
     var links = [];
     document.querySelectorAll('#wrapUpLinks .input-group').forEach(function(row) {
         var t = row.querySelector('[data-link-title]').value.trim();
@@ -301,13 +579,11 @@ function wrapUpConfirm() {
         if (t && u) links.push({title: t, url: u});
     });
 
-    // Gather selected traces
     var traces = [];
     document.querySelectorAll('#wrapUpTraceList .form-check-input:checked').forEach(function(cb) {
         traces.push(cb.value);
     });
 
-    // Gather selected related sessions (other-agent sessions to archive).
     var relatedSessions = [];
     document.querySelectorAll('#wrapUpRelatedList .form-check-input:checked').forEach(function(cb) {
         relatedSessions.push({ agent: cb.dataset.agent, session_id: cb.value });
@@ -320,13 +596,26 @@ function wrapUpConfirm() {
         return;
     }
 
+    var isCommit = _modalState.mode === 'commit';
     var body = {
         commit_message: commitMsg,
         files: files,
-        links: links,
-        traces: traces,
-        related_sessions: relatedSessions
+        description: _modalState.generatedDescription || '',
     };
+    if (!isCommit) {
+        body.links = links;
+        body.traces = traces;
+        body.related_sessions = relatedSessions;
+        // Ship the user-edited summary. The server normalizes and writes
+        // it as-is, skipping a second generation pass — so the chips the
+        // user just curated are exactly what lands in case.json.
+        if (_modalState.generatedSummary) {
+            body.summary = Object.assign({}, _modalState.generatedSummary, {
+                components: _modalState.components.slice(),
+                keywords:   _modalState.keywords.slice(),
+            });
+        }
+    }
 
     if (modal.dataset.isNewCase === 'true') {
         var title = (document.getElementById('wrapUpNewTitle').value || '').trim();
@@ -342,40 +631,56 @@ function wrapUpConfirm() {
         }
     } else {
         body.case_id = modal.dataset.caseId;
+        if (typeof WRAPUP_SESSION_ID !== 'undefined' && WRAPUP_SESSION_ID) {
+            body.session_id = WRAPUP_SESSION_ID;
+        }
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Wrapping up...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + (isCommit ? 'Committing…' : 'Wrapping up…');
 
-    fetch('/api/v1/' + (typeof WRAPUP_AGENT !== 'undefined' && WRAPUP_AGENT ? WRAPUP_AGENT : 'claude') + '/' + encodeURIComponent(WRAPUP_WORKTREE) + '/wrap-up', {
+    var endpoint = isCommit ? '/commit' : '/wrap-up';
+    fetch(_apiBase() + endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
     })
-    .then(function(r) {
-        return r.json().then(function(d) { return {ok: r.ok, data: d}; });
-    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
     .then(function(result) {
         if (!result.ok) {
-            var msg = (result.data.error && result.data.error.message) || 'Wrap-up failed';
+            var msg = (result.data.error && result.data.error.message) || (isCommit ? 'Commit failed' : 'Wrap-up failed');
             throw new Error(msg);
         }
         var d = result.data.data || result.data;
-        successEl.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Done! Case <strong>' +
-            escapeWrapUpHtml(d.case_id) + '</strong> archived, commit <code>' +
-            escapeWrapUpHtml(d.commit_hash) + '</code>';
+        if (isCommit) {
+            successEl.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Committed <code>' +
+                escapeWrapUpHtml(d.commit_hash) + '</code> to case <strong>' +
+                escapeWrapUpHtml(d.case_id) + '</strong>';
+        } else {
+            successEl.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Done! Case <strong>' +
+                escapeWrapUpHtml(d.case_id) + '</strong> archived, commit <code>' +
+                escapeWrapUpHtml(d.commit_hash) + '</code>';
+        }
         successEl.style.display = '';
         btn.innerHTML = '<i class="fa-solid fa-check"></i> Done';
-        // Redirect after a short delay
         setTimeout(function() {
-            window.location.href = '/worktree/' + encodeURIComponent(WRAPUP_WORKTREE);
+            if (isCommit) {
+                // Stay on the page; the session continues. Just close the
+                // modal and refresh status so the file list is up-to-date.
+                var bs = bootstrap.Modal.getInstance(modal);
+                if (bs) bs.hide();
+            } else {
+                window.location.href = '/worktree/' + encodeURIComponent(WRAPUP_WORKTREE);
+            }
         }, 1500);
     })
     .catch(function(err) {
         errEl.textContent = err.message || String(err);
         errEl.style.display = '';
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i> Wrap Up';
+        btn.innerHTML = isCommit
+            ? '<i class="fa-solid fa-code-commit"></i> Commit'
+            : '<i class="fa-solid fa-flag-checkered"></i> Wrap Up';
     });
 }
 

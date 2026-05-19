@@ -119,6 +119,17 @@
     white-space: nowrap;
 }
 
+/* Compact list of files committed for one CommitEntry / the wrap-up commit. */
+.case-files-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+.case-files-list li {
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
 /* Narrow-screen adjustments */
 @media (max-width: 767.98px) {
     .case-detail { padding: 0.5rem; max-width: 100%; }

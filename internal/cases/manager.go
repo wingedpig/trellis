@@ -154,8 +154,52 @@ func (m *Manager) GetNotes(worktreePath, caseID string) (string, error) {
 	return string(data), nil
 }
 
+// ErrOpenCaseExists is returned by Create when an open case already exists in
+// the worktree. The new lifecycle enforces at most one open case per worktree;
+// callers should either reuse the existing open case or wrap it up first.
+var ErrOpenCaseExists = fmt.Errorf("an open case already exists in this worktree")
+
+// OpenCaseExists reports whether any case is currently open in the worktree.
+// An "open" case is one present in the live cases directory; archived cases
+// are ignored. Errors reading the directory are treated as "no open case".
+func (m *Manager) OpenCaseExists(worktreePath string) bool {
+	c, _ := m.FirstOpenCase(worktreePath)
+	return c != nil
+}
+
+// FirstOpenCase returns the first open case found in the worktree, or nil if
+// none exist. Used by the commit flow to detect whether to attach to the
+// existing open case or prompt for new-case fields.
+func (m *Manager) FirstOpenCase(worktreePath string) (*CaseJSON, error) {
+	dir := m.casesDir(worktreePath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name(), "case.json")
+		c, err := loadCase(path)
+		if err != nil {
+			continue
+		}
+		return c, nil
+	}
+	return nil, nil
+}
+
 // Create creates a new case directory with case.json and notes.md.
+// Returns ErrOpenCaseExists if a case is already open in the worktree.
 func (m *Manager) Create(worktreePath, title, kind, worktreeName, branch, baseCommit string) (*CaseJSON, error) {
+	if m.OpenCaseExists(worktreePath) {
+		return nil, ErrOpenCaseExists
+	}
+
 	now := time.Now()
 	datePrefix := now.Format("2006-01-02")
 	slug := config.Slugify(title)
@@ -265,11 +309,17 @@ func (m *Manager) Archive(worktreePath, caseID string) error {
 	return os.Rename(src, dst)
 }
 
-// Reopen moves a case from the archived directory back to the active cases directory.
+// Reopen moves a case from the archived directory back to the active cases
+// directory. Refused if an open case already exists in the worktree (the
+// one-open-case-per-worktree invariant applies to reopen too).
 func (m *Manager) Reopen(worktreePath, caseID string) error {
 	src := filepath.Join(m.archivedDir(worktreePath), caseID)
 	if _, err := os.Stat(src); os.IsNotExist(err) {
 		return fmt.Errorf("archived case not found: %s", caseID)
+	}
+
+	if m.OpenCaseExists(worktreePath) {
+		return ErrOpenCaseExists
 	}
 
 	casesDir := m.casesDir(worktreePath)
@@ -279,6 +329,16 @@ func (m *Manager) Reopen(worktreePath, caseID string) error {
 
 	dst := filepath.Join(casesDir, caseID)
 	return os.Rename(src, dst)
+}
+
+// IsArchived reports whether the case lives in the archived directory.
+// Returns false if the case is open or doesn't exist.
+func (m *Manager) IsArchived(worktreePath, caseID string) bool {
+	archivedPath := filepath.Join(m.archivedDir(worktreePath), caseID, "case.json")
+	if _, err := os.Stat(archivedPath); err == nil {
+		return true
+	}
+	return false
 }
 
 // Delete permanently removes a case directory.
@@ -292,6 +352,86 @@ func (m *Manager) Delete(worktreePath, caseID string) error {
 	path = filepath.Join(m.archivedDir(worktreePath), caseID)
 	if _, err := os.Stat(path); err == nil {
 		return os.RemoveAll(path)
+	}
+	return fmt.Errorf("case not found: %s", caseID)
+}
+
+// AppendCommit appends an intermediate-commit entry to the case manifest.
+// The case must be in the active (non-archived) directory — wrap-up commits
+// are not recorded here.
+func (m *Manager) AppendCommit(worktreePath, caseID string, entry CommitEntry) error {
+	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
+	c, err := loadCase(path)
+	if err != nil {
+		return fmt.Errorf("case not found: %s", caseID)
+	}
+	c.Commits = append(c.Commits, entry)
+	return saveCase(path, c)
+}
+
+// SetSummary writes the generated summary onto the (open) case manifest.
+// Used at wrap-up before the case is archived.
+func (m *Manager) SetSummary(worktreePath, caseID string, summary *CaseSummary) error {
+	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
+	c, err := loadCase(path)
+	if err != nil {
+		return fmt.Errorf("case not found: %s", caseID)
+	}
+	c.Summary = summary
+	return saveCase(path, c)
+}
+
+// UpdateSummary applies partial summary edits. Works on archived cases too.
+func (m *Manager) UpdateSummary(worktreePath, caseID string, upd SummaryUpdate) error {
+	for _, base := range []string{m.casesDir(worktreePath), m.archivedDir(worktreePath)} {
+		path := filepath.Join(base, caseID, "case.json")
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		c, err := loadCase(path)
+		if err != nil {
+			return fmt.Errorf("load case: %w", err)
+		}
+		if c.Summary == nil {
+			c.Summary = &CaseSummary{}
+		}
+		if upd.Synopsis != nil {
+			c.Summary.Synopsis = *upd.Synopsis
+		}
+		if upd.Symptoms != nil {
+			c.Summary.Symptoms = *upd.Symptoms
+		}
+		if upd.RootCause != nil {
+			c.Summary.RootCause = *upd.RootCause
+		}
+		if upd.Resolution != nil {
+			c.Summary.Resolution = *upd.Resolution
+		}
+		if upd.Components != nil {
+			c.Summary.Components = upd.Components
+		}
+		if upd.Keywords != nil {
+			c.Summary.Keywords = upd.Keywords
+		}
+		return saveCase(path, c)
+	}
+	return fmt.Errorf("case not found: %s", caseID)
+}
+
+// ReplaceSummary overwrites the entire summary. Works on archived cases too.
+// Used after regeneration.
+func (m *Manager) ReplaceSummary(worktreePath, caseID string, summary *CaseSummary) error {
+	for _, base := range []string{m.casesDir(worktreePath), m.archivedDir(worktreePath)} {
+		path := filepath.Join(base, caseID, "case.json")
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		c, err := loadCase(path)
+		if err != nil {
+			return fmt.Errorf("load case: %w", err)
+		}
+		c.Summary = summary
+		return saveCase(path, c)
 	}
 	return fmt.Errorf("case not found: %s", caseID)
 }

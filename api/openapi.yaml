@@ -59,7 +59,9 @@ tags:
   - name: Cases
     description: Case management for tracking units of work
   - name: Claude
-    description: Claude Code session management and wrap-up
+    description: Claude Code session management, commits, and wrap-up
+  - name: Codex
+    description: OpenAI Codex session management, commits, and wrap-up
   - name: VSCode
     description: VS Code integration
 
@@ -1710,6 +1712,117 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /cases/{worktree}/archived/search:
+    get:
+      tags: [Cases]
+      summary: Full-text search over archived cases
+      description: |
+        Scans `case.json` files (title, summary fields, commit descriptions) and
+        `notes.md` for archived cases in the worktree, applying optional filters
+        and ranking. Keyword and component matches rank above title matches,
+        which rank above notes / commit-description matches.
+      operationId: searchArchivedCases
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - name: q
+          in: query
+          description: Free-text query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [task, bug, feature, investigation]
+        - name: from
+          in: query
+          description: Inclusive lower bound on created_at — accepts YYYY-MM-DD or RFC 3339
+          schema:
+            type: string
+        - name: to
+          in: query
+          description: Inclusive upper bound on created_at — accepts YYYY-MM-DD or RFC 3339
+          schema:
+            type: string
+        - name: has_traces
+          in: query
+          description: Set to "1" to require at least one linked trace
+          schema:
+            type: string
+        - name: include_transcripts
+          in: query
+          description: Set to "1" to also scan transcript previews (slower path)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort key (results are always grouped by score first)
+          schema:
+            type: string
+            enum: [date, kind, duration, worktree]
+            default: date
+      responses:
+        '200':
+          description: Matching archived cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/CaseInfo'
+                    - type: object
+                      properties:
+                        score:
+                          type: integer
+                        snippet:
+                          type: string
+                        summary:
+                          $ref: '#/components/schemas/CaseSummary'
+
+  /cases/{worktree}/{id}/summary:
+    patch:
+      tags: [Cases]
+      summary: Apply partial edits to the generated case summary
+      operationId: updateCaseSummary
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SummaryUpdate'
+      responses:
+        '204':
+          description: Summary updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cases/{worktree}/{id}/regenerate-summary:
+    post:
+      tags: [Cases]
+      summary: Re-run the case summary generator and overwrite the stored summary
+      description: |
+        Calls `claude -p` with the case's accumulated state (notes, commit
+        descriptions, attached transcripts, linked traces) and replaces the
+        stored summary. The client is expected to confirm before calling this
+        if hand-edits may exist.
+      operationId: regenerateCaseSummary
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: New summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseSummary'
+        '502':
+          description: Generation failed or timed out
+
   # ==================== CLAUDE ====================
   /claude/{worktree}/sessions:
     get:
@@ -2109,7 +2222,12 @@ paths:
   /claude/{worktree}/wrap-up:
     post:
       tags: [Claude]
-      summary: Wrap up a session — create/archive case and commit
+      summary: Wrap up a session — generate summary, archive case, commit
+      description: |
+        Wrap Up is the shared `commitToCase` orchestrator with `archive: true`.
+        It generates a case summary via `claude -p`, archives the case directory
+        from `cases/` to `cases-archived/`, includes the archived directory in
+        the git commit, and trashes the active session.
       operationId: claudeWrapUp
       parameters:
         - $ref: '#/components/parameters/WorktreeParam'
@@ -2118,41 +2236,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - commit_message
-              properties:
-                session_id:
-                  type: string
-                  description: Claude session ID (for new case creation)
-                case_id:
-                  type: string
-                  description: Existing case ID (mutually exclusive with title/kind)
-                title:
-                  type: string
-                  description: New case title (required when case_id is not provided)
-                kind:
-                  type: string
-                  description: New case kind (default task)
-                  enum: [task, bug, feature, investigation]
-                commit_message:
-                  type: string
-                  description: Git commit message (used as-is)
-                files:
-                  type: array
-                  items:
-                    type: string
-                  description: Files to git add (relative to worktree root)
-                links:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      title:
-                        type: string
-                      url:
-                        type: string
-                  description: Links to merge into the case
+              $ref: '#/components/schemas/CommitRequest'
       responses:
         '200':
           description: Wrap-up completed
@@ -2162,12 +2246,7 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: object
-                    properties:
-                      case_id:
-                        type: string
-                      commit_hash:
-                        type: string
+                    $ref: '#/components/schemas/CommitResponse'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
         '400':
@@ -2176,6 +2255,281 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /claude/{worktree}/commit:
+    post:
+      tags: [Claude]
+      summary: Make an intermediate commit against the worktree's open case
+      description: |
+        Same orchestrator as wrap-up but `archive: false`. Creates the case on
+        first commit if none exists; binds to the worktree's single open case
+        otherwise. Appends a CommitEntry to `case.json` and leaves the case open
+        and the session alive.
+      operationId: claudeCommit
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitRequest'
+      responses:
+        '200':
+          description: Commit completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommitResponse'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: An open case already exists and the request tried to create another
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /claude/{worktree}/generate-commit-message:
+    post:
+      tags: [Claude]
+      summary: Draft a commit message and per-commit description via `claude -p`
+      description: |
+        Shells out to `claude -p --output-format json` with a diff covering
+        exactly the files the caller passes in `files` (NOT `git diff --staged`
+        — the staging area may hold unrelated work; HEAD-vs-WT includes files
+        the user unchecked). Inputs also include the case manifest, notes, and
+        a few recent user messages from the session. Returns a freeform commit
+        message and a 1-2 sentence per-commit description (the "narrative
+        beat"). No Anthropic API key is required — uses the user's existing
+        Claude Code authentication.
+      operationId: claudeGenerateCommitMessage
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  description: Files the user has selected for this commit. The generated message describes the diff of exactly these files.
+                  items:
+                    type: string
+                session_id:
+                  type: string
+                case_id:
+                  type: string
+                title:
+                  type: string
+                  description: New-case title — used when no case yet exists
+                kind:
+                  type: string
+                  enum: [task, bug, feature, investigation]
+      responses:
+        '200':
+          description: Generated draft
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      description:
+                        type: string
+                      model:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '502':
+          description: Generation failed or timed out
+
+  /claude/{worktree}/generate-summary:
+    post:
+      tags: [Claude]
+      summary: Preview the case summary the wrap-up would generate
+      description: |
+        Runs the case summary generator (`claude -p`) against the supplied
+        case context without committing. Used by the wrap-up modal so the
+        user can review and prune the generated `components` and `keywords`
+        before confirming. The client is expected to send the (possibly
+        edited) summary back as `summary` on the wrap-up request.
+      operationId: claudeGenerateSummary
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                case_id:
+                  type: string
+                  description: Case to summarize. If omitted, the worktree's open case is used.
+                files:
+                  type: array
+                  description: Files selected for the wrap-up commit — scopes the diff input.
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Generated (un-persisted) summary
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CaseSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: Generation failed or timed out
+
+  /codex/{worktree}/wrap-up:
+    post:
+      tags: [Codex]
+      summary: Wrap up a Codex session — generate summary, archive case, commit
+      operationId: codexWrapUp
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitRequest'
+      responses:
+        '200':
+          description: Wrap-up completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommitResponse'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /codex/{worktree}/commit:
+    post:
+      tags: [Codex]
+      summary: Make an intermediate commit against the worktree's open case (Codex)
+      operationId: codexCommit
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitRequest'
+      responses:
+        '200':
+          description: Commit completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommitResponse'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /codex/{worktree}/generate-summary:
+    post:
+      tags: [Codex]
+      summary: Preview the case summary the wrap-up would generate (Codex)
+      operationId: codexGenerateSummary
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                case_id:
+                  type: string
+                files:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Generated (un-persisted) summary
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CaseSummary'
+
+  /codex/{worktree}/generate-commit-message:
+    post:
+      tags: [Codex]
+      summary: Draft a commit message and per-commit description for a Codex session
+      operationId: codexGenerateCommitMessage
+      parameters:
+        - $ref: '#/components/parameters/WorktreeParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  description: Files the user has selected for this commit.
+                  items:
+                    type: string
+                session_id:
+                  type: string
+                case_id:
+                  type: string
+                title:
+                  type: string
+                kind:
+                  type: string
+                  enum: [task, bug, feature, investigation]
+      responses:
+        '200':
+          description: Generated draft
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      description:
+                        type: string
+                      model:
+                        type: string
 
   # ==================== VSCODE ====================
   /vscode/open:
@@ -2910,6 +3264,171 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClaudeRef'
+        codex:
+          type: array
+          description: Codex transcript references (parallel to claude)
+          items:
+            $ref: '#/components/schemas/ClaudeRef'
+        commits:
+          type: array
+          description: Intermediate-commit timeline. The wrap-up commit is NOT recorded here.
+          items:
+            $ref: '#/components/schemas/CommitEntry'
+        summary:
+          $ref: '#/components/schemas/CaseSummary'
+
+    CommitEntry:
+      type: object
+      description: One intermediate commit made against the case.
+      properties:
+        sha:
+          type: string
+          description: Full commit SHA
+        short_sha:
+          type: string
+        committed_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+          description: Full git commit message
+        description:
+          type: string
+          description: Per-commit case description (narrative beat, distinct from the commit message)
+        files_changed:
+          type: array
+          items:
+            type: string
+
+    CaseSummary:
+      type: object
+      description: Structured summary generated at wrap-up by `claude -p`. Individually editable from the case detail page.
+      properties:
+        synopsis:
+          type: string
+          description: One human-readable line
+        symptoms:
+          type: string
+          description: Observable problem (empty for non-bug work)
+        root_cause:
+          type: string
+          description: What was actually wrong (empty for features / wontfix)
+        resolution:
+          type: string
+          description: What changed — the approach, not the diff
+        components:
+          type: array
+          items:
+            type: string
+          description: Service / package / subsystem names touched
+        keywords:
+          type: array
+          items:
+            type: string
+          description: Explicit search terms — error codes, function names, library names
+        generated_at:
+          type: string
+          format: date-time
+        model:
+          type: string
+
+    SummaryUpdate:
+      type: object
+      description: Partial summary edits. Omitted fields are left untouched.
+      properties:
+        synopsis:
+          type: string
+        symptoms:
+          type: string
+        root_cause:
+          type: string
+        resolution:
+          type: string
+        components:
+          type: array
+          items:
+            type: string
+        keywords:
+          type: array
+          items:
+            type: string
+
+    CommitRequest:
+      type: object
+      description: |
+        Shared request body for the Commit and Wrap Up endpoints. They differ
+        only by which endpoint is hit; the server-side orchestrator sets the
+        `archive` flag accordingly.
+
+        For intermediate commits, only `session_id`, `commit_message`, `files`,
+        and optionally `description` plus new-case fields (`title`, `kind`) are
+        used. For wrap-up, the additional `links`, `traces`, and
+        `related_sessions` are honored.
+      required:
+        - commit_message
+      properties:
+        session_id:
+          type: string
+          description: Active Claude/Codex session ID. Used to attach the session transcript when a case is being created.
+        case_id:
+          type: string
+          description: Explicit case ID. Omit to bind to the worktree's open case (or create one if none exists).
+        title:
+          type: string
+          description: New-case title — required only when no open case exists and no case_id is supplied.
+        kind:
+          type: string
+          enum: [task, bug, feature, investigation]
+          description: New-case kind. Defaults to `feature` on the commit path.
+        commit_message:
+          type: string
+        description:
+          type: string
+          description: Per-commit case description (intermediate commits only — recorded on the CommitEntry).
+        files:
+          type: array
+          items:
+            type: string
+          description: Files to git add. Paths under the live cases directory are rejected.
+        links:
+          type: array
+          description: (Wrap-up only) Links to merge into the case.
+          items:
+            $ref: '#/components/schemas/CaseLink'
+        traces:
+          type: array
+          description: (Wrap-up only) Trace report names to save into the case.
+          items:
+            type: string
+        related_sessions:
+          type: array
+          description: (Wrap-up only) Other-agent sessions to capture into the case and trash.
+          items:
+            type: object
+            properties:
+              agent:
+                type: string
+                enum: [claude, codex]
+              session_id:
+                type: string
+        summary:
+          allOf:
+            - $ref: '#/components/schemas/CaseSummary'
+          description: |
+            (Wrap-up only) User-curated summary from the modal. When non-nil and
+            synopsis is non-empty, the server uses this summary verbatim
+            (with light normalization on components/keywords) and skips the
+            in-line `claude -p` summary generation. The expected flow: the
+            client GET `.../generate-summary`, the user prunes the chips, then
+            ships the edited result back here.
+
+    CommitResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+        commit_hash:
+          type: string
 
     CaseUpdate:
       type: object

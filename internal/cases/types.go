@@ -25,6 +25,35 @@ type CaseJSON struct {
 	Evidence  []CaseEvidence  `json:"evidence,omitempty"`
 	Claude    []CaseClaudeRef `json:"claude,omitempty"`
 	Codex     []CaseCodexRef  `json:"codex,omitempty"`
+	// Commits records intermediate (non-wrap-up) commits made against this case
+	// during its active life. The wrap-up commit is intentionally not present
+	// here — it is locatable from git history.
+	Commits []CommitEntry `json:"commits,omitempty"`
+	// Summary is a generated, structured summary written at wrap-up. Nil until
+	// generated; may be edited or regenerated later from the case detail page.
+	Summary *CaseSummary `json:"summary,omitempty"`
+}
+
+// CommitEntry is one intermediate commit made against the case.
+type CommitEntry struct {
+	SHA          string    `json:"sha"`
+	ShortSHA     string    `json:"short_sha"`
+	CommittedAt  time.Time `json:"committed_at"`
+	Message      string    `json:"message"`     // full commit message
+	Description  string    `json:"description"` // per-commit narrative beat
+	FilesChanged []string  `json:"files_changed,omitempty"`
+}
+
+// CaseSummary is the structured generated summary attached to a case at wrap-up.
+type CaseSummary struct {
+	Synopsis    string    `json:"synopsis"`
+	Symptoms    string    `json:"symptoms"`
+	RootCause   string    `json:"root_cause"`
+	Resolution  string    `json:"resolution"`
+	Components  []string  `json:"components,omitempty"`
+	Keywords    []string  `json:"keywords,omitempty"`
+	GeneratedAt time.Time `json:"generated_at"`
+	Model       string    `json:"model,omitempty"`
 }
 
 // CaseWorktree records which worktree/branch the case was created in.
@@ -110,9 +139,20 @@ type CaseInfo struct {
 
 // CaseUpdate holds partial update fields. Nil/empty values are not applied.
 type CaseUpdate struct {
-	Title  *string     `json:"title,omitempty"`
-	Kind   *string     `json:"kind,omitempty"`
-	Status *string     `json:"status,omitempty"`
-	Links  []CaseLink  `json:"links,omitempty"`
-	Notes  *string     `json:"notes,omitempty"` // If set, overwrites notes.md
+	Title  *string    `json:"title,omitempty"`
+	Kind   *string    `json:"kind,omitempty"`
+	Status *string    `json:"status,omitempty"`
+	Links  []CaseLink `json:"links,omitempty"`
+	Notes  *string    `json:"notes,omitempty"` // If set, overwrites notes.md
+}
+
+// SummaryUpdate holds per-field summary edits. Nil values are not applied;
+// empty-string values clear the corresponding field.
+type SummaryUpdate struct {
+	Synopsis   *string  `json:"synopsis,omitempty"`
+	Symptoms   *string  `json:"symptoms,omitempty"`
+	RootCause  *string  `json:"root_cause,omitempty"`
+	Resolution *string  `json:"resolution,omitempty"`
+	Components []string `json:"components,omitempty"`
+	Keywords   []string `json:"keywords,omitempty"`
 }

@@ -13,7 +13,7 @@ The main view—access local terminals (@), Claude sessions (@), service logs (#
 
 ## [Claude](/docs/pages/claude/)
 
-AI-assisted development with Claude Code. Create per-worktree chat sessions, save transcripts to cases, and continue previous conversations.
+AI-assisted development with Claude Code. Create per-worktree chat sessions, save transcripts to cases, make intermediate commits or wrap up a case in one click, and continue previous conversations.
 
 ## [Status](/docs/pages/status/)
 
@@ -33,7 +33,7 @@ Review crash reports when services exit unexpectedly. View stack traces, exit co
 
 ## [Cases](/docs/pages/cases/)
 
-Track units of work (bugs, features, investigations) within a worktree. Attach evidence, notes, and Claude transcripts.
+The durable record of a worktree's effort — one open case per worktree, created lazily on first commit. Tracks notes, evidence, transcripts, traces, a per-commit timeline, and a generated searchable summary written at wrap-up.
 
 ## [Trace](/docs/pages/trace/)
 

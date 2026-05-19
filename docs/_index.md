@@ -39,7 +39,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 - [Claude Page](/docs/pages/claude/) - AI-assisted development with Claude Code
 - [Status Page](/docs/pages/status/) - Monitor and control services
 - [Worktrees Page](/docs/pages/worktrees/) - Manage git worktrees
-- [Cases Page](/docs/pages/cases/) - Track work items with notes, transcripts, and traces
+- [Cases Page](/docs/pages/cases/) - Track work items with a commit timeline, generated summary, transcripts, and traces
 - [Events Page](/docs/pages/events/) - View system event timeline
 - [Crashes Page](/docs/pages/crashes/) - Review crash reports
 - [Trace Page](/docs/pages/trace/) - Distributed tracing across log sources

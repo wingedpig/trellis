@@ -193,6 +193,7 @@ func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
 	// Case detail page
 	r.HandleFunc("/case/{worktree}/{id}", pageHandler.CaseDetail).Methods("GET")
 	r.HandleFunc("/case/{worktree}/{id}/trace/{trace_id}", pageHandler.CaseTraceView).Methods("GET")
+	r.HandleFunc("/worktree/{worktree}/archived-cases", pageHandler.ArchivedCases).Methods("GET")
 	// Claude Code chat pages
 	r.HandleFunc("/claude/{worktree}/{session}", pageHandler.ClaudePage).Methods("GET")
 	r.HandleFunc("/claude/{worktree}", pageHandler.ClaudeRedirect).Methods("GET")
@@ -287,6 +288,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		caseHandler := handlers.NewCaseHandler(deps.CaseManager, deps.ClaudeManager, deps.CodexManager, deps.TraceManager, deps.WorktreeManager)
 		api.HandleFunc("/cases/{worktree}", caseHandler.List).Methods("GET")
 		api.HandleFunc("/cases/{worktree}/archived", caseHandler.ListArchived).Methods("GET")
+		api.HandleFunc("/cases/{worktree}/archived/search", caseHandler.SearchArchived).Methods("GET")
 		api.HandleFunc("/cases/{worktree}", caseHandler.Create).Methods("POST")
 		api.HandleFunc("/cases/{worktree}/{id}", caseHandler.Get).Methods("GET")
 		api.HandleFunc("/cases/{worktree}/{id}/notes", caseHandler.GetNotes).Methods("GET")
@@ -303,6 +305,8 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/cases/{worktree}/{id}/codex-transcript/{codex_id}/continue", caseHandler.ContinueCodexTranscript).Methods("POST")
 		api.HandleFunc("/cases/{worktree}/{id}/trace", caseHandler.SaveTrace).Methods("POST")
 		api.HandleFunc("/cases/{worktree}/{id}/trace/{trace_id}", caseHandler.DeleteTrace).Methods("DELETE")
+		api.HandleFunc("/cases/{worktree}/{id}/summary", caseHandler.UpdateSummary).Methods("PATCH")
+		api.HandleFunc("/cases/{worktree}/{id}/regenerate-summary", caseHandler.RegenerateSummary).Methods("POST")
 	}
 
 	// VS Code file opening (requires VSCodeHandler)
@@ -328,6 +332,9 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/{worktree}/git-status", claudeHandler.GitStatus).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/session-case", claudeHandler.SessionCase).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/wrap-up", claudeHandler.WrapUp).Methods("POST")
+		api.HandleFunc("/claude/{worktree}/commit", claudeHandler.Commit).Methods("POST")
+		api.HandleFunc("/claude/{worktree}/generate-commit-message", claudeHandler.GenerateCommitMessage).Methods("POST")
+		api.HandleFunc("/claude/{worktree}/generate-summary", claudeHandler.GenerateSummary).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/trace-reports", claudeHandler.ListTraceReports).Methods("GET")
 		// Backwards compat: worktree-level WebSocket uses first session
 		api.HandleFunc("/claude/{worktree}/ws", claudeHandler.WebSocketByWorktree).Methods("GET")
@@ -352,6 +359,9 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/codex/{worktree}/git-status", codexHandler.GitStatus).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/session-case", codexHandler.SessionCase).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/wrap-up", codexHandler.WrapUp).Methods("POST")
+		api.HandleFunc("/codex/{worktree}/commit", codexHandler.Commit).Methods("POST")
+		api.HandleFunc("/codex/{worktree}/generate-commit-message", codexHandler.GenerateCommitMessage).Methods("POST")
+		api.HandleFunc("/codex/{worktree}/generate-summary", codexHandler.GenerateSummary).Methods("POST")
 		api.HandleFunc("/codex/{worktree}/trace-reports", codexHandler.ListTraceReports).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/ws", codexHandler.WebSocketByWorktree).Methods("GET")
 	}

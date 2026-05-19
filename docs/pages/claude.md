@@ -73,7 +73,8 @@ The Claude page provides a chat interface with:
 - **Cancel button** — Stop Claude's current response (appears while generating)
 - **Reset button** — Start a new conversation within the same session
 - **Save to Case button** — Save the session transcript to a case
-- **Wrap Up button** — Archive a case and commit in one step (see below)
+- **Commit button** — Make an intermediate commit against the worktree's open case (see [Commit](#commit-intermediate))
+- **Wrap Up button** — Archive the case and commit in one step (see [Wrap Up](#wrap-up))
 
 ### Keyboard Shortcuts
 
@@ -103,27 +104,53 @@ Click the briefcase button in the Claude chat interface to save the current tran
 
 Saved transcripts can be continued from the case detail page using the **Continue** button, which imports the transcript into a new Claude session.
 
+## Commit (intermediate)
+
+Click the **Commit** button to make an intermediate commit against the worktree's open case (creating the case if it's the worktree's first commit). The case stays open and the session keeps going — use this to ship shippable pieces of work over the life of the case.
+
+The Commit modal:
+
+1. **Auto-detects the worktree's open case.** If one exists, it's shown read-only at the top. If none, the modal shows new-case fields: title (prefilled from a humanized version of the worktree name) and kind (default: `feature`).
+2. **Lists changed files** as checkboxes (all checked by default). Paths inside the live cases directory are rejected — only your selected files are staged.
+3. **Generates a draft commit message** by calling `claude -p` when the modal opens. Inputs include the staged diff, case manifest, `notes.md`, and the last few user messages from this session. The draft populates the textarea unless you've started typing; **Regenerate** is always available. The model also emits a short per-commit case description that is stored on the resulting commit entry.
+
+On confirm, the server:
+
+- Resolves or creates the case.
+- Snapshots the session's transcript onto the case (if it was just created).
+- Refreshes every transcript already attached to the case from its live source.
+- `git add`s the selected files and `git commit`s your message.
+- Appends a `CommitEntry` to `case.json` with the SHA, date, message, generated description, and files changed.
+
 ## Wrap Up
 
-Click the flag-checkered button in the Claude chat interface to wrap up a session — creating/archiving a case and committing in one step. This replaces the manual workflow of creating a case, saving the transcript, adding links, archiving, and making a git commit.
+Click the **Wrap Up** button when the work is done. Wrap Up runs the same workflow as Commit with one extra flag: the case directory is archived and bundled into the commit, and the session is trashed.
 
-The Wrap Up modal:
+The Wrap Up modal adds (on top of the Commit modal):
 
-1. **Auto-detects linked case** — If the session already has a transcript saved to an open case, that case is pre-selected (read-only). Otherwise, you fill in a title and kind to create a new case.
-2. **Shows git status** — Lists all modified, added, deleted, renamed, and untracked files as checkboxes. All are checked by default; uncheck files you don't want to commit.
-3. **Pre-fills commit message** — Automatically generates `<title> [case: <case-id>]`. The case ID is deterministic (`YYYY-MM-DD__slugified-title`), so the predicted ID is used for new cases. You can freely edit the message.
-4. **Optional links** — Add title/URL pairs to attach to the case before archiving.
-5. **Wrap Up** — Submits to the server, which:
-   - Creates a new case (if needed) and saves the session transcript
-   - Updates ALL transcripts linked to the case with the latest messages
-   - Merges any new links into the case
-   - Archives the case
-   - Runs `git add` on selected files plus the archived case directory
-   - Runs `git commit` with your message
+- **Optional links** to attach to the case before archiving.
+- **Traces to include** — saved trace reports from the session.
+- **Related sessions to archive** — sessions from the *other* agent (Codex if this is Claude) that you want captured into the same case in one shot.
+
+On confirm, the server:
+
+1. Runs all the Commit steps above.
+2. Merges new links into the case.
+3. Saves any selected traces. Captures any selected related sessions (transcript saved, session trashed).
+4. **Generates the case summary** via `claude -p` synchronously, with a timeout. The summary lands in the same commit as the archived case so there is no follow-up amend.
+5. Moves the case directory from `cases/` to `cases-archived/`.
+6. `git add`s the selected files **plus** the archived case directory.
+7. `git commit`s. Trashes the active session.
+
+If anything between the archive and commit fails, the archive is rolled back so the case returns to its pre-wrap-up state.
 
 After completion, you're redirected to the worktree home page.
 
+## Codex parity
+
+Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`). The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
+
 ## Related
 
-- [Cases](/docs/pages/cases/) — Saving transcripts to cases
+- [Cases](/docs/pages/cases/) — Case lifecycle, commits timeline, generated summaries
 - [Terminal Page](/docs/pages/terminal/) — Claude sessions in the navigation picker

@@ -42,7 +42,10 @@ type ClaudePage struct {
             <button class="btn btn-outline-secondary claude-btn" onclick="showSaveToCaseModal()" title="Save to case">
                 <i class="fa-solid fa-briefcase"></i>
             </button>
-            <button class="btn btn-outline-secondary claude-btn" onclick="showWrapUpModal()" title="Wrap up session">
+            <button class="btn btn-outline-secondary claude-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
+                <i class="fa-solid fa-code-commit"></i>
+            </button>
+            <button class="btn btn-outline-secondary claude-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
                 <i class="fa-solid fa-flag-checkered"></i>
             </button>
         </div>
@@ -212,6 +215,12 @@ window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
 window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
 window.WRAPUP_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
 window.WRAPUP_CASE = null;
+window.WRAPUP_AGENT = 'claude';
+// Humanized worktree name used to prefill the title when creating a new case
+// on first commit (e.g., "ach-payments-stripe" -> "Ach Payments Stripe").
+window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CLAUDE_WORKTREE || '').split(/[-_]+/).map(function(w) {
+    return w ? w[0].toUpperCase() + w.slice(1) : '';
+}).join(' ');
 })();
 </script>
 
@@ -294,14 +303,30 @@ window.WRAPUP_CASE = null;
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
+                <!-- Generated tags (wrap-up only) -->
+                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
+                    </div>
+                    <div class="mb-2">
+                        <div class="text-muted small">Components</div>
+                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Keywords</div>
+                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
+                    </div>
+                </div>
+
                 <!-- Commit message -->
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
                     <textarea class="form-control" id="wrapUpCommitMsg" rows="3"></textarea>
                 </div>
 
-                <!-- Links -->
-                <div class="mb-3">
+                <!-- Links (wrap-up only) -->
+                <div class="mb-3" id="wrapUpLinksSection">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Links (optional)</label>
                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addWrapUpLink()">

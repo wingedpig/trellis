@@ -11,7 +11,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 - Run and supervise your app's services locally, with automatic restart when binaries change
 - Create and manage tmux sessions without manual layout management
 - Chat with Claude Code directly in the web UI, with per-worktree sessions and transcript management
-- Track work items (bugs, features, investigations) with cases that link notes, transcripts, and trace reports
+- Track work items (bugs, features, investigations) with cases that record notes, transcripts, trace reports, a per-commit timeline, and an auto-generated searchable summary
 - Run reverse proxies with path-based routing and TLS support to mirror production routing locally
 
 **Remote systems:**
@@ -161,7 +161,9 @@ Claude sessions appear in the navigation picker alongside terminals (`@main - Se
 
 ### Cases
 
-Cases track units of work (bugs, features, investigations) within a worktree. Attach notes, evidence, Claude transcripts, and trace reports to build a durable record alongside your code.
+A case is the durable record of a worktree's effort — one unit of work that accumulates notes, links, transcripts, evidence, traces, and a commit timeline over its life. Cases are created lazily on the first commit and at most one is open per worktree.
+
+The **Commit** button on the Claude / Codex session page makes intermediate commits against the open case, each annotated with a Claude-drafted commit message and a short narrative description that gets stored on the case. The **Wrap Up** button finishes the case: it generates a structured searchable summary, archives the case directory into version control, and bundles it into the final commit.
 
 ### AI Assistant Skill File
 

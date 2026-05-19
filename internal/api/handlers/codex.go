@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/wingedpig/trellis/internal/cases"
@@ -365,7 +364,8 @@ func (h *CodexHandler) ExportSessionAPI(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(t)
 }
 
-// GitStatus returns the git status for a worktree. Mirrors the Claude handler
+// GitStatus returns the git status for a worktree, filtered to hide paths
+// inside the live cases directory. Mirrors the Claude handler.
 // — kept as a Codex-namespaced endpoint so the move-session UI can reach it
 // without a worktree-level dependency from a Codex chat page.
 func (h *CodexHandler) GitStatus(w http.ResponseWriter, r *http.Request) {
@@ -391,15 +391,7 @@ func (h *CodexHandler) GitStatus(w http.ResponseWriter, r *http.Request) {
 		branch = branchInfo.Commit
 	}
 
-	WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"clean":     status.Clean,
-		"modified":  status.Modified,
-		"added":     status.Added,
-		"deleted":   status.Deleted,
-		"renamed":   status.Renamed,
-		"untracked": status.Untracked,
-		"branch":    branch,
-	})
+	writeFilteredGitStatus(w, h.caseMgr, status, branch)
 }
 
 // MoveSessionAPI moves a Codex session to a fresh worktree along with
@@ -604,163 +596,75 @@ func (h *CodexHandler) ListTraceReports(w http.ResponseWriter, r *http.Request) 
 	WriteJSON(w, http.StatusOK, map[string]interface{}{"reports": reports})
 }
 
-// codexWrapUpRequest is the request body for the WrapUp handler.
-type codexWrapUpRequest struct {
-	SessionID       string              `json:"session_id"`
-	CaseID          string              `json:"case_id"`
-	Title           string              `json:"title"`
-	Kind            string              `json:"kind"`
-	CommitMessage   string              `json:"commit_message"`
-	Files           []string            `json:"files"`
-	Links           []cases.CaseLink    `json:"links"`
-	Traces          []string            `json:"traces"`
-	RelatedSessions []relatedSessionRef `json:"related_sessions,omitempty"`
-}
-
-// WrapUp orchestrates the full wrap-up workflow for a Codex session: create
-// or load case, save/update transcript, archive case, commit. Mirrors
-// ClaudeHandler.WrapUp.
+// WrapUp orchestrates the full wrap-up workflow for a Codex session.
+// Thin wrapper over the shared commitToCase orchestrator with archive: true.
 func (h *CodexHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	worktreeName := vars["worktree"]
-
-	wt, ok := h.worktreeMgr.GetByName(worktreeName)
-	if !ok {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
-		return
-	}
-
-	var req codexWrapUpRequest
+	var req commitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if req.CommitMessage == "" {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, "commit_message is required")
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.claudeMgr,
+		codexMgr:    h.manager,
+		worktreeMgr: h.worktreeMgr,
+	}
+	resp, code, errCode, errMsg := commitToCase(r.Context(), r, codexAdapter{m: h.manager}, deps, req, true)
+	if errMsg != "" {
+		WriteError(w, code, errCode, errMsg)
 		return
 	}
-	if h.caseMgr == nil {
-		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "case manager not configured")
+	WriteJSON(w, code, resp)
+}
+
+// Commit handles intermediate commits made against an open case (or creates
+// it on first commit). Same orchestrator as WrapUp but archive: false.
+func (h *CodexHandler) Commit(w http.ResponseWriter, r *http.Request) {
+	var req commitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-
-	ctx := r.Context()
-	var caseID string
-
-	// Step 1: load existing or create new case
-	if req.CaseID != "" {
-		if _, err := h.caseMgr.Get(wt.Path, req.CaseID); err != nil {
-			WriteError(w, http.StatusNotFound, ErrNotFound, fmt.Sprintf("case not found: %s", req.CaseID))
-			return
-		}
-		caseID = req.CaseID
-	} else {
-		if req.Title == "" {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, "title is required when creating a new case")
-			return
-		}
-		if req.Kind == "" {
-			req.Kind = "task"
-		}
-		c, err := h.caseMgr.Create(wt.Path, req.Title, req.Kind, worktreeName, wt.Branch, wt.Commit)
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, ErrInternalError, "create case: "+err.Error())
-			return
-		}
-		caseID = c.ID
-
-		if req.SessionID != "" && h.manager != nil {
-			transcript, err := h.manager.ExportSession(req.SessionID, "full")
-			if err == nil {
-				refID := uuid.New().String()[:8]
-				_ = h.caseMgr.SaveCodexTranscript(wt.Path, caseID, refID, req.Title, req.SessionID, transcript)
-			}
-		}
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.claudeMgr,
+		codexMgr:    h.manager,
+		worktreeMgr: h.worktreeMgr,
 	}
-
-	// Step 2: refresh ALL codex transcripts attached to the case
-	if h.manager != nil {
-		if c, err := h.caseMgr.Get(wt.Path, caseID); err == nil {
-			for _, ref := range c.Codex {
-				if ref.SourceSessionID == "" {
-					continue
-				}
-				transcript, err := h.manager.ExportSession(ref.SourceSessionID, "full")
-				if err != nil {
-					continue
-				}
-				_ = h.caseMgr.UpdateCodexTranscript(wt.Path, caseID, ref.ID, transcript)
-			}
-		}
-	}
-
-	// Step 3: merge links
-	if len(req.Links) > 0 {
-		if c, err := h.caseMgr.Get(wt.Path, caseID); err == nil {
-			merged := c.Links
-			merged = append(merged, req.Links...)
-			_ = h.caseMgr.Update(wt.Path, caseID, cases.CaseUpdate{Links: merged})
-		}
-	}
-
-	// Step 4: save selected traces
-	if len(req.Traces) > 0 && h.traceMgr != nil {
-		for _, traceName := range req.Traces {
-			report, err := h.traceMgr.GetReport(traceName)
-			if err != nil {
-				continue
-			}
-			refID := uuid.New().String()[:8]
-			_ = h.caseMgr.SaveTrace(wt.Path, caseID, refID, report)
-		}
-	}
-
-	// Step 4b: Capture related sessions from the *other* agent.
-	for _, rel := range req.RelatedSessions {
-		captureRelatedSession(rel, wt.Path, caseID, h.caseMgr, h.claudeMgr, h.manager)
-	}
-
-	// Step 5: archive case
-	if err := h.caseMgr.Archive(wt.Path, caseID); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "archive case: "+err.Error())
+	resp, code, errCode, errMsg := commitToCase(r.Context(), r, codexAdapter{m: h.manager}, deps, req, false)
+	if errMsg != "" {
+		WriteError(w, code, errCode, errMsg)
 		return
 	}
+	WriteJSON(w, code, resp)
+}
 
-	// Step 6: git add files + archived case dir
-	archivedCaseRelDir := filepath.Join(h.caseMgr.ArchivedRelDir(), caseID)
-	gitArgs := []string{"-C", wt.Path, "add", archivedCaseRelDir}
-	for _, f := range req.Files {
-		if strings.Contains(f, "..") {
-			continue
-		}
-		gitArgs = append(gitArgs, f)
+// GenerateCommitMessage returns a Claude-generated commit message and case
+// description for the staged diff in the worktree.
+func (h *CodexHandler) GenerateCommitMessage(w http.ResponseWriter, r *http.Request) {
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.claudeMgr,
+		codexMgr:    h.manager,
+		worktreeMgr: h.worktreeMgr,
 	}
-	if _, err := worktree.RunCommand(ctx, gitArgs...); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git add: "+err.Error())
-		return
-	}
+	generateCommitMessageHTTP(w, r, codexAdapter{m: h.manager}, deps)
+}
 
-	// Step 7: commit
-	commitOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "commit", "-m", req.CommitMessage)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git commit: "+commitOut+" "+err.Error())
-		return
+// GenerateSummary previews the case summary the wrap-up would generate.
+func (h *CodexHandler) GenerateSummary(w http.ResponseWriter, r *http.Request) {
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.claudeMgr,
+		codexMgr:    h.manager,
+		worktreeMgr: h.worktreeMgr,
 	}
-
-	commitHash := ""
-	if hashOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "rev-parse", "--short", "HEAD"); err == nil {
-		commitHash = strings.TrimSpace(hashOut)
-	}
-
-	// Step 8: trash the codex session
-	if req.SessionID != "" && h.manager != nil {
-		_ = h.manager.TrashSession(req.SessionID)
-	}
-
-	WriteJSON(w, http.StatusOK, map[string]string{
-		"case_id":     caseID,
-		"commit_hash": commitHash,
-	})
+	generateSummaryHTTP(w, r, codexAdapter{m: h.manager}, deps)
 }
 
 // ImportSessionAPI imports a transcript into a worktree, creating a new session.

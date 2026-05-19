@@ -623,18 +623,28 @@ func (s *Session) Messages() []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := make([]Message, len(s.messages))
-	copy(result, s.messages)
+	for i, m := range s.messages {
+		result[i] = sanitizeMessage(m)
+	}
 	return result
 }
 
 // MessagesWithPending returns conversation history including any in-progress assistant turn.
 // This is used when sending history to a newly-connected WebSocket so the client
 // can see content that has already been streamed (e.g., tool_use blocks being executed).
+//
+// Every returned block is sanitized for invalid RawMessage values — including
+// blocks already committed to s.messages. The history is shipped through
+// json.Marshal as a single payload, and one bad RawMessage anywhere fails
+// the whole payload, so it isn't enough to clean only the in-progress blocks.
 func (s *Session) MessagesWithPending() []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	result := make([]Message, len(s.messages))
-	copy(result, s.messages)
+	for i, msg := range s.messages {
+		result[i] = sanitizeMessage(msg)
+	}
 
 	// Include the in-progress assistant turn whenever there's anything to show —
 	// either previously-completed blocks in currentBlocks OR a block currently
@@ -644,8 +654,6 @@ func (s *Session) MessagesWithPending() []Message {
 	if s.generating && (len(s.currentBlocks) > 0 || s.currentStreamBlock != nil) {
 		pending := make([]ContentBlock, len(s.currentBlocks))
 		copy(pending, s.currentBlocks)
-		// Sanitize any block whose Input RawMessage isn't currently valid JSON —
-		// otherwise the outer Marshal fails when the client reconnects mid-turn.
 		for i := range pending {
 			pending[i].Input = safeRawInput(pending[i].Input)
 		}
@@ -668,6 +676,24 @@ func (s *Session) MessagesWithPending() []Message {
 	}
 
 	return result
+}
+
+// sanitizeMessage returns a copy of msg with every block's Input field
+// scrubbed of non-JSON. The original block (still in s.messages) is left
+// alone — defensive sanitation should not erase data from the in-memory
+// record, only from what we ship over the wire.
+func sanitizeMessage(msg Message) Message {
+	out := msg
+	if len(msg.Content) == 0 {
+		return out
+	}
+	out.Content = make([]ContentBlock, len(msg.Content))
+	for i, b := range msg.Content {
+		bc := b
+		bc.Input = safeRawInput(bc.Input)
+		out.Content[i] = bc
+	}
+	return out
 }
 
 // safeRawInput returns input if it is nil or valid JSON, otherwise nil. This
@@ -1175,8 +1201,21 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 	case "content_block_stop":
 		s.mu.Lock()
 		if s.currentStreamBlock != nil {
+			// Only commit the accumulated partial_json as Input if it
+			// parses. The CLI normally sends a valid object by stop time,
+			// but model glitches and stream interruptions have been seen
+			// to leave the buffer in a half-built state — and once an
+			// invalid RawMessage is committed to s.messages, every
+			// history marshal on reconnect fails with "invalid character
+			// … looking for beginning of object key string". The
+			// stream-died-mid-turn path (line ~1031) already guards this
+			// way; this path needs to do the same.
 			if s.currentStreamBlock.Type == "tool_use" && s.streamPartialJSON != "" {
-				s.currentStreamBlock.Input = json.RawMessage(s.streamPartialJSON)
+				if json.Valid([]byte(s.streamPartialJSON)) {
+					s.currentStreamBlock.Input = json.RawMessage(s.streamPartialJSON)
+				} else {
+					log.Printf("claude [%s]: dropping invalid tool_use input JSON (%d bytes) on content_block_stop", s.id, len(s.streamPartialJSON))
+				}
 			}
 			block := *s.currentStreamBlock
 			workDir := s.workDir
@@ -1331,7 +1370,9 @@ func (m *Manager) ExportSession(sessionID, level string) (*Transcript, error) {
 
 	s.mu.Lock()
 	messages := make([]Message, len(s.messages))
-	copy(messages, s.messages)
+	for i, m := range s.messages {
+		messages[i] = sanitizeMessage(m)
+	}
 	source := TranscriptSource{
 		TrellisSessionID: s.id,
 		ClaudeSessionID:  s.claudeSID,

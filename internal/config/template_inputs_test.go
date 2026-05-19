@@ -5,7 +5,7 @@ import "testing"
 func TestInputsPreservation(t *testing.T) {
 	expander := NewTemplateExpander()
 	ctx := &TemplateContext{
-		Worktree: WorktreeTemplateData{Root: "/some/path"},
+		Worktree: WorktreeTemplateData{Root: "/some/path", Binaries: "/some/path/bin"},
 	}
 
 	tests := []struct {
@@ -27,6 +27,11 @@ func TestInputsPreservation(t *testing.T) {
 			name:     "multiple inputs",
 			input:    "-msgid={{ .Inputs.msgid }} -date={{ .Inputs.date }}",
 			expected: "-msgid={{ .Inputs.msgid }} -date={{ .Inputs.date }}",
+		},
+		{
+			name:     "worktree binaries with conditional inputs",
+			input:    "{{.Worktree.Binaries}}/dbfetch{{if .Inputs.id}} -id={{ .Inputs.id }}{{end}}",
+			expected: "/some/path/bin/dbfetch{{if .Inputs.id}} -id={{ .Inputs.id }}{{end}}",
 		},
 	}
 

@@ -38,12 +38,14 @@ type WorktreeHomePage struct {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4><i class="fa-solid fa-briefcase"></i> Cases</h4>
             <div>
-                <button class="btn btn-outline-secondary btn-sm me-1" id="showArchivedBtn" onclick="toggleArchivedCases()">
-                    <i class="fa-solid fa-box-archive"></i> Show Archived
-                </button>
+                <a href="/worktree/{%s p.WorktreeName %}/archived-cases" class="btn btn-outline-secondary btn-sm me-1">
+                    <i class="fa-solid fa-box-archive"></i> Archived cases
+                </a>
+                {% if len(p.Cases) == 0 %}
                 <button class="btn btn-primary btn-sm" onclick="showNewCaseModal()">
                     <i class="fa-solid fa-plus"></i> New Case
                 </button>
+                {% endif %}
             </div>
         </div>
 
@@ -70,10 +72,6 @@ type WorktreeHomePage struct {
         </div>
         {% endif %}
 
-        <div id="archivedCasesContainer" style="display:none;" class="mt-3">
-            <h6 class="text-muted">Archived</h6>
-            <div id="archivedCasesList" class="list-group"></div>
-        </div>
     </div>
 
     <!-- Claude Sessions -->
@@ -935,56 +933,6 @@ function archiveCaseFromList(caseId) {
         window.location.reload();
     })
     .catch(err => alert('Archive failed: ' + err));
-}
-
-let archivedVisible = false;
-function toggleArchivedCases() {
-    const container = document.getElementById('archivedCasesContainer');
-    const btn = document.getElementById('showArchivedBtn');
-    if (archivedVisible) {
-        container.style.display = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Show Archived';
-        archivedVisible = false;
-        return;
-    }
-    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/archived')
-    .then(r => r.json())
-    .then(data => {
-        const cases = data.data || data;
-        const list = document.getElementById('archivedCasesList');
-        list.innerHTML = '';
-        if (!cases || cases.length === 0) {
-            list.innerHTML = '<p class="text-muted p-2">No archived cases.</p>';
-        } else {
-            cases.forEach(c => {
-                const item = document.createElement('div');
-                item.className = 'list-group-item case-list-item';
-                item.innerHTML = '<div class="case-info">' +
-                    '<a href="/case/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(c.id) + '" class="text-decoration-none">' +
-                    '<span class="badge case-kind-' + c.kind + ' me-1">' + c.kind + '</span>' +
-                    c.title + '</a>' +
-                    '<span class="case-date">' + (c.created_at || '').substring(0, 10) + '</span></div>' +
-                    '<button class="btn btn-outline-success btn-sm" onclick="reopenCaseFromList(\'' + c.id.replace(/'/g, "\\'") + '\')">' +
-                    '<i class="fa-solid fa-box-open"></i></button>';
-                list.appendChild(item);
-            });
-        }
-        container.style.display = 'block';
-        btn.innerHTML = '<i class="fa-solid fa-box-archive"></i> Hide Archived';
-        archivedVisible = true;
-    })
-    .catch(err => alert('Failed to load archived cases: ' + err));
-}
-
-function reopenCaseFromList(caseId) {
-    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(caseId) + '/reopen', {
-        method: 'POST'
-    })
-    .then(resp => {
-        if (!resp.ok) throw new Error('Reopen failed');
-        window.location.reload();
-    })
-    .catch(err => alert('Reopen failed: ' + err));
 }
 
 </script>

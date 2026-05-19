@@ -38,7 +38,10 @@ type CodexPage struct {
             <button class="btn btn-outline-secondary codex-btn" onclick="showCodexSaveToCaseModal()" title="Save to case">
                 <i class="fa-solid fa-briefcase"></i>
             </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showWrapUpModal()" title="Wrap up session">
+            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
+                <i class="fa-solid fa-code-commit"></i>
+            </button>
+            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
                 <i class="fa-solid fa-flag-checkered"></i>
             </button>
         </div>
@@ -57,6 +60,9 @@ window.CODEX_SESSION = '{%s JSAttr(p.SessionID) %}';
 window.WRAPUP_AGENT = 'codex';
 window.WRAPUP_WORKTREE = window.CODEX_WORKTREE;
 window.WRAPUP_SESSION_ID = window.CODEX_SESSION;
+window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CODEX_WORKTREE || '').split(/[-_]+/).map(function(w) {
+    return w ? w[0].toUpperCase() + w.slice(1) : '';
+}).join(' ');
 window.WRAPUP_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
 window.WRAPUP_CASE = null;
 
@@ -249,12 +255,28 @@ window.codexSaveToCaseConfirm = function() {
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
+                <!-- Generated tags (wrap-up only) -->
+                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
+                    </div>
+                    <div class="mb-2">
+                        <div class="text-muted small">Components</div>
+                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Keywords</div>
+                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
                     <textarea class="form-control" id="wrapUpCommitMsg" rows="3"></textarea>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" id="wrapUpLinksSection">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Links (optional)</label>
                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addWrapUpLink()">
@@ -304,6 +326,7 @@ window.codexSaveToCaseConfirm = function() {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/codex.js"></script>
 <script src="/static/js/wrapup.js"></script>
+<script src="/static/js/workflow_picker.js"></script>
 
 {%= p.Footer() %}
 {% endfunc %}

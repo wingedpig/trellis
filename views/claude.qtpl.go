@@ -5,23 +5,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line views/claude.qtpl:4
+//line /Users/markf/src/trellis/views/claude.qtpl:4
 package views
 
-//line views/claude.qtpl:4
+//line /Users/markf/src/trellis/views/claude.qtpl:4
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line views/claude.qtpl:4
+//line /Users/markf/src/trellis/views/claude.qtpl:4
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line views/claude.qtpl:5
+//line /Users/markf/src/trellis/views/claude.qtpl:5
 type ClaudePage struct {
 	BasePage
 	WorktreeName     string
@@ -29,14 +29,14 @@ type ClaudePage struct {
 	SessionCreatedAt string // ISO 8601 timestamp
 }
 
-//line views/claude.qtpl:13
+//line /Users/markf/src/trellis/views/claude.qtpl:13
 func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/claude.qtpl:13
+//line /Users/markf/src/trellis/views/claude.qtpl:13
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:14
+//line /Users/markf/src/trellis/views/claude.qtpl:14
 	p.StreamHeader(qw422016)
-//line views/claude.qtpl:14
+//line /Users/markf/src/trellis/views/claude.qtpl:14
 	qw422016.N().S(`
 
 <link href="/static/css/claude.css" rel="stylesheet">
@@ -68,7 +68,10 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
             <button class="btn btn-outline-secondary claude-btn" onclick="showSaveToCaseModal()" title="Save to case">
                 <i class="fa-solid fa-briefcase"></i>
             </button>
-            <button class="btn btn-outline-secondary claude-btn" onclick="showWrapUpModal()" title="Wrap up session">
+            <button class="btn btn-outline-secondary claude-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
+                <i class="fa-solid fa-code-commit"></i>
+            </button>
+            <button class="btn btn-outline-secondary claude-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
                 <i class="fa-solid fa-flag-checkered"></i>
             </button>
         </div>
@@ -85,14 +88,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // Expose on window so external scripts (claude.js, wrapup.js) and inline
 // onclick handlers can reach these values.
 window.CLAUDE_WORKTREE = '`)
-//line views/claude.qtpl:61
+//line /Users/markf/src/trellis/views/claude.qtpl:64
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:61
+//line /Users/markf/src/trellis/views/claude.qtpl:64
 	qw422016.N().S(`';
 window.CLAUDE_SESSION = '`)
-//line views/claude.qtpl:62
+//line /Users/markf/src/trellis/views/claude.qtpl:65
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:62
+//line /Users/markf/src/trellis/views/claude.qtpl:65
 	qw422016.N().S(`';
 var CLAUDE_WORKTREE = window.CLAUDE_WORKTREE;
 var CLAUDE_SESSION = window.CLAUDE_SESSION;
@@ -245,11 +248,17 @@ function doSaveTranscript(caseId, title) {
 window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
 window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
 window.WRAPUP_SESSION_CREATED = '`)
-//line views/claude.qtpl:213
+//line /Users/markf/src/trellis/views/claude.qtpl:216
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:213
+//line /Users/markf/src/trellis/views/claude.qtpl:216
 	qw422016.N().S(`';
 window.WRAPUP_CASE = null;
+window.WRAPUP_AGENT = 'claude';
+// Humanized worktree name used to prefill the title when creating a new case
+// on first commit (e.g., "ach-payments-stripe" -> "Ach Payments Stripe").
+window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CLAUDE_WORKTREE || '').split(/[-_]+/).map(function(w) {
+    return w ? w[0].toUpperCase() + w.slice(1) : '';
+}).join(' ');
 })();
 </script>
 
@@ -332,14 +341,30 @@ window.WRAPUP_CASE = null;
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
+                <!-- Generated tags (wrap-up only) -->
+                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
+                    </div>
+                    <div class="mb-2">
+                        <div class="text-muted small">Components</div>
+                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Keywords</div>
+                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
+                    </div>
+                </div>
+
                 <!-- Commit message -->
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
                     <textarea class="form-control" id="wrapUpCommitMsg" rows="3"></textarea>
                 </div>
 
-                <!-- Links -->
-                <div class="mb-3">
+                <!-- Links (wrap-up only) -->
+                <div class="mb-3" id="wrapUpLinksSection">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Links (optional)</label>
                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addWrapUpLink()">
@@ -366,36 +391,36 @@ window.WRAPUP_CASE = null;
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:330
+//line /Users/markf/src/trellis/views/claude.qtpl:355
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:330
+//line /Users/markf/src/trellis/views/claude.qtpl:355
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 }
 
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 }
 
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 	return qs422016
-//line views/claude.qtpl:331
+//line /Users/markf/src/trellis/views/claude.qtpl:356
 }

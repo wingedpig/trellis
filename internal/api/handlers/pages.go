@@ -856,6 +856,20 @@ func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	isArchived := h.caseManager.IsArchived(worktreePath, caseID)
+	var wrapUp *views.WrapUpCommitInfo
+	if isArchived {
+		if w := FindWrapUpCommit(r.Context(), worktreePath, h.caseManager.ArchivedRelDir(), caseID); w != nil {
+			wrapUp = &views.WrapUpCommitInfo{
+				SHA:          w.SHA,
+				ShortSHA:     w.ShortSHA,
+				CommittedAt:  w.CommittedAt,
+				Message:      w.Message,
+				FilesChanged: w.FilesChanged,
+			}
+		}
+	}
+
 	page := &views.CaseDetailPage{
 		BasePage: views.BasePage{
 			Title:    "Case: " + c.Title,
@@ -865,8 +879,31 @@ func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
 		Case:         c,
 		Notes:        notes,
 		Traces:       traces,
+		IsArchived:   isArchived,
+		WrapUpCommit: wrapUp,
 	}
 
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// ArchivedCases renders the per-worktree archived cases search page.
+func (h *PageHandler) ArchivedCases(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	worktreeName := vars["worktree"]
+
+	var activeWorktree *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+	}
+
+	page := &views.ArchivedCasesPage{
+		BasePage: views.BasePage{
+			Title:    "Archived cases — " + worktreeName,
+			Worktree: activeWorktree,
+		},
+		WorktreeName: worktreeName,
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	page.WriteRender(w)
 }

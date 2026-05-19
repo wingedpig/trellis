@@ -5,23 +5,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line views/codex.qtpl:4
+//line /Users/markf/src/trellis/views/codex.qtpl:4
 package views
 
-//line views/codex.qtpl:4
+//line /Users/markf/src/trellis/views/codex.qtpl:4
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line views/codex.qtpl:4
+//line /Users/markf/src/trellis/views/codex.qtpl:4
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line views/codex.qtpl:5
+//line /Users/markf/src/trellis/views/codex.qtpl:5
 type CodexPage struct {
 	BasePage
 	WorktreeName     string
@@ -29,14 +29,14 @@ type CodexPage struct {
 	SessionCreatedAt string // ISO 8601 timestamp
 }
 
-//line views/codex.qtpl:13
+//line /Users/markf/src/trellis/views/codex.qtpl:13
 func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/codex.qtpl:13
+//line /Users/markf/src/trellis/views/codex.qtpl:13
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:14
+//line /Users/markf/src/trellis/views/codex.qtpl:14
 	p.StreamHeader(qw422016)
-//line views/codex.qtpl:14
+//line /Users/markf/src/trellis/views/codex.qtpl:14
 	qw422016.N().S(`
 
 <link href="/static/css/codex.css" rel="stylesheet">
@@ -64,7 +64,10 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
             <button class="btn btn-outline-secondary codex-btn" onclick="showCodexSaveToCaseModal()" title="Save to case">
                 <i class="fa-solid fa-briefcase"></i>
             </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showWrapUpModal()" title="Wrap up session">
+            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
+                <i class="fa-solid fa-code-commit"></i>
+            </button>
+            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
                 <i class="fa-solid fa-flag-checkered"></i>
             </button>
         </div>
@@ -79,22 +82,25 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 (function() {
 'use strict';
 window.CODEX_WORKTREE = '`)
-//line views/codex.qtpl:55
+//line /Users/markf/src/trellis/views/codex.qtpl:58
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:55
+//line /Users/markf/src/trellis/views/codex.qtpl:58
 	qw422016.N().S(`';
 window.CODEX_SESSION = '`)
-//line views/codex.qtpl:56
+//line /Users/markf/src/trellis/views/codex.qtpl:59
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:56
+//line /Users/markf/src/trellis/views/codex.qtpl:59
 	qw422016.N().S(`';
 window.WRAPUP_AGENT = 'codex';
 window.WRAPUP_WORKTREE = window.CODEX_WORKTREE;
 window.WRAPUP_SESSION_ID = window.CODEX_SESSION;
+window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CODEX_WORKTREE || '').split(/[-_]+/).map(function(w) {
+    return w ? w[0].toUpperCase() + w.slice(1) : '';
+}).join(' ');
 window.WRAPUP_SESSION_CREATED = '`)
-//line views/codex.qtpl:60
+//line /Users/markf/src/trellis/views/codex.qtpl:66
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:60
+//line /Users/markf/src/trellis/views/codex.qtpl:66
 	qw422016.N().S(`';
 window.WRAPUP_CASE = null;
 
@@ -287,12 +293,28 @@ window.codexSaveToCaseConfirm = function() {
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
+                <!-- Generated tags (wrap-up only) -->
+                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
+                    </div>
+                    <div class="mb-2">
+                        <div class="text-muted small">Components</div>
+                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Keywords</div>
+                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
                     <textarea class="form-control" id="wrapUpCommitMsg" rows="3"></textarea>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" id="wrapUpLinksSection">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Links (optional)</label>
                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addWrapUpLink()">
@@ -342,38 +364,39 @@ window.codexSaveToCaseConfirm = function() {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/codex.js"></script>
 <script src="/static/js/wrapup.js"></script>
+<script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:308
+//line /Users/markf/src/trellis/views/codex.qtpl:331
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:308
+//line /Users/markf/src/trellis/views/codex.qtpl:331
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 }
 
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 }
 
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 	return qs422016
-//line views/codex.qtpl:309
+//line /Users/markf/src/trellis/views/codex.qtpl:332
 }

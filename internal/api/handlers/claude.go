@@ -646,7 +646,11 @@ func (h *ClaudeHandler) PermanentDeleteSessionAPI(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GitStatus returns the git status for a worktree.
+// GitStatus returns the git status for a worktree, filtered to hide paths
+// inside the live cases directory. Those paths are managed by the case
+// lifecycle and are explicitly not committable while the case is open —
+// surfacing them in the commit modal would only let the user check them and
+// then get rejected by commitToCase's path guard.
 func (h *ClaudeHandler) GitStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	worktreeName := vars["worktree"]
@@ -671,15 +675,60 @@ func (h *ClaudeHandler) GitStatus(w http.ResponseWriter, r *http.Request) {
 		branch = branchInfo.Commit
 	}
 
-	WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"clean":     status.Clean,
-		"modified":  status.Modified,
-		"added":     status.Added,
-		"deleted":   status.Deleted,
-		"renamed":   status.Renamed,
-		"untracked": status.Untracked,
+	writeFilteredGitStatus(w, h.caseMgr, status, branch)
+}
+
+// writeFilteredGitStatus drops any path inside the live cases directory and
+// recomputes `clean` from the filtered lists. Shared by the Claude and Codex
+// git-status handlers so they behave identically.
+func writeFilteredGitStatus(w http.ResponseWriter, caseMgr *cases.Manager, status worktree.GitStatus, branch string) {
+	modified := status.Modified
+	added := status.Added
+	deleted := status.Deleted
+	renamed := status.Renamed
+	untracked := status.Untracked
+
+	if caseMgr != nil {
+		live := caseMgr.CasesRelDir()
+		modified = filterCasesPaths(modified, live)
+		added = filterCasesPaths(added, live)
+		deleted = filterCasesPaths(deleted, live)
+		renamed = filterCasesPaths(renamed, live)
+		untracked = filterCasesPaths(untracked, live)
+	}
+
+	clean := len(modified) == 0 && len(added) == 0 && len(deleted) == 0 && len(renamed) == 0 && len(untracked) == 0
+
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"clean":     clean,
+		"modified":  modified,
+		"added":     added,
+		"deleted":   deleted,
+		"renamed":   renamed,
+		"untracked": untracked,
 		"branch":    branch,
 	})
+}
+
+// filterCasesPaths returns paths that are NOT inside the live cases dir.
+// Handles both the directory-form entry (e.g. "trellis/cases/" returned by
+// `git status` for an entirely-untracked tree) and any individual files
+// inside it.
+func filterCasesPaths(paths []string, liveCasesRelDir string) []string {
+	if liveCasesRelDir == "" {
+		return paths
+	}
+	dir := strings.TrimSuffix(liveCasesRelDir, "/")
+	prefix := dir + "/"
+	out := paths[:0:len(paths)]
+	for _, p := range paths {
+		clean := strings.TrimSuffix(p, "/")
+		if clean == dir || strings.HasPrefix(p, prefix) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // SessionCase checks if a session is already linked to an open case.
@@ -733,38 +782,21 @@ func (h *ClaudeHandler) ListTraceReports(w http.ResponseWriter, r *http.Request)
 	WriteJSON(w, http.StatusOK, map[string]interface{}{"reports": reports})
 }
 
-// wrapUpRequest is the request body for the WrapUp handler.
-type wrapUpRequest struct {
-	SessionID     string                 `json:"session_id"`
-	CaseID        string                 `json:"case_id"`
-	Title         string                 `json:"title"`
-	Kind          string                 `json:"kind"`
-	CommitMessage string                 `json:"commit_message"`
-	Files         []string               `json:"files"`
-	Links         []cases.CaseLink       `json:"links"`
-	Traces        []string               `json:"traces"`
-	RelatedSessions []relatedSessionRef  `json:"related_sessions,omitempty"`
-}
-
-// relatedSessionRef is an entry in WrapUpRequest.RelatedSessions: a session
+// relatedSessionRef is an entry in commitRequest.RelatedSessions: a session
 // from the *other* agent in the same worktree that the user wants captured
-// (transcript saved to the case, then session trashed) as part of this
+// (transcript saved to the case, then session trashed) as part of a
 // wrap-up. Lets the user wrap up cross-agent collaborative work in one shot.
 type relatedSessionRef struct {
-	Agent     string `json:"agent"`      // "claude" | "codex"
+	Agent     string `json:"agent"` // "claude" | "codex"
 	SessionID string `json:"session_id"`
 }
 
 // captureRelatedSession exports a session from the named agent, saves its
 // transcript to the case, and trashes the session. Best-effort — failures
-// are logged but don't abort the wrap-up.
+// are silent and don't abort the wrap-up.
 //
-// Called from both ClaudeHandler.WrapUp and CodexHandler.WrapUp; that's why
-// it takes both managers and decides which one to use based on rel.Agent.
-func (h *ClaudeHandler) captureRelatedSessionImpl(rel relatedSessionRef, worktreePath, caseID string) {
-	captureRelatedSession(rel, worktreePath, caseID, h.caseMgr, h.manager, h.codexMgr)
-}
-
+// Called by commitToCase when archive == true and req.RelatedSessions is
+// non-empty.
 func captureRelatedSession(rel relatedSessionRef, worktreePath, caseID string, caseMgr *cases.Manager, claudeMgr *claude.Manager, codexMgr *codex.Manager) {
 	if caseMgr == nil || rel.SessionID == "" {
 		return
@@ -803,158 +835,74 @@ func captureRelatedSession(rel relatedSessionRef, worktreePath, caseID string, c
 	}
 }
 
-// WrapUp orchestrates the full wrap-up workflow: create/update case, update transcripts, archive, commit.
+// WrapUp orchestrates the full wrap-up workflow: create/update case, update
+// transcripts, generate summary, archive, commit. Implemented as a thin
+// wrapper over the shared commitToCase orchestrator with archive: true.
 func (h *ClaudeHandler) WrapUp(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	worktreeName := vars["worktree"]
-
-	wt, ok := h.worktreeMgr.GetByName(worktreeName)
-	if !ok {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
-		return
-	}
-
-	var req wrapUpRequest
+	var req commitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-
-	if req.CommitMessage == "" {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, "commit_message is required")
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.manager,
+		codexMgr:    h.codexMgr,
+		worktreeMgr: h.worktreeMgr,
+	}
+	resp, code, errCode, errMsg := commitToCase(r.Context(), r, claudeAdapter{m: h.manager}, deps, req, true)
+	if errMsg != "" {
+		WriteError(w, code, errCode, errMsg)
 		return
 	}
+	WriteJSON(w, code, resp)
+}
 
-	if h.caseMgr == nil {
-		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "case manager not configured")
+// Commit handles intermediate commits made against an open case (or creates
+// the case on first commit). Same orchestrator as WrapUp but archive: false.
+func (h *ClaudeHandler) Commit(w http.ResponseWriter, r *http.Request) {
+	var req commitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-
-	ctx := r.Context()
-	var caseID string
-
-	// Step 1: Create or load case
-	if req.CaseID != "" {
-		// Use existing case
-		if _, err := h.caseMgr.Get(wt.Path, req.CaseID); err != nil {
-			WriteError(w, http.StatusNotFound, ErrNotFound, fmt.Sprintf("case not found: %s", req.CaseID))
-			return
-		}
-		caseID = req.CaseID
-	} else {
-		// Create new case + save transcript
-		if req.Title == "" {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, "title is required when creating a new case")
-			return
-		}
-		if req.Kind == "" {
-			req.Kind = "task"
-		}
-
-		c, err := h.caseMgr.Create(wt.Path, req.Title, req.Kind, worktreeName, wt.Branch, wt.Commit)
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, ErrInternalError, "create case: "+err.Error())
-			return
-		}
-		caseID = c.ID
-
-		// Save transcript for the session
-		if req.SessionID != "" && h.manager != nil {
-			transcript, err := h.manager.ExportSession(req.SessionID, "full")
-			if err == nil {
-				refID := uuid.New().String()[:8]
-				_ = h.caseMgr.SaveTranscript(wt.Path, caseID, refID, req.Title, req.SessionID, transcript)
-			}
-		}
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.manager,
+		codexMgr:    h.codexMgr,
+		worktreeMgr: h.worktreeMgr,
 	}
-
-	// Step 2: Update ALL transcripts linked to the case
-	if h.manager != nil {
-		if c, err := h.caseMgr.Get(wt.Path, caseID); err == nil {
-			for _, ref := range c.Claude {
-				if ref.SourceSessionID == "" {
-					continue
-				}
-				transcript, err := h.manager.ExportSession(ref.SourceSessionID, "full")
-				if err != nil {
-					continue
-				}
-				_ = h.caseMgr.UpdateTranscript(wt.Path, caseID, ref.ID, transcript)
-			}
-		}
-	}
-
-	// Step 3: Merge links
-	if len(req.Links) > 0 {
-		if c, err := h.caseMgr.Get(wt.Path, caseID); err == nil {
-			merged := c.Links
-			for _, newLink := range req.Links {
-				merged = append(merged, newLink)
-			}
-			_ = h.caseMgr.Update(wt.Path, caseID, cases.CaseUpdate{Links: merged})
-		}
-	}
-
-	// Step 4: Save selected traces
-	if len(req.Traces) > 0 && h.traceMgr != nil {
-		for _, traceName := range req.Traces {
-			report, err := h.traceMgr.GetReport(traceName)
-			if err != nil {
-				continue
-			}
-			refID := uuid.New().String()[:8]
-			_ = h.caseMgr.SaveTrace(wt.Path, caseID, refID, report)
-		}
-	}
-
-	// Step 4b: Capture related sessions from the *other* agent — their
-	// transcripts get saved to the same case and the sessions are trashed.
-	for _, rel := range req.RelatedSessions {
-		captureRelatedSession(rel, wt.Path, caseID, h.caseMgr, h.manager, h.codexMgr)
-	}
-
-	// Step 5: Archive case
-	if err := h.caseMgr.Archive(wt.Path, caseID); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "archive case: "+err.Error())
+	resp, code, errCode, errMsg := commitToCase(r.Context(), r, claudeAdapter{m: h.manager}, deps, req, false)
+	if errMsg != "" {
+		WriteError(w, code, errCode, errMsg)
 		return
 	}
+	WriteJSON(w, code, resp)
+}
 
-	// Step 6: git add selected files + archived case directory
-	archivedCaseRelDir := filepath.Join(h.caseMgr.ArchivedRelDir(), caseID)
-	gitArgs := []string{"-C", wt.Path, "add", archivedCaseRelDir}
-	for _, f := range req.Files {
-		// Sanitize: prevent path traversal
-		if strings.Contains(f, "..") {
-			continue
-		}
-		gitArgs = append(gitArgs, f)
+// GenerateCommitMessage returns a Claude-generated commit message and case
+// description for the staged diff in the worktree.
+func (h *ClaudeHandler) GenerateCommitMessage(w http.ResponseWriter, r *http.Request) {
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.manager,
+		codexMgr:    h.codexMgr,
+		worktreeMgr: h.worktreeMgr,
 	}
-	if _, err := worktree.RunCommand(ctx, gitArgs...); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git add: "+err.Error())
-		return
-	}
+	generateCommitMessageHTTP(w, r, claudeAdapter{m: h.manager}, deps)
+}
 
-	// Step 7: git commit
-	commitOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "commit", "-m", req.CommitMessage)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git commit: "+commitOut+" "+err.Error())
-		return
+// GenerateSummary previews the case summary the wrap-up would generate.
+func (h *ClaudeHandler) GenerateSummary(w http.ResponseWriter, r *http.Request) {
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.manager,
+		codexMgr:    h.codexMgr,
+		worktreeMgr: h.worktreeMgr,
 	}
-
-	// Extract commit hash
-	commitHash := ""
-	hashOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "rev-parse", "--short", "HEAD")
-	if err == nil {
-		commitHash = strings.TrimSpace(hashOut)
-	}
-
-	// Step 8: Trash the Claude session
-	if req.SessionID != "" && h.manager != nil {
-		_ = h.manager.TrashSession(req.SessionID)
-	}
-
-	WriteJSON(w, http.StatusOK, map[string]string{
-		"case_id":     caseID,
-		"commit_hash": commitHash,
-	})
+	generateSummaryHTTP(w, r, claudeAdapter{m: h.manager}, deps)
 }

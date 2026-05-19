@@ -33,12 +33,6 @@ func NewTemplateExpander() *TemplateExpander {
 // inputsOrControlPattern matches template actions that reference .Inputs or are control-flow (if/else/end/range/with).
 var inputsOrControlPattern = regexp.MustCompile(`\{\{-?\s*(?:(?:if|else if|with|range)\s+[^}]*\.Inputs\.[^}]*|\.Inputs\.[^}]*|end|else)\s*-?\}\}`)
 
-// controlFlowPattern matches control-flow template directives (if/else/end/range/with).
-var controlFlowPattern = regexp.MustCompile(`\{\{-?\s*(?:if|else if|else|end|range|with)\b`)
-
-// inputsActionPattern matches standalone {{ .Inputs.xxx }} actions (no control flow).
-var inputsActionPattern = regexp.MustCompile(`\{\{-?\s*\.Inputs\.\w+\s*-?\}\}`)
-
 // Expand expands template variables in a string value.
 // Templates referencing .Inputs are preserved (they are expanded at runtime).
 func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, error) {
@@ -48,9 +42,9 @@ func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, e
 
 	// If the value contains .Inputs references, it's a runtime template
 	// (e.g. workflow commands with {{if .Inputs.id}}...{{end}}).
-	// We can't selectively extract individual {{ }} blocks because
-	// control-flow directives like {{if}}/{{end}} span multiple blocks.
-	// Instead, skip expansion entirely if the only templates are .Inputs references.
+	// Replace those tokens with placeholders so the remaining non-.Inputs
+	// templates (.Worktree.*, .Service.*, etc.) can still be expanded now;
+	// the .Inputs tokens are restored and resolved at workflow run time.
 	if strings.Contains(value, ".Inputs") {
 		// Check if there are any non-.Inputs template actions to expand.
 		// Remove all {{ }} blocks that reference .Inputs or are control flow (if/else/end/range/with).
@@ -59,13 +53,6 @@ func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, e
 			// Everything is .Inputs-related — preserve the whole string
 			return value, nil
 		}
-		// There's a mix of .Inputs and other templates. If control-flow
-		// blocks are present we can't safely partial-expand.
-		if controlFlowPattern.MatchString(value) {
-			return value, nil
-		}
-		// Simple mix: replace .Inputs actions with placeholders, expand,
-		// then restore.
 		return e.expandWithInputsPlaceholders(value, ctx)
 	}
 
@@ -83,13 +70,15 @@ func (e *TemplateExpander) Expand(value string, ctx *TemplateContext) (string, e
 }
 
 // expandWithInputsPlaceholders handles mixed templates containing both .Inputs
-// references and other expandable actions. It replaces .Inputs actions with
-// unique placeholders, expands the rest, then restores the originals.
+// references and other expandable actions. It replaces .Inputs actions and
+// any control-flow tokens (which only appear paired with .Inputs conditions
+// in workflow configs) with unique placeholders, expands the rest, then
+// restores the originals.
 func (e *TemplateExpander) expandWithInputsPlaceholders(value string, ctx *TemplateContext) (string, error) {
-	// Collect all .Inputs actions and replace with placeholders
+	// Collect all .Inputs/control-flow actions and replace with placeholders
 	var placeholders []string
 	i := 0
-	replaced := inputsActionPattern.ReplaceAllStringFunc(value, func(match string) string {
+	replaced := inputsOrControlPattern.ReplaceAllStringFunc(value, func(match string) string {
 		ph := fmt.Sprintf("__TRELLIS_INPUTS_%d__", i)
 		i++
 		placeholders = append(placeholders, match)

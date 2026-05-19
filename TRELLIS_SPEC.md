@@ -927,15 +927,26 @@ The crashes page is accessible at `/crashes` and shows:
 
 ### 9.1 Overview
 
-Cases are durable, repo-committed objects that capture a unit of work (bug investigation, feature development, etc.) within a Trellis worktree. Each case is a directory containing:
+A case is the durable record of a worktree's effort. It captures one logical unit of work (a bug investigation, a feature, an ad-hoc task) and accumulates state — notes, transcripts, evidence, traces, commit history, and a generated summary — over the case's active life. When the work is done, the case is wrapped up: the directory is moved into the archived path and the final state is committed to git alongside the code.
 
-- **`case.json`** — Machine-readable manifest with metadata, links, evidence references, and Claude transcript references
-- **`notes.md`** — Human-written narrative (rendered as Markdown in the UI)
-- **`evidence/`** — Snapshot files (logs, screenshots, data exports)
-- **`transcripts/`** — Exported Claude Code transcripts
-- **`traces/`** — Saved trace reports
+Each case is a directory containing:
 
-Cases are stored in the worktree filesystem and are intended to be committed to version control, providing a persistent record of work alongside the code.
+- **`case.json`** — Machine-readable manifest with metadata, links, evidence references, transcript references, the per-commit timeline, and the generated summary.
+- **`notes.md`** — Human-written narrative (rendered as Markdown in the UI).
+- **`evidence/`** — Snapshot files (logs, screenshots, data exports).
+- **`transcripts/`** — Exported Claude Code transcripts.
+- **`codex_transcripts/`** — Exported Codex transcripts.
+- **`traces/`** — Saved trace reports.
+
+Cases are stored in the worktree filesystem and are committed to version control at wrap-up, providing a persistent record of work alongside the code. **Open cases are not committed to git during their active life** — they only become part of the repository at wrap-up. The case directory is excluded by selective `git add`: the commit flow only stages the files the user selected, never the live cases directory.
+
+#### 9.1.1 Lifecycle invariants
+
+- **A case is created lazily** — usually on the first commit a worktree makes. Worktrees that never commit (throwaway experiments, abandoned work) never get a case.
+- **At most one open case per worktree** at any time. The `Manager.Create` API rejects attempts to create a second open case while one is already open (`ErrOpenCaseExists`). If a second logical effort emerges in a worktree, make a new worktree.
+- **Once a case is open, all commits from any session in that worktree bind to it by default.** Both Claude and Codex sessions write their commits to the same open case without prompting.
+- **The case ID is immutable** once created. The title can be renamed freely; the `id` directory name and any `[case: <id>]` references in commit messages are permanent.
+- **Wrap-up is a special case of Commit** — same orchestrator, with `archive: true`.
 
 ### 9.2 Cases Configuration
 
@@ -957,8 +968,8 @@ Each case manifest (`case.json`) contains:
 | Field | Description |
 |-------|-------------|
 | `schema` | Schema identifier (`trellis.case.v1`) |
-| `id` | Unique identifier (`{date}__{slugified-title}`, e.g., `20260210__fix-login-crash`) |
-| `title` | Human-readable title |
+| `id` | Unique identifier (`{date}__{slugified-title}`, e.g., `20260210__fix-login-crash`) — **immutable** |
+| `title` | Human-readable title — editable from the case detail page |
 | `kind` | Category: `bug`, `feature`, `investigation`, or `task` |
 | `status` | State: `open`, `resolved`, or `wontfix` |
 | `created_at` | Creation timestamp |
@@ -967,76 +978,173 @@ Each case manifest (`case.json`) contains:
 | `links` | External references (URLs with titles) |
 | `evidence` | Attached evidence files with metadata and tags |
 | `claude` | Claude transcript references (ID, title, message count, export time) |
-| `traces` | Linked trace report references (name, trace ID, group, entry count, linked time) |
+| `codex` | Codex transcript references (parallel to `claude`) |
+| `commits` | Intermediate-commit timeline — see §9.3.1 |
+| `summary` | Generated structured summary written at wrap-up — see §9.3.2 |
+
+#### 9.3.1 `commits[]` — intermediate-commit timeline
+
+Each intermediate (non-wrap-up) commit made against the case is appended to `case.json`'s `commits[]` array:
+
+```json
+{
+  "sha":           "...full SHA...",
+  "short_sha":     "abc1234",
+  "committed_at":  "2026-05-14T10:30:00Z",
+  "message":       "...the git commit message...",
+  "description":   "Brief 1-2 sentence narrative beat — what this commit accomplished relative to the case's overall arc.",
+  "files_changed": ["path/a.go", "path/b.go"]
+}
+```
+
+The `description` field is the **per-commit case description** — distinct from `message`. The message describes the *code change*; the description describes the *narrative beat* and is what the case detail page surfaces in the commits timeline.
+
+**The wrap-up commit is not represented in `commits[]`.** It is structurally different (it contains the case manifest itself and marks the end of the case) and is locatable from git history when needed: the most recent commit on the case's worktree branch that contains `[case: <id>]` in its message and the archived case directory in its tree.
+
+#### 9.3.2 `summary{}` — generated case summary
+
+At wrap-up time Trellis runs a one-shot `claude -p` invocation (see §9.5.4) and stores a structured summary on the case for searchability:
+
+```json
+{
+  "synopsis":     "one human-readable line",
+  "symptoms":     "the observable problem (empty for non-bug work)",
+  "root_cause":   "what was actually wrong (empty for features / wontfix)",
+  "resolution":   "what changed (approach, not the diff)",
+  "components":   ["service / package / subsystem names"],
+  "keywords":     ["error codes, function names, library names"],
+  "generated_at": "2026-05-14T10:30:00Z",
+  "model":        "claude-..."
+}
+```
+
+Each field is individually editable from the case detail page (`PATCH /api/v1/cases/{worktree}/{id}/summary`). The whole summary can be regenerated (`POST .../regenerate-summary`); the UI confirms before overwriting an edited summary.
 
 ### 9.4 Case Lifecycle
 
 ```
-Create ──► Open ──► Resolved/Wontfix
-                        │
-                    Archive ──► Reopen ──► Open
-                        │
-                      Delete
+First commit ──► Open ──► (intermediate commits…) ──► Wrap Up (archive + commit)
+                              │
+                          [Archive] ──► [Reopen] ──► Open
+                              │
+                            [Delete]
 ```
 
-- **Create**: Generates a new case directory with `case.json` and empty `notes.md`
-- **Archive**: Moves case directory from `cases/` to `cases-archived/`
-- **Reopen**: Moves case directory back from `cases-archived/` to `cases/`
-- **Delete**: Permanently removes the case directory
+- **First commit** (or `New Case` manual): creates the case directory with `case.json` and empty `notes.md`. Refused if an open case already exists in the worktree.
+- **Intermediate commit**: adds a `CommitEntry` to `commits[]`; the case stays open. See §9.5.2.
+- **Wrap Up**: generates the summary, moves the case directory from `cases/` to `cases-archived/`, and includes the archived directory in the git commit. See §9.5.3.
+- **Archive** (button, separate from Wrap Up): just moves the directory without a commit. Used to retire a case without recording a final commit.
+- **Reopen**: moves an archived case back to `cases/`. Refused if an open case already exists.
+- **Delete**: permanently removes the case directory.
 
-### 9.5 Claude Transcript Integration
+### 9.5 Commit & Wrap Up
 
-Cases integrate with the Claude session system for transcript export and import:
+Commits and wrap-ups go through the same server-side orchestrator (`commitToCase` in `internal/api/handlers/commits.go`); they differ only by a single `archive` flag. Wrap Up is Commit + Archive.
 
-- **Export to case**: Export a Claude session transcript and attach it to a case. The transcript file is stored in the case's `transcripts/` directory, and a reference is added to `case.json`.
-- **Continue from case**: Import a transcript from a case back into a new Claude session, preserving conversation history for continued work.
-- **Wrap up**: The "Wrap Up" button (available on both the Claude chat page and the case detail page) orchestrates a complete workflow: create/load case → update all transcripts → merge links → archive case → git add + commit. See §9.5.2.
+#### 9.5.1 Transcript and trace integration
 
-### 9.5.1 Trace Report Integration
+- **Export to case**: Save a session's transcript to a case. The file is written to `transcripts/` (Claude) or `codex_transcripts/` (Codex) and a reference is appended to `case.json`.
+- **Continue from case**: Import a transcript from a case as a new session, preserving conversation history for continued work.
+- **Save trace to case**: From the trace report page, link a saved trace report to a case. The full trace report is written to `traces/` and a lightweight reference is appended to `case.json`.
+- **Refresh on commit**: Every commit (intermediate or wrap-up) re-exports the live sessions attached to the case so the stored transcripts stay current.
 
-Cases can link to saved trace reports for investigation continuity:
+#### 9.5.2 Intermediate commits
 
-- **Save to case**: From the trace report page, click "Save to Case" to link the trace report to an existing or new case. The full trace report is saved to the case's `traces/` directory, and a lightweight reference (name, trace ID, group, entry count) is added to `case.json`.
-- **View from case**: The case detail page shows linked traces with links back to the trace report page.
+From the Claude or Codex session page the user can click **Commit** to make an intermediate commit against the worktree's open case. If no open case exists, the modal also offers new-case fields (title prefilled from the humanized worktree name; kind defaults to `feature`).
 
-### 9.5.2 Wrap Up Workflow
+**Server-side steps:**
 
-The "Wrap Up" feature collapses several manual steps into a single modal interaction. It is available from two entry points:
+1. Resolve the case: use `case_id` if supplied, else the worktree's single open case, else create a new one (refused if a second open case would result).
+2. If the case was just created, save a transcript of the active session to it.
+3. Refresh all transcripts (Claude + Codex) attached to the case from their live sources.
+4. `git add` only the user-selected files. Paths inside the live cases directory are rejected.
+5. `git commit` with the user-supplied message.
+6. Append a `CommitEntry` to `case.json`'s `commits[]`, capturing the SHA, message, generated per-commit description, and files changed.
+7. Leave the session alive and the case open — the user keeps working.
 
-1. **Claude chat page** — Wraps up the current session. If the session is already linked to an open case (detected via `FindCaseBySession`), that case is used; otherwise, a new case is created.
-2. **Case detail page** — Wraps up an existing case (case info is read-only).
+`POST /api/v1/claude/{worktree}/commit` and `POST /api/v1/codex/{worktree}/commit` are the entry points.
 
-**Server-side steps (in order):**
+#### 9.5.3 Wrap Up
 
-1. If `case_id` provided → load existing case; else create new case + save transcript for `session_id`
-2. Update ALL transcripts linked to the case by re-exporting from live sessions
-3. Merge any new links into the case
-4. Archive the case (moves from `cases/` to `cases-archived/`)
-5. `git add` selected files + the archived case directory
-6. `git commit` with the user's message as-is
+Wrap Up is initiated from the Claude / Codex session page or the case detail page. It runs the same orchestrator as Commit with `archive: true`.
 
-The archive happens BEFORE the git commit, so the committed state includes the archived case directory.
+**Server-side steps:**
 
-**Commit message convention:** The client pre-fills the commit message as `<title> [case: <case-id>]`. The case ID is deterministic (`YYYY-MM-DD__slugified-title`), so for new cases the client computes a predicted ID using a JavaScript `slugify()` that matches Go's `config.Slugify()`. The user can freely edit the message before submitting.
+1. Steps 1–3 above (load/create case, snapshot initial transcript on creation, refresh attached transcripts).
+2. Merge any new links into the case.
+3. Save any selected traces.
+4. Capture any selected related sessions from the *other* agent (transcript saved to the case, session trashed).
+5. **Generate the summary** via `claude -p` (see §9.5.4) and write it onto `case.json` before staging.
+6. Move the case directory from `cases/` to `cases-archived/`.
+7. `git add` the user-selected files **plus** the archived case directory.
+8. `git commit`.
+9. Trash the active session.
+
+If anything between step 6 and step 8 fails, the archive is rolled back (`Manager.Reopen`) so the case returns to its pre-wrap-up state.
+
+**Commit message convention:** The client suggests `<title> [case: <case-id>]` as a fallback. In practice the Claude-generated message (see §9.5.4) is what populates the field by default.
+
+#### 9.5.4 Claude-generated commit messages and summaries
+
+Trellis uses `claude -p --output-format json` (a one-shot invocation of the existing `claude` CLI) to draft two distinct pieces of text:
+
+- **Commit message + per-commit description** — Generated asynchronously when the Commit / Wrap Up modal opens. **The diff fed to the model is scoped to exactly the files the user has checked in the modal** (via `git diff HEAD -- <paths>` for tracked files and `git diff --no-index /dev/null <path>` for untracked). The generator deliberately does NOT use `git diff --staged` — the staging area may contain unrelated work — and does NOT use `git diff HEAD` with no path filter — that includes files the user unchecked. Other inputs: the case manifest, `notes.md`, and the last few user messages from the active session. Output JSON has `{message, description}`. The generated message populates the textarea only if the user hasn't started typing; **Regenerate** re-runs with the current file selection. The `description` is stored on the resulting `CommitEntry`.
+- **Case summary** — Generated synchronously during wrap-up, before the commit, so it lands in the same commit as the archived case. The wrap-up diff is built the same way — scoped to the user's selected files, not the staging area. Other inputs: attached transcripts (Claude + Codex), `notes.md`, the `commits[].description` accumulated during the case, linked trace summary lines, and the case `kind`/`status`. Output JSON matches the `summary{}` schema in §9.3.2.
+
+Generation has a per-call timeout. Failures degrade gracefully: an empty textarea for commit messages, and a missing `summary{}` block that can be regenerated later from the case detail page.
+
+No Anthropic API plumbing is required — generation uses the user's existing Claude Code authentication.
 
 ### 9.6 Cases API
+
+Cases-scoped endpoints:
 
 ```
 GET    /api/v1/cases/{worktree}                                    # List open cases
 GET    /api/v1/cases/{worktree}/archived                           # List archived cases
-POST   /api/v1/cases/{worktree}                                    # Create a case
+GET    /api/v1/cases/{worktree}/archived/search                    # Search archived (see §9.6.1)
+POST   /api/v1/cases/{worktree}                                    # Create a case (refused if one is already open)
 GET    /api/v1/cases/{worktree}/{id}                               # Get case details
 GET    /api/v1/cases/{worktree}/{id}/notes                         # Get case notes (markdown)
-PATCH  /api/v1/cases/{worktree}/{id}                               # Update case fields
+PATCH  /api/v1/cases/{worktree}/{id}                               # Update case fields (title, kind, status, links, notes)
 DELETE /api/v1/cases/{worktree}/{id}                               # Delete case
-POST   /api/v1/cases/{worktree}/{id}/archive                      # Archive case
-POST   /api/v1/cases/{worktree}/{id}/reopen                       # Reopen archived case
-POST   /api/v1/cases/{worktree}/{id}/evidence                     # Attach evidence (multipart)
-POST   /api/v1/cases/{worktree}/{id}/transcript                   # Save transcript to case
-POST   /api/v1/cases/{worktree}/{id}/transcript/{ref}/continue    # Continue transcript as new session
-POST   /api/v1/cases/{worktree}/{id}/trace                        # Link trace report to case
+POST   /api/v1/cases/{worktree}/{id}/archive                       # Archive case (no commit)
+POST   /api/v1/cases/{worktree}/{id}/reopen                        # Reopen archived case
+POST   /api/v1/cases/{worktree}/{id}/evidence                      # Attach evidence (multipart)
+POST   /api/v1/cases/{worktree}/{id}/transcript                    # Save Claude transcript to case
+POST   /api/v1/cases/{worktree}/{id}/transcript/{ref}/continue     # Continue Claude transcript as new session
+POST   /api/v1/cases/{worktree}/{id}/codex-transcript              # Save Codex transcript to case
+POST   /api/v1/cases/{worktree}/{id}/codex-transcript/{ref}/continue
+POST   /api/v1/cases/{worktree}/{id}/trace                         # Link trace report to case
 DELETE /api/v1/cases/{worktree}/{id}/trace/{trace_id}              # Remove trace link from case
+PATCH  /api/v1/cases/{worktree}/{id}/summary                       # Edit summary fields
+POST   /api/v1/cases/{worktree}/{id}/regenerate-summary            # Re-run summary generation
 ```
+
+Agent-scoped commit endpoints (Claude has a Codex twin at `/codex/...`):
+
+```
+POST   /api/v1/claude/{worktree}/commit                            # Intermediate commit (archive: false)
+POST   /api/v1/claude/{worktree}/wrap-up                           # Wrap-up commit (archive: true)
+POST   /api/v1/claude/{worktree}/generate-commit-message           # Generate commit message + description
+```
+
+#### 9.6.1 Searching archived cases
+
+`GET /api/v1/cases/{worktree}/archived/search`
+
+Query parameters:
+
+| Param | Description |
+|-------|-------------|
+| `q` | Free-text query. Matched against title, summary fields (keywords / components weighted highest), commit descriptions, and `notes.md`. |
+| `kind` | One of `bug`, `feature`, `investigation`, `task`. |
+| `from`, `to` | Inclusive `created_at` bounds. Accepts `YYYY-MM-DD` or RFC 3339. |
+| `has_traces` | `1` to require at least one linked trace. |
+| `include_transcripts` | `1` to also scan attached transcript previews (slower; high volume, low signal-to-noise). |
+| `sort` | `date` (default), `kind`, `duration`, or `worktree`. |
+
+Returns a list of `{...CaseInfo, score, snippet, summary}` entries. Keyword matches rank above title matches, which rank above notes / commit-description matches.
 
 **Create a case:**
 
@@ -1073,26 +1181,35 @@ Response:
 ### 9.7 Web UI
 
 **Worktree home page** (`/worktree/{name}`):
-- Lists open cases with title, kind badge, and creation date
-- "New Case" button opens a creation modal (title + kind)
-- Archive button on each case row
-- "Show Archived" toggle to view archived cases
+- Lists the worktree's single open case (if any) with title, kind badge, and creation date.
+- "Archived cases" link → per-worktree archived browser (`/worktree/{name}/archived-cases`).
+- "New Case" button — only shown when no open case exists, since only one open case is allowed.
+
+**Archived cases page** (`/worktree/{name}/archived-cases`):
+- Full-text search across title, summary fields, keywords, components, commit descriptions, and `notes.md`.
+- Filters: kind, date range (`created_at`), has-linked-traces toggle.
+- Optional "Also search transcripts" toggle (slow path).
+- Sort: date (default), kind, duration, worktree of origin.
+- Results show synopsis, component / keyword chips, and the first matching snippet.
 
 **Case detail page** (`/case/{worktree}/{id}`):
-- Header with title, kind badge, status badge, and timestamps
-- Action bar: Back, Wrap Up (non-archived only), Archive/Reopen, Delete
-- Links section (if any)
-- Notes section rendered as Markdown
-- Evidence list with format badges and tags
-- Transcripts section with "Continue" button to resume Claude sessions
-- Traces section with links to trace report pages
+- Inline-editable title with the immutable case ID displayed next to it as a monospace tag.
+- Action bar: Back, Wrap Up (non-archived only), Archive/Reopen, Delete.
+- **Summary section** (when populated): synopsis, symptoms, root cause, resolution, components, keywords. Inline-editable per field; **Regenerate Summary** button confirms before overwriting.
+- **Commits section** (when populated): reverse-chronological list of intermediate `CommitEntry` rows. Each row shows short SHA, date, first line of the commit message, and the per-commit description. The wrap-up commit is NOT shown here.
+- Links section.
+- Notes section rendered as Markdown.
+- Evidence list with format badges and tags.
+- Claude / Codex transcripts sections with "Continue" buttons to resume sessions.
+- Traces section with links to trace report pages.
 
-**Claude page** (`/claude/{worktree}/{session}`):
-- "Save to Case" button exports the current transcript to an existing or new case
-- "Wrap Up" button opens a modal to archive case + commit in one step (see §9.5.2)
+**Claude page** (`/claude/{worktree}/{session}`) — same affordances on the Codex page:
+- "Save to Case" button exports the current transcript to an existing or new case.
+- **Commit** button opens the shared modal in `commit` mode (intermediate commit, no archive).
+- **Wrap Up** button opens the shared modal in `wrapup` mode (archive + commit).
 
 **Trace report page** (`/trace/report/{name}`):
-- "Save to Case" button links the trace report to an existing or new case
+- "Save to Case" button links the trace report to an existing or new case.
 
 ---
 
@@ -2863,18 +2980,28 @@ DELETE /api/v1/claude/sessions/{session}/permanent   # Permanently delete a sess
 ```
 GET    /api/v1/cases/{worktree}                                    # List open cases
 GET    /api/v1/cases/{worktree}/archived                           # List archived cases
-POST   /api/v1/cases/{worktree}                                    # Create a case
+GET    /api/v1/cases/{worktree}/archived/search                    # Search archived (see §9.6.1)
+POST   /api/v1/cases/{worktree}                                    # Create a case (refused if one already open)
 GET    /api/v1/cases/{worktree}/{id}                               # Get case details
 GET    /api/v1/cases/{worktree}/{id}/notes                         # Get case notes (markdown)
-PATCH  /api/v1/cases/{worktree}/{id}                               # Update case fields
+PATCH  /api/v1/cases/{worktree}/{id}                               # Update case fields (incl. title)
 DELETE /api/v1/cases/{worktree}/{id}                               # Delete case
-POST   /api/v1/cases/{worktree}/{id}/archive                      # Archive case
-POST   /api/v1/cases/{worktree}/{id}/reopen                       # Reopen archived case
-POST   /api/v1/cases/{worktree}/{id}/evidence                     # Attach evidence (multipart)
-POST   /api/v1/cases/{worktree}/{id}/transcript                   # Save transcript to case
-POST   /api/v1/cases/{worktree}/{id}/transcript/{ref}/continue    # Continue transcript
-POST   /api/v1/cases/{worktree}/{id}/trace                        # Link trace report to case
+POST   /api/v1/cases/{worktree}/{id}/archive                       # Archive case (no commit)
+POST   /api/v1/cases/{worktree}/{id}/reopen                        # Reopen archived case
+POST   /api/v1/cases/{worktree}/{id}/evidence                      # Attach evidence (multipart)
+POST   /api/v1/cases/{worktree}/{id}/transcript                    # Save Claude transcript to case
+POST   /api/v1/cases/{worktree}/{id}/transcript/{ref}/continue     # Continue Claude transcript
+POST   /api/v1/cases/{worktree}/{id}/codex-transcript              # Save Codex transcript to case
+POST   /api/v1/cases/{worktree}/{id}/codex-transcript/{ref}/continue
+POST   /api/v1/cases/{worktree}/{id}/trace                         # Link trace report to case
 DELETE /api/v1/cases/{worktree}/{id}/trace/{trace_id}              # Remove trace link
+PATCH  /api/v1/cases/{worktree}/{id}/summary                       # Edit summary fields
+POST   /api/v1/cases/{worktree}/{id}/regenerate-summary            # Re-run summary generation
+
+POST   /api/v1/claude/{worktree}/commit                            # Intermediate commit
+POST   /api/v1/claude/{worktree}/wrap-up                           # Wrap-up commit (archive + commit)
+POST   /api/v1/claude/{worktree}/generate-commit-message
+                                                                   # (Codex twin endpoints at /codex/...)
 ```
 
 #### Navigation
@@ -5236,9 +5363,9 @@ claude --output-format stream-json --session-id <session_id> --include-partial-m
 **Claude page** (`/claude/{worktree}/{session}`):
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  [Nav Picker ▼]              Save to Case  Wrap Up  Reset        │
-├─────────────────────────────────────────────────────────────────┤
+┌──────────────────────────────────────────────────────────────────────┐
+│  [Nav Picker ▼]   Save to Case  Commit  Wrap Up  Reset                │
+├──────────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─── user ────────────────────────────────────────────────────┐│
 │  │ Fix the authentication bug in login.go                      ││
@@ -5289,7 +5416,11 @@ Trashed sessions are automatically purged after 7 days on server startup.
 
 **Continue:** From the case detail page, click "Continue" on a saved transcript to import it into a new Claude session, preserving conversation context.
 
-**Wrap Up:** The Claude page and case detail page both have a "Wrap Up" button that orchestrates: create/load case → update all transcripts → merge links → archive → git add + commit. See §9.5.2 for full details.
+**Commit:** The Claude (and Codex) page has a **Commit** button that makes an intermediate commit against the worktree's open case (creating the case if it's the worktree's first commit). The case stays open and the session keeps going. See §9.5.2.
+
+**Wrap Up:** The Claude (and Codex) session page and the case detail page each have a **Wrap Up** button. Wrap Up runs the same orchestrator as Commit with `archive: true`: generates a case summary, archives the case directory, includes it in the git commit, and trashes the session. See §9.5.3.
+
+**Generated commit messages:** Both Commit and Wrap Up modals fire `POST /api/v1/{agent}/{worktree}/generate-commit-message` on open. The model's draft populates the textarea unless the user has already started typing; a **Regenerate** button is always available.
 
 ### 20.7 API
 
@@ -5306,8 +5437,12 @@ GET    /api/v1/claude/sessions/{session}/export      # Export transcript as JSON
 POST   /api/v1/claude/{worktree}/sessions/import     # Import transcript JSON
 GET    /api/v1/claude/{worktree}/git-status          # Git status for the worktree
 GET    /api/v1/claude/{worktree}/session-case        # Check if session is linked to a case
-POST   /api/v1/claude/{worktree}/wrap-up             # Wrap up: create/archive case + commit
+POST   /api/v1/claude/{worktree}/commit              # Intermediate commit (archive: false)
+POST   /api/v1/claude/{worktree}/wrap-up             # Wrap up: archive + commit
+POST   /api/v1/claude/{worktree}/generate-commit-message
 ```
+
+(Codex has a parallel set of endpoints at `/api/v1/codex/{worktree}/...`.)
 
 **Git status:**
 
@@ -5345,29 +5480,43 @@ Response:
 }
 ```
 
-**Wrap up:**
+**Commit and Wrap Up share the same request shape.** The orchestrator (`commitToCase`) only differs by an `archive` flag, set by the endpoint.
 
-`POST /api/v1/claude/{worktree}/wrap-up`
+`POST /api/v1/claude/{worktree}/commit` — intermediate commit, archive: false
+`POST /api/v1/claude/{worktree}/wrap-up` — wrap-up, archive: true
 
-Request body (new case from Claude page):
+Request body (existing open case — typical case):
 ```json
 {
   "session_id": "abc",
-  "title": "Fix bug",
-  "kind": "bug",
-  "commit_message": "Fix bug [case: 2026-02-19__fix-bug]",
-  "files": ["file.go"],
-  "links": [{"title": "Issue", "url": "https://..."}]
+  "commit_message": "Add ACH payment support",
+  "description": "First pass on the Stripe webhook handler.",
+  "files": ["billing/ach.go", "billing/ach_test.go"]
 }
 ```
 
-Request body (existing case from case detail page):
+Request body (no open case yet — first commit creates one):
 ```json
 {
-  "case_id": "2026-02-19__fix-bug",
-  "commit_message": "Fix bug [case: 2026-02-19__fix-bug]",
-  "files": ["file.go"],
-  "links": []
+  "session_id": "abc",
+  "title": "ACH Payments Stripe",
+  "kind": "feature",
+  "commit_message": "Scaffold ACH payment types",
+  "description": "Set up the data types and config plumbing.",
+  "files": ["billing/ach.go"]
+}
+```
+
+Wrap-up adds optional `links`, `traces`, and `related_sessions`:
+```json
+{
+  "case_id": "2026-02-19__ach-payments-stripe",
+  "session_id": "abc",
+  "commit_message": "Ship ACH payments [case: 2026-02-19__ach-payments-stripe]",
+  "files": ["billing/ach.go", "billing/ach_test.go"],
+  "links": [{"title": "Stripe docs", "url": "https://stripe.com/docs/payments/ach"}],
+  "traces": ["ach-webhook-2026-02-19"],
+  "related_sessions": [{"agent": "codex", "session_id": "xyz"}]
 }
 ```
 
@@ -5375,8 +5524,29 @@ Response:
 ```json
 {
   "data": {
-    "case_id": "2026-02-19__fix-bug",
+    "case_id":     "2026-02-19__ach-payments-stripe",
     "commit_hash": "a1b2c3d"
+  }
+}
+```
+
+**Generate commit message:**
+
+`POST /api/v1/claude/{worktree}/generate-commit-message`
+
+Request body:
+```json
+{ "session_id": "abc", "case_id": "2026-02-19__ach-payments-stripe" }
+```
+(Or, for a new case, `{ "session_id": "abc", "title": "...", "kind": "feature" }`.)
+
+Response:
+```json
+{
+  "data": {
+    "message":     "Add ACH webhook handler",
+    "description": "Handles the inbound ACH-credit webhook from Stripe and reconciles to the billing ledger.",
+    "model":       "claude-..."
   }
 }
 ```

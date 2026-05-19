@@ -4,11 +4,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +18,7 @@ import (
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/codex"
+	"github.com/wingedpig/trellis/internal/genai"
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
@@ -257,6 +260,10 @@ func (h *CaseHandler) Reopen(w http.ResponseWriter, r *http.Request) {
 	caseID := vars["id"]
 
 	if err := h.caseMgr.Reopen(wt.Path, caseID); err != nil {
+		if err == cases.ErrOpenCaseExists {
+			WriteError(w, http.StatusConflict, ErrBadRequest, err.Error())
+			return
+		}
 		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
 		return
 	}
@@ -618,6 +625,318 @@ func (h *CaseHandler) DeleteTrace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// SearchResult is one match returned by SearchArchived.
+type SearchResult struct {
+	cases.CaseInfo
+	Score   int               `json:"score"`
+	Snippet string            `json:"snippet,omitempty"` // first matching line for display
+	Summary *cases.CaseSummary `json:"summary,omitempty"` // included so the page can render summary chips
+}
+
+// SearchArchived runs a full-text + filter search over archived cases.
+//
+// Query params:
+//   q                    - free-text query (matched against title, summary
+//                           fields, commit descriptions, notes.md; opt-in
+//                           transcript scan when include_transcripts=1)
+//   kind                 - bug|feature|investigation|task
+//   from, to             - ISO date or RFC3339; bounds on created_at
+//   has_traces           - "1" to require at least one linked trace
+//   include_transcripts  - "1" to scan transcript .jsonl files (slow)
+//   sort                 - date (default) | kind | duration | worktree
+func (h *CaseHandler) SearchArchived(w http.ResponseWriter, r *http.Request) {
+	wt, ok := h.resolveWorktree(r)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	kindFilter := r.URL.Query().Get("kind")
+	fromRaw := r.URL.Query().Get("from")
+	toRaw := r.URL.Query().Get("to")
+	hasTracesFilter := r.URL.Query().Get("has_traces") == "1"
+	includeTranscripts := r.URL.Query().Get("include_transcripts") == "1"
+	sortKey := r.URL.Query().Get("sort")
+	if sortKey == "" {
+		sortKey = "date"
+	}
+
+	var fromTime, toTime time.Time
+	if fromRaw != "" {
+		if t, err := parseFlexTime(fromRaw); err == nil {
+			fromTime = t
+		}
+	}
+	if toRaw != "" {
+		if t, err := parseFlexTime(toRaw); err == nil {
+			// Inclusive: bump to end of day if the input was a bare date.
+			if len(toRaw) == 10 {
+				t = t.Add(24*time.Hour - time.Nanosecond)
+			}
+			toTime = t
+		}
+	}
+
+	infos, err := h.caseMgr.ListArchived(wt.Path)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
+		return
+	}
+
+	qLower := strings.ToLower(q)
+	terms := splitTerms(qLower)
+	results := make([]SearchResult, 0, len(infos))
+	for _, info := range infos {
+		if kindFilter != "" && info.Kind != kindFilter {
+			continue
+		}
+		if !fromTime.IsZero() && info.CreatedAt.Before(fromTime) {
+			continue
+		}
+		if !toTime.IsZero() && info.CreatedAt.After(toTime) {
+			continue
+		}
+
+		full, err := h.caseMgr.Get(wt.Path, info.ID)
+		if err != nil {
+			continue
+		}
+
+		if hasTracesFilter {
+			traces, _ := h.caseMgr.ListTraces(wt.Path, info.ID)
+			if len(traces) == 0 {
+				continue
+			}
+		}
+
+		// Build a haystack and score it.
+		score, snippet := scoreCase(full, terms, qLower, h.caseMgr, wt.Path, includeTranscripts)
+		if len(terms) > 0 && score == 0 {
+			continue
+		}
+
+		results = append(results, SearchResult{
+			CaseInfo: info,
+			Score:    score,
+			Snippet:  snippet,
+			Summary:  full.Summary,
+		})
+	}
+
+	// Sort
+	switch sortKey {
+	case "kind":
+		sortByScoreThen(results, func(a, b SearchResult) bool { return a.Kind < b.Kind })
+	case "duration":
+		sortByScoreThen(results, func(a, b SearchResult) bool {
+			return a.UpdatedAt.Sub(a.CreatedAt) > b.UpdatedAt.Sub(b.CreatedAt)
+		})
+	case "worktree":
+		sortByScoreThen(results, func(a, b SearchResult) bool { return a.Worktree < b.Worktree })
+	default: // date
+		sortByScoreThen(results, func(a, b SearchResult) bool { return a.CreatedAt.After(b.CreatedAt) })
+	}
+
+	WriteJSON(w, http.StatusOK, results)
+}
+
+func parseFlexTime(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	return time.Parse("2006-01-02", s)
+}
+
+func splitTerms(q string) []string {
+	if q == "" {
+		return nil
+	}
+	fields := strings.Fields(q)
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if len(f) >= 2 {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// scoreCase produces a relevance score and a short snippet for display.
+// Keyword/component matches rank highest, title next, notes / commit
+// descriptions lowest. With an empty term list every case scores 0 and the
+// caller treats that as "include unconditionally" (browse mode, not search
+// mode).
+func scoreCase(c *cases.CaseJSON, terms []string, qLower string, mgr *cases.Manager, worktreePath string, includeTranscripts bool) (int, string) {
+	if len(terms) == 0 {
+		return 0, ""
+	}
+
+	score := 0
+	var firstHit string
+
+	hit := func(weight int, text, where string) {
+		if text == "" {
+			return
+		}
+		low := strings.ToLower(text)
+		for _, t := range terms {
+			if strings.Contains(low, t) {
+				score += weight
+				if firstHit == "" {
+					firstHit = where + ": " + text
+				}
+			}
+		}
+	}
+
+	// Highest-weight: explicit keyword/component fields.
+	if c.Summary != nil {
+		for _, k := range c.Summary.Keywords {
+			hit(10, k, "keyword")
+		}
+		for _, comp := range c.Summary.Components {
+			hit(8, comp, "component")
+		}
+		hit(6, c.Summary.Synopsis, "synopsis")
+		hit(4, c.Summary.Symptoms, "symptoms")
+		hit(4, c.Summary.RootCause, "root cause")
+		hit(4, c.Summary.Resolution, "resolution")
+	}
+	hit(5, c.Title, "title")
+
+	// Commit descriptions and messages.
+	for _, ce := range c.Commits {
+		hit(2, ce.Description, "commit")
+		hit(1, firstLineString(ce.Message), "commit msg")
+	}
+
+	// notes.md
+	notes, _ := mgr.GetNotes(worktreePath, c.ID)
+	if notes != "" {
+		hit(2, notes, "notes")
+	}
+
+	// Transcripts are opt-in: high volume, low signal-to-noise.
+	if includeTranscripts {
+		for _, ref := range c.Claude {
+			hit(1, ref.Preview, "claude")
+		}
+		for _, ref := range c.Codex {
+			hit(1, ref.Preview, "codex")
+		}
+	}
+
+	return score, truncForSnippet(firstHit, 240)
+}
+
+func firstLineString(s string) string {
+	if i := strings.Index(s, "\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func truncForSnippet(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+// sortByScoreThen sorts results by score (high first), breaking ties using
+// the supplied secondary comparator.
+func sortByScoreThen(results []SearchResult, secondary func(a, b SearchResult) bool) {
+	// stable sort to make secondary order matter.
+	for i := 1; i < len(results); i++ {
+		for j := i; j > 0; j-- {
+			a, b := results[j-1], results[j]
+			swap := false
+			if a.Score != b.Score {
+				swap = a.Score < b.Score
+			} else {
+				swap = secondary(b, a)
+			}
+			if !swap {
+				break
+			}
+			results[j-1], results[j] = b, a
+		}
+	}
+}
+
+// UpdateSummary applies partial edits to the generated summary fields.
+// Works on both open and archived cases.
+func (h *CaseHandler) UpdateSummary(w http.ResponseWriter, r *http.Request) {
+	wt, ok := h.resolveWorktree(r)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	vars := mux.Vars(r)
+	caseID := vars["id"]
+
+	var upd cases.SummaryUpdate
+	if err := json.NewDecoder(r.Body).Decode(&upd); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	// Apply the same normalization to hand-edits as we do to generated
+	// summaries, so the chip set stays consistent regardless of source.
+	if upd.Components != nil {
+		upd.Components = genai.NormalizeComponents(upd.Components)
+	}
+	if upd.Keywords != nil {
+		upd.Keywords = genai.NormalizeKeywords(upd.Keywords)
+	}
+	if err := h.caseMgr.UpdateSummary(wt.Path, caseID, upd); err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// RegenerateSummary re-runs the case summary generator and overwrites the
+// stored summary. Works on archived cases too (writes back into the
+// archived directory). The caller is expected to confirm the overwrite if a
+// summary already exists with hand edits.
+func (h *CaseHandler) RegenerateSummary(w http.ResponseWriter, r *http.Request) {
+	wt, ok := h.resolveWorktree(r)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	vars := mux.Vars(r)
+	caseID := vars["id"]
+
+	c, err := h.caseMgr.Get(wt.Path, caseID)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.claudeMgr,
+		codexMgr:    h.codexMgr,
+		worktreeMgr: h.worktreeMgr,
+	}
+	summary, err := regenerateSummaryForCase(ctx, deps, wt.Path, c)
+	if err != nil {
+		WriteError(w, http.StatusBadGateway, ErrInternalError, "regenerate: "+err.Error())
+		return
+	}
+	if err := h.caseMgr.ReplaceSummary(wt.Path, caseID, summary); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, "save summary: "+err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, summary)
 }
 
 // ContinueTranscript reads a transcript from a case and imports it as a new Claude session.

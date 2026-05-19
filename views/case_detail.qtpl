@@ -4,6 +4,7 @@
 {% import "encoding/json" %}
 {% import "github.com/wingedpig/trellis/internal/cases" %}
 {% import "strings" %}
+{% import "time" %}
 
 {% code
 type CaseDetailPage struct {
@@ -12,6 +13,20 @@ type CaseDetailPage struct {
     Case         *cases.CaseJSON
     Notes        string
     Traces       []cases.CaseTraceSummary
+    IsArchived   bool
+    WrapUpCommit *WrapUpCommitInfo
+}
+
+// WrapUpCommitInfo mirrors handlers.WrapUpCommitInfo. Defined in the views
+// package as well so the qtpl doesn't have to import the handlers package
+// (which would create an import cycle). The page handler populates this
+// from the handlers package's lookup.
+type WrapUpCommitInfo struct {
+    SHA          string
+    ShortSHA     string
+    CommittedAt  time.Time
+    Message      string
+    FilesChanged []string
 }
 %}
 
@@ -23,8 +38,25 @@ type CaseDetailPage struct {
 <div class="case-detail">
     <div class="case-header mb-4">
         <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <h2>{%s p.Case.Title %}</h2>
+            <div style="flex: 1;">
+                <div id="case-title-view" class="d-flex align-items-center gap-2">
+                    <h2 id="case-title-h2" class="mb-0">{%s p.Case.Title %}</h2>
+                    {% if !p.IsArchived %}
+                    <button class="btn btn-outline-secondary btn-sm" onclick="editCaseTitle()" title="Rename">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                    {% endif %}
+                </div>
+                <div id="case-title-edit" class="d-flex align-items-center gap-2" style="display:none">
+                    <input type="text" id="case-title-input" class="form-control form-control-lg" style="max-width: 32rem;">
+                    <button class="btn btn-primary btn-sm" onclick="saveCaseTitle()">
+                        <i class="fa-solid fa-check"></i> Save
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="cancelEditCaseTitle()">Cancel</button>
+                </div>
+                <div class="text-muted small mt-1">
+                    <code title="Case ID is immutable">{%s p.Case.ID %}</code>
+                </div>
                 <div class="case-meta mt-2">
                     <span class="badge case-kind-{%s p.Case.Kind %}">{%s p.Case.Kind %}</span>
                     <span class="badge case-status-{%s p.Case.Status %}">{%s p.Case.Status %}</span>
@@ -42,7 +74,7 @@ type CaseDetailPage struct {
                 <a href="/worktree/{%s p.WorktreeName %}" class="btn btn-outline-secondary btn-sm">
                     <i class="fa-solid fa-arrow-left"></i> Back
                 </a>
-                {% if p.Case.Status != "archived" %}
+                {% if !p.IsArchived %}
                 <button class="btn btn-outline-primary btn-sm" onclick="showWrapUpModal()">
                     <i class="fa-solid fa-flag-checkered"></i> Wrap Up
                 </button>
@@ -60,6 +92,77 @@ type CaseDetailPage struct {
             </div>
         </div>
     </div>
+
+    {% if p.Case.Summary != nil %}
+    <div class="case-section mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fa-solid fa-circle-info"></i> Summary <small class="text-muted">(generated)</small></h4>
+            <button class="btn btn-outline-secondary btn-sm" onclick="regenerateSummary()">
+                <i class="fa-solid fa-arrows-rotate"></i> Regenerate
+            </button>
+        </div>
+        <div id="case-summary" class="mt-2">
+            {%= renderSummary(p.Case.Summary) %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if p.WrapUpCommit != nil %}
+    <div class="case-section mb-4">
+        <h4><i class="fa-solid fa-flag-checkered"></i> Wrap-up commit</h4>
+        <div class="list-group">
+            <div class="list-group-item">
+                <div>
+                    <code class="me-2">{%s p.WrapUpCommit.ShortSHA %}</code>
+                    <span class="text-muted small">{%s p.WrapUpCommit.CommittedAt.Format("2006-01-02 15:04") %}</span>
+                    <div class="mt-1"><strong>{%s firstLine(p.WrapUpCommit.Message) %}</strong></div>
+                    {% if len(p.WrapUpCommit.FilesChanged) > 0 %}
+                    <div class="mt-2">
+                        <div class="text-muted small mb-1">Files changed:</div>
+                        <ul class="case-files-list mb-0">
+                            {% for _, f := range p.WrapUpCommit.FilesChanged %}
+                            <li><code>{%s f %}</code></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if len(p.Case.Commits) > 0 %}
+    <div class="case-section mb-4">
+        <h4><i class="fa-solid fa-code-commit"></i> {% if p.WrapUpCommit != nil %}Earlier commits{% else %}Commits{% endif %}</h4>
+        <div class="list-group">
+            {% for i := len(p.Case.Commits) - 1; i >= 0; i-- %}
+            {% code ce := p.Case.Commits[i] %}
+            <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <code class="me-2">{%s ce.ShortSHA %}</code>
+                        <span class="text-muted small">{%s ce.CommittedAt.Format("2006-01-02 15:04") %}</span>
+                        <div class="mt-1"><strong>{%s firstLine(ce.Message) %}</strong></div>
+                        {% if ce.Description != "" %}
+                        <div class="text-muted small mt-1">{%s ce.Description %}</div>
+                        {% endif %}
+                        {% if len(ce.FilesChanged) > 0 %}
+                        <div class="mt-2">
+                            <ul class="case-files-list mb-0">
+                                {% for _, f := range ce.FilesChanged %}
+                                <li><code>{%s f %}</code></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="case-section mb-4">
         <div class="d-flex justify-content-between align-items-center">
@@ -210,11 +313,13 @@ type CaseDetailPage struct {
     <div class="case-section mb-4">
         <div class="d-flex justify-content-between align-items-center">
             <h4 class="mb-0"><i class="fa-solid fa-note-sticky"></i> Notes</h4>
+            {% if !p.IsArchived %}
             <div id="notes-view-actions">
                 <button class="btn btn-outline-secondary btn-sm" onclick="editNotes()">
                     <i class="fa-solid fa-pen"></i> Edit
                 </button>
             </div>
+            {% endif %}
             <div id="notes-edit-actions" style="display:none">
                 <button class="btn btn-primary btn-sm" onclick="saveNotes()">
                     <i class="fa-solid fa-check"></i> Save
@@ -345,6 +450,73 @@ function addLink() {
     patchLinks()
         .then(function() { renderLinks(); cancelAddLink(); })
         .catch(function(err) { CASE_LINKS.pop(); alert('Save failed: ' + err); });
+}
+
+// Inline title edit. The case ID is immutable; only the title changes.
+function editCaseTitle() {
+    var current = document.getElementById('case-title-h2').textContent;
+    document.getElementById('case-title-input').value = current;
+    document.getElementById('case-title-view').style.display = 'none';
+    document.getElementById('case-title-edit').style.display = 'flex';
+    document.getElementById('case-title-input').focus();
+}
+
+function cancelEditCaseTitle() {
+    document.getElementById('case-title-edit').style.display = 'none';
+    document.getElementById('case-title-view').style.display = 'flex';
+}
+
+function saveCaseTitle() {
+    var newTitle = document.getElementById('case-title-input').value.trim();
+    if (!newTitle) { alert('Title cannot be empty.'); return; }
+    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(CASE_ID), {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title: newTitle})
+    })
+    .then(function(resp) {
+        if (!resp.ok) throw new Error('Save failed');
+        document.getElementById('case-title-h2').textContent = newTitle;
+        // Keep the wrap-up modal in sync.
+        if (window.WRAPUP_CASE) window.WRAPUP_CASE.title = newTitle;
+        cancelEditCaseTitle();
+    })
+    .catch(function(err) { alert('Save failed: ' + err); });
+}
+
+// Regenerate the generated case summary. Confirms before overwriting if a
+// summary already exists (the existing summary may have hand-edits the user
+// would lose).
+function regenerateSummary() {
+    var container = document.getElementById('case-summary');
+    var hasExisting = container && container.querySelector('dt');
+    if (hasExisting && !confirm('Regenerate summary? This overwrites any hand edits to the existing summary.')) {
+        return;
+    }
+    var btn = event && event.currentTarget;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Regenerating…';
+    }
+    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(CASE_ID) + '/regenerate-summary', {
+        method: 'POST'
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(result) {
+        if (!result.ok) {
+            var msg = (result.data.error && result.data.error.message) || 'Regenerate failed';
+            throw new Error(msg);
+        }
+        // Simplest path: reload the page to re-render the summary section.
+        window.location.reload();
+    })
+    .catch(function(err) {
+        alert('Regenerate failed: ' + err);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> Regenerate';
+        }
+    });
 }
 
 function deleteLink(index) {
@@ -539,6 +711,22 @@ var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind
                     <div id="wrapUpFileList" class="wrap-up-file-list"></div>
                 </div>
 
+                <!-- Generated tags (wrap-up only) -->
+                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
+                    </div>
+                    <div class="mb-2">
+                        <div class="text-muted small">Components</div>
+                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted small">Keywords</div>
+                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
+                    </div>
+                </div>
+
                 <!-- Commit message -->
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
@@ -546,7 +734,7 @@ var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind
                 </div>
 
                 <!-- Links -->
-                <div class="mb-3">
+                <div class="mb-3" id="wrapUpLinksSection">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Links (optional)</label>
                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addWrapUpLink()">
@@ -574,7 +762,56 @@ var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind
 {%= p.Footer() %}
 {% endfunc %}
 
+{% func renderSummary(s *cases.CaseSummary) %}
+{% if s == nil %}{% return %}{% endif %}
+<dl class="case-summary mb-0">
+    {% if s.Synopsis != "" %}
+    <dt>Synopsis</dt>
+    <dd data-field="synopsis">{%s s.Synopsis %}</dd>
+    {% endif %}
+    {% if s.Symptoms != "" %}
+    <dt>Symptoms</dt>
+    <dd data-field="symptoms">{%s s.Symptoms %}</dd>
+    {% endif %}
+    {% if s.RootCause != "" %}
+    <dt>Root cause</dt>
+    <dd data-field="root_cause">{%s s.RootCause %}</dd>
+    {% endif %}
+    {% if s.Resolution != "" %}
+    <dt>Resolution</dt>
+    <dd data-field="resolution">{%s s.Resolution %}</dd>
+    {% endif %}
+    {% if len(s.Components) > 0 %}
+    <dt>Components</dt>
+    <dd data-field="components">
+        {% for _, c := range s.Components %}<span class="badge bg-info me-1">{%s c %}</span>{% endfor %}
+    </dd>
+    {% endif %}
+    {% if len(s.Keywords) > 0 %}
+    <dt>Keywords</dt>
+    <dd data-field="keywords">
+        {% for _, k := range s.Keywords %}<span class="badge bg-secondary me-1">{%s k %}</span>{% endfor %}
+    </dd>
+    {% endif %}
+</dl>
+<div class="small text-muted mt-2">
+    {% if s.Model != "" %}Model: {%s s.Model %}. {% endif %}Generated {%s s.GeneratedAt.Format("2006-01-02 15:04") %}.
+</div>
+{% endfunc %}
+
 {% code
+// firstLine returns the first non-empty line of s, used to render commit
+// messages compactly on the case detail page.
+func firstLine(s string) string {
+    for _, line := range strings.Split(s, "\n") {
+        line = strings.TrimSpace(line)
+        if line != "" {
+            return line
+        }
+    }
+    return s
+}
+
 // notesJSONSafe returns the notes as a JSON-encoded string safe for embedding in a <script> tag.
 func notesJSONSafe(s string) string {
     // JSON encode the string (handles escaping quotes, newlines, etc.)

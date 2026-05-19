@@ -4,14 +4,16 @@
 // Runs workflows by POSTing to the API then navigating to the terminal output view.
 
 (function() {
-    // Detect current worktree name from page globals or URL
+    // Detect current worktree name from page globals or URL.
+    // Worktree home sets WORKTREE_NAME; Claude page sets CLAUDE_WORKTREE;
+    // Codex page sets CODEX_WORKTREE.
     function getWorktreeName() {
-        // Worktree home page sets WORKTREE_NAME, Claude page sets CLAUDE_WORKTREE
         if (typeof WORKTREE_NAME !== 'undefined') return WORKTREE_NAME;
         if (typeof CLAUDE_WORKTREE !== 'undefined') return CLAUDE_WORKTREE;
-        // Fallback: parse from URL (/worktree/{name} or /claude/{name}/...)
+        if (typeof CODEX_WORKTREE !== 'undefined') return CODEX_WORKTREE;
+        // Fallback: parse from URL (/worktree/{name}, /claude/{name}/..., /codex/{name}/...)
         var path = window.location.pathname;
-        var m = path.match(/^\/(worktree|claude)\/([^/]+)/);
+        var m = path.match(/^\/(worktree|claude|codex)\/([^/]+)/);
         if (m) return decodeURIComponent(m[2]);
         return 'main';
     }

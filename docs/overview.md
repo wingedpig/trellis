@@ -37,7 +37,9 @@ Each worktree can have multiple Claude Code chat sessions. You can interact with
 
 ### Cases
 
-Cases track units of work—bugs, features, investigations—within a worktree. Attach notes, links, Claude transcripts, and trace reports to build a durable record of your investigation or task.
+A case is the durable record of a worktree's effort — one unit of work (bug, feature, investigation, task) that accumulates notes, links, transcripts, evidence, traces, and a commit timeline over its lifetime. Cases are created lazily on the first commit, and at most one is open per worktree.
+
+When the work is done, **Wrap Up** archives the case directory and bundles it into the final commit, alongside a structured summary that the system generates to make the case searchable later. Intermediate commits along the way are recorded on the case as a per-commit timeline, each with a short Claude-generated description.
 
 ---
 
@@ -89,5 +91,5 @@ Common actions—switching context, opening terminals, running commands—are bo
 | **Trace Group** | A named collection of log viewers that are searched together during distributed tracing. Allows correlating events across multiple systems by trace ID. |
 | **Remote Window** | An SSH terminal to a remote server, displayed in the same UI as local terminals. In the picker, remote windows appear as `!name`. |
 | **Claude Session** | An AI chat session powered by Claude Code, scoped to a worktree. Accessible via the navigation picker with `@` prefix and a robot icon. |
-| **Case** | A durable work item (bug, feature, investigation, task) stored per-worktree with notes, links, Claude transcripts, and saved trace reports. |
+| **Case** | The durable record of a worktree's effort — one unit of work (bug, feature, investigation, task) accumulating notes, links, transcripts, evidence, traces, a commit timeline, and a generated summary. At most one open per worktree. |
 | **Picker** | The fuzzy-search popup (`Cmd+P`) for quickly navigating to any terminal, service, log viewer, or page. |
