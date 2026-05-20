@@ -62,6 +62,8 @@ tags:
     description: Claude Code session management, commits, and wrap-up
   - name: Codex
     description: OpenAI Codex session management, commits, and wrap-up
+  - name: Inbox
+    description: Aggregated cross-agent session inbox (for the floating popup window)
   - name: VSCode
     description: VS Code integration
 
@@ -2531,6 +2533,63 @@ paths:
                       model:
                         type: string
 
+  # ==================== INBOX ====================
+  /inbox/sessions:
+    get:
+      tags: [Inbox]
+      summary: Initial merged list of active sessions for the inbox popup
+      description: |
+        Returns every active Claude and Codex session across all worktrees,
+        with a coarse `running` / `needs_you` state and the timestamp of the
+        last state transition. The inbox popup uses this for its initial
+        render; thereafter it relies on the `session.state_changed` events
+        delivered over the inbox WebSocket.
+      operationId: inboxSessions
+      responses:
+        '200':
+          description: Merged session list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InboxSessionRow'
+        '503':
+          description: Inbox aggregator not configured
+
+  /inbox/ws:
+    get:
+      tags: [Inbox]
+      summary: WebSocket — multiplexed inbox endpoint (role=inbox or role=main)
+      description: |
+        Single WebSocket endpoint that serves two roles via the `role`
+        query parameter:
+
+        - **`role=inbox`** — opened by the floating inbox popup. Receives
+          `state_changed` events; can send `{type:"navigate", path:"..."}`
+          commands which the server forwards to every connected `role=main`.
+          If no main window is connected, the server replies to the popup
+          with `navigate_failed`.
+
+        - **`role=main`** — opened by every regular Trellis page via
+          `inbox_main_ws.js`. Receives `{type:"navigate", path:"..."}`
+          commands and acts on them by setting `window.location.href`.
+          Reads are drained for close detection only; clients never send
+          application messages.
+      operationId: inboxWebSocket
+      parameters:
+        - name: role
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [inbox, main]
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket established)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   # ==================== VSCODE ====================
   /vscode/open:
     post:
@@ -3352,6 +3411,32 @@ components:
           type: array
           items:
             type: string
+
+    InboxSessionRow:
+      type: object
+      description: One row of the cross-agent session inbox.
+      properties:
+        id:
+          type: string
+          description: Session ID
+        agent:
+          type: string
+          enum: [claude, codex]
+        worktree:
+          type: string
+        display_name:
+          type: string
+        state:
+          type: string
+          enum: [running, needs_you]
+          description: Derived. `needs_you` when the session is paused (no live turn, or waiting on a permission/approval prompt).
+        trashed:
+          type: boolean
+          description: True only on the trailing event when a session is being removed; clients use this to animate row exit. List responses exclude trashed rows.
+        last_state_change_at:
+          type: string
+          format: date-time
+          description: Timestamp of the last `session.state_changed` event for this row; falls back to the session's CreatedAt.
 
     CommitRequest:
       type: object

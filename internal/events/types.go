@@ -96,6 +96,17 @@ const (
 	EventNotifyDone    = "notify.done"    // Task completed
 	EventNotifyBlocked = "notify.blocked" // Waiting for user input
 	EventNotifyError   = "notify.error"   // Something failed
+
+	// Session state transitions for the inbox view. Fired only on coarse
+	// transitions (running ↔ needs-you), never on intermediate streaming.
+	EventSessionStateChanged = "session.state_changed"
+)
+
+// Session inbox state values used as the `state` payload field on
+// EventSessionStateChanged.
+const (
+	SessionStateRunning  = "running"
+	SessionStateNeedsYou = "needs_you"
 )
 
 // RestartTrigger indicates why a service was restarted.

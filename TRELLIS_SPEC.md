@@ -27,7 +27,8 @@
 18. [Implementation Guide](#18-implementation-guide)
 19. [CLI Tool (trellis-ctl)](#19-cli-tool-trellis-ctl)
 20. [Claude Code Integration](#20-claude-code-integration)
-21. [Reverse Proxy](#21-reverse-proxy)
+21. [Session Inbox](#21-session-inbox)
+22. [Reverse Proxy](#22-reverse-proxy)
 
 ---
 
@@ -215,7 +216,7 @@ Trellis looks for configuration in this order:
 
   // Reverse proxy listeners
   proxy: [
-    // ... see section 21
+    // ... see section 22
   ]
 
   // Log viewer definitions
@@ -5577,7 +5578,75 @@ Claude sessions appear in the navigation picker with the `@` prefix and a robot 
 
 ---
 
-## 21. Reverse Proxy
+## 21. Session Inbox
+
+### 21.1 Overview
+
+The session inbox is a chromeless floating window (`/inbox`, opened as a ~420×720 popup from the inbox icon in every Trellis page header) that lists every active Claude and Codex session across every worktree with a live "running / needs you" state. Clicking a row makes the foreground Trellis tab navigate to that session — the inbox window itself never leaves the popup.
+
+The inbox is designed to be left open alongside an editor or browser so the user can spot the agent that just finished or that's blocked on a permission prompt without scrolling through worktree lists.
+
+### 21.2 Architecture
+
+Three pieces collaborate:
+
+1. **`internal/inbox` (Aggregator)** — Merges the two managers' active session lists, derives a coarse `running` / `needs_you` state per row, and tracks each session's most recent state-transition timestamp by subscribing to the event bus for `session.state_changed`.
+2. **`internal/api/handlers/inbox.go` (InboxHandler)** — Serves `GET /api/v1/inbox/sessions` for the initial load and a single `GET /api/v1/inbox/ws` WebSocket for everything else. The WebSocket multiplexes two roles via the `role=` query parameter (see §21.3).
+3. **`views/inbox.qtpl` + `static/js/inbox.js`** — The popup. Renders rows in two stacked sections ("Needs you" / "Running"), subscribes to state-changed events, sends navigate commands when rows are clicked.
+
+State derivation rules:
+
+- **Claude**: `running` while the session is generating *and* has no pending control request (permission prompt); otherwise `needs_you`.
+- **Codex**: `running` while the session is generating *and* has no pending approvals; otherwise `needs_you`.
+
+State changes are published as `session.state_changed` events with payload `{session_id, agent, worktree, display_name, state, trashed}`. The same event is what the popup subscribes to for live updates.
+
+### 21.3 WebSocket protocol
+
+`GET /api/v1/inbox/ws?role=inbox|main` — a single endpoint serving two roles. The server fans `navigate` commands from the popup out to every connected `role=main`.
+
+**role=inbox** (the popup):
+
+Server → client:
+```json
+{"type": "state_changed", "event": { ... session.state_changed Event ... }}
+{"type": "navigate_failed", "reason": "no_main_window", "path": "..."}
+```
+
+Client → server:
+```json
+{"type": "navigate", "path": "/claude/main/abc123"}
+```
+
+**role=main** (every regular Trellis page — connected via `static/js/inbox_main_ws.js`, loaded by the shared header):
+
+Server → client:
+```json
+{"type": "navigate", "path": "/claude/main/abc123"}
+```
+
+The page acts on `navigate` by pushing its current location onto `TrellisNav` history (so back-navigation still works) and then setting `window.location.href`. Main pages never send application messages — reads only drain for close detection and ping/pong.
+
+If a `navigate` arrives with no `role=main` clients connected, the server replies to the popup with `navigate_failed`, and the popup falls back to `window.open(path, "trellis-main")`.
+
+### 21.4 Web UI behavior
+
+- **Two sections, sorted by recency.** "Needs you" sits above "Running"; within each, the row whose state most recently changed is on top.
+- **Per-row hide button** stores `{sessionId: stateAtHideTime}` in `localStorage`. The hide expires automatically the next time the session's state differs from the recorded value (either via a live `state_changed` event or on reconnect when the initial-load list comes back). Hides survive popup reopens.
+- **Live status footer.** `live` while the WebSocket is open, `offline (reconnecting…)` while not. The popup reconnects every 3 seconds.
+
+### 21.5 Endpoints
+
+```
+GET    /inbox                          # The popup HTML page (chromeless, designed for window.open)
+GET    /api/v1/inbox/sessions          # Initial merged session list
+GET    /api/v1/inbox/ws?role=inbox     # Popup WebSocket: state events in, navigate commands out
+GET    /api/v1/inbox/ws?role=main      # Per-page WebSocket: navigate commands in, no outbound messages
+```
+
+---
+
+## 22. Reverse Proxy
 
 ### 21.1 Overview
 

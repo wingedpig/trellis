@@ -35,6 +35,10 @@ Review crash reports when services exit unexpectedly. View stack traces, exit co
 
 The durable record of a worktree's effort — one open case per worktree, created lazily on first commit. Tracks notes, evidence, transcripts, traces, a per-commit timeline, and a generated searchable summary written at wrap-up.
 
+## [Session Inbox](/docs/pages/inbox/)
+
+A chromeless popup that lists every live Claude and Codex session across worktrees with a real-time "running / needs you" badge. Click a row and the foreground Trellis window jumps to that session.
+
 ## [Trace](/docs/pages/trace/)
 
 Execute distributed traces across multiple log sources to correlate events by trace ID or request ID.

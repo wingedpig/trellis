@@ -108,6 +108,9 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 	}
 	defer conn.Close()
 
+	session.BeginView()
+	defer session.EndView()
+
 	// Write mutex for thread-safe WebSocket writes. We marshal to bytes before
 	// acquiring the lock and use WriteMessage rather than WriteJSON so a failed
 	// encode cannot leave an empty TextMessage frame on the wire — gorilla's

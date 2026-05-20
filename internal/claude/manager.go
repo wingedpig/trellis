@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wingedpig/trellis/internal/events"
 )
 
 // ContentBlock mirrors Claude's content block types.
@@ -137,9 +138,20 @@ type Session struct {
 	// Pending control_request event (permission prompt waiting for user response).
 	// Stored so reconnecting clients can re-display the prompt.
 	pendingControlRequest *StreamEvent
+	// Inbox unread tracking. unread becomes true when this session transitions
+	// running → needs-you while no client is viewing it (viewerCount == 0).
+	// Cleared when a client opens the session WS or the session goes back to
+	// running. lastPublishedState is the most-recent state value emitted via
+	// publishStateLocked; used to detect true running↔needs-you transitions.
+	unread             bool
+	viewerCount        int
+	lastPublishedState string
 	// Callback to persist after session ID is captured from init
 	persistFn    func()
 	messagesFile string // path for per-session message persistence
+	// Back-reference for publishing inbox state-change events. May be nil
+	// in tests that construct Session directly.
+	manager *Manager
 }
 
 // ID returns the session UUID.
@@ -180,6 +192,16 @@ type Manager struct {
 	stateDir       string                // directory for persistence
 	sessionsFile   string                // full path to sessions.json
 	messagesDir    string                // directory for per-session message files
+	bus            events.EventBus       // optional; for publishing inbox state changes
+}
+
+// SetEventBus wires the bus used for publishing inbox session-state events.
+// May be called once after construction. Safe to leave unset (publishing
+// no-ops), which is the path taken by tests.
+func (m *Manager) SetEventBus(bus events.EventBus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bus = bus
 }
 
 // NewManager creates a new Claude session manager.
@@ -227,6 +249,7 @@ func (m *Manager) loadFromDisk() {
 			createdAt:    rec.CreatedAt,
 			trashedAt:    rec.TrashedAt,
 			subscribers:  make(map[chan StreamEvent]struct{}),
+			manager:      m,
 		}
 		s.persistFn = m.makePersistFn()
 		if m.messagesDir != "" {
@@ -307,6 +330,7 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 		workDir:      workDir,
 		createdAt:    time.Now(),
 		subscribers:  make(map[chan StreamEvent]struct{}),
+		manager:      m,
 	}
 	s.persistFn = m.makePersistFn()
 	if m.messagesDir != "" {
@@ -316,6 +340,9 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	m.worktreeIndex[worktreeName] = append(m.worktreeIndex[worktreeName], id)
 
 	go m.persist()
+	s.mu.Lock()
+	s.publishStateLocked()
+	s.mu.Unlock()
 	return s
 }
 
@@ -459,6 +486,7 @@ func (m *Manager) MoveSession(sessionID, newWorktreeName, newWorkDir string) err
 	s.cancel = nil
 	s.worktreeName = newWorktreeName
 	s.workDir = newWorkDir
+	s.publishStateLocked()
 	s.mu.Unlock()
 
 	m.persist()
@@ -487,6 +515,7 @@ func (m *Manager) TrashSession(sessionID string) error {
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
+	s.publishStateLocked()
 	s.mu.Unlock()
 
 	m.persist()
@@ -504,6 +533,7 @@ func (m *Manager) RestoreSession(sessionID string) error {
 
 	s.mu.Lock()
 	s.trashedAt = nil
+	s.publishStateLocked()
 	s.mu.Unlock()
 
 	m.persist()
@@ -745,12 +775,89 @@ func (s *Session) PendingControlRequest() *StreamEvent {
 	return s.pendingControlRequest
 }
 
+// publishStateLocked emits a session.state_changed event reflecting the
+// session's current derived state. Caller must hold s.mu. Safe no-op if no
+// event bus has been wired into the manager.
+//
+// State is "needs_you" whenever the agent is not actively generating OR a
+// permission prompt is pending. Otherwise "running".
+//
+// Side effects: updates s.unread and s.lastPublishedState based on the
+// running ↔ needs-you transition rule. unread is set when running →
+// needs-you happens with no viewer present, and cleared whenever state
+// returns to running.
+func (s *Session) publishStateLocked() {
+	if s.manager == nil || s.manager.bus == nil {
+		return
+	}
+	state := events.SessionStateRunning
+	if !s.generating || s.pendingControlRequest != nil {
+		state = events.SessionStateNeedsYou
+	}
+	if state == events.SessionStateNeedsYou &&
+		s.lastPublishedState == events.SessionStateRunning &&
+		s.viewerCount == 0 {
+		s.unread = true
+	} else if state == events.SessionStateRunning {
+		s.unread = false
+	}
+	s.lastPublishedState = state
+
+	bus := s.manager.bus
+	payload := map[string]interface{}{
+		"session_id":   s.id,
+		"agent":        "claude",
+		"worktree":     s.worktreeName,
+		"display_name": s.displayName,
+		"state":        state,
+		"unread":       s.unread,
+		"trashed":      s.trashedAt != nil,
+	}
+	_ = bus.Publish(context.Background(), events.Event{
+		Type:     events.EventSessionStateChanged,
+		Worktree: s.worktreeName,
+		Payload:  payload,
+	})
+}
+
+// IsUnread reports whether this session has a missed running→needs-you
+// transition that the user hasn't viewed yet.
+func (s *Session) IsUnread() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.unread
+}
+
+// BeginView marks the session as being actively viewed by one more client.
+// Clears the unread flag if it was set and re-publishes state if so. Pair
+// with EndView.
+func (s *Session) BeginView() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.viewerCount++
+	if s.unread {
+		s.unread = false
+		s.publishStateLocked()
+	}
+}
+
+// EndView decrements the active-viewer count. No publish needed — unread
+// state doesn't change just because a viewer disconnected.
+func (s *Session) EndView() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.viewerCount > 0 {
+		s.viewerCount--
+	}
+}
+
 // ClearPendingControlRequest clears the stored pending control_request.
 // Called after the client responds to the permission prompt.
 func (s *Session) ClearPendingControlRequest() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pendingControlRequest = nil
+	s.publishStateLocked()
 }
 
 // Subscribe returns a channel that receives stream events.
@@ -1008,6 +1115,7 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 			s.generating = false
 			s.currentBlocks = nil
 			s.pendingControlRequest = nil
+			s.publishStateLocked()
 			s.mu.Unlock()
 		}
 
@@ -1028,6 +1136,7 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 				s.persistMessage(msg)
 			}
 			s.pendingControlRequest = &eventCopy
+			s.publishStateLocked()
 			s.mu.Unlock()
 		}
 
@@ -1076,6 +1185,7 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		s.stdin = nil
 		s.cmd = nil
 		s.cancel = nil
+		s.publishStateLocked()
 	}
 	s.mu.Unlock()
 }
@@ -1270,12 +1380,14 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	}
 	s.messages = append(s.messages, userMsg)
 	s.persistMessage(userMsg)
+	s.publishStateLocked()
 	s.mu.Unlock()
 
 	// Ensure process is running
 	if err := s.ensureProcess(ctx); err != nil {
 		s.mu.Lock()
 		s.generating = false
+		s.publishStateLocked()
 		s.mu.Unlock()
 		return err
 	}
@@ -1297,6 +1409,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	if err := s.writeStdin(msg); err != nil {
 		s.mu.Lock()
 		s.generating = false
+		s.publishStateLocked()
 		s.mu.Unlock()
 		return fmt.Errorf("failed to send message: %w", err)
 	}
@@ -1356,6 +1469,7 @@ func (s *Session) Cancel() {
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
+	s.publishStateLocked()
 }
 
 // ExportSession creates a transcript export for the given session.
@@ -1505,5 +1619,6 @@ func (s *Session) Reset() {
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
+	s.publishStateLocked()
 	s.persistAllMessages()
 }

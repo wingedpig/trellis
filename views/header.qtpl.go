@@ -5,29 +5,29 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line views/header.qtpl:4
+//line /Users/markf/src/trellis/views/header.qtpl:4
 package views
 
-//line views/header.qtpl:4
+//line /Users/markf/src/trellis/views/header.qtpl:4
 import "github.com/wingedpig/trellis/internal/worktree"
 
-//line views/header.qtpl:5
+//line /Users/markf/src/trellis/views/header.qtpl:5
 import "strconv"
 
-//line views/header.qtpl:6
+//line /Users/markf/src/trellis/views/header.qtpl:6
 import "strings"
 
-//line views/header.qtpl:7
+//line /Users/markf/src/trellis/views/header.qtpl:7
 import "time"
 
-//line views/header.qtpl:9
+//line /Users/markf/src/trellis/views/header.qtpl:9
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line views/header.qtpl:9
+//line /Users/markf/src/trellis/views/header.qtpl:9
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
@@ -36,7 +36,7 @@ var (
 // serverSessionID is generated once when the server starts.
 // Used to detect server restarts and clear stale navigation history.
 //
-//line views/header.qtpl:10
+//line /Users/markf/src/trellis/views/header.qtpl:10
 var serverSessionID = strconv.FormatInt(time.Now().UnixNano(), 36)
 
 // JSAttr escapes a string for use in a JavaScript string literal inside an HTML attribute.
@@ -106,9 +106,9 @@ func (p *BasePage) BranchName() string {
 // mode: "page" for regular pages (navigation via href), "terminal" for fullscreen terminal (in-place switching)
 // The terminal mode expects global functions: switchTerminal(), showLogViewer(), showService()
 
-//line views/header.qtpl:81
+//line /Users/markf/src/trellis/views/header.qtpl:81
 func StreamNavScript(qw422016 *qt422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:81
+//line /Users/markf/src/trellis/views/header.qtpl:81
 	qw422016.N().S(`
 <script>
 // ============================================
@@ -117,20 +117,20 @@ func StreamNavScript(qw422016 *qt422016.Writer, sessionID, shortcutsJSON, mode s
 
 window.TrellisNav = (function() {
     const NAV_MODE = '`)
-//line views/header.qtpl:88
+//line /Users/markf/src/trellis/views/header.qtpl:88
 	qw422016.E().S(JSAttr(mode))
-//line views/header.qtpl:88
+//line /Users/markf/src/trellis/views/header.qtpl:88
 	qw422016.N().S(`';
     const SESSION_ID = '`)
-//line views/header.qtpl:89
+//line /Users/markf/src/trellis/views/header.qtpl:89
 	qw422016.E().S(JSAttr(sessionID))
-//line views/header.qtpl:89
+//line /Users/markf/src/trellis/views/header.qtpl:89
 	qw422016.N().S(`';
     // Start with shortcuts from page (terminal page passes these), will be updated from API
     let CUSTOM_SHORTCUTS = `)
-//line views/header.qtpl:91
+//line /Users/markf/src/trellis/views/header.qtpl:91
 	qw422016.N().S(shortcutsJSON)
-//line views/header.qtpl:91
+//line /Users/markf/src/trellis/views/header.qtpl:91
 	qw422016.N().S(`;
 
     // Theme management
@@ -518,6 +518,12 @@ window.TrellisNav = (function() {
                 if (modal) {
                     new bootstrap.Modal(modal).show();
                 }
+                return;
+            }
+            // Cmd/Ctrl+I to open the session inbox popup
+            if ((e.metaKey || e.ctrlKey) && (e.key === 'i' || e.key === 'I')) {
+                e.preventDefault();
+                window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720');
                 return;
             }
             // Check custom shortcuts for any other keys
@@ -926,38 +932,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 }
 
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 }
 
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 	return qs422016
-//line views/header.qtpl:885
+//line /Users/markf/src/trellis/views/header.qtpl:891
 }
 
-//line views/header.qtpl:887
+//line /Users/markf/src/trellis/views/header.qtpl:893
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:887
+//line /Users/markf/src/trellis/views/header.qtpl:893
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -965,9 +971,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:893
+//line /Users/markf/src/trellis/views/header.qtpl:899
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:893
+//line /Users/markf/src/trellis/views/header.qtpl:899
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -1039,28 +1045,31 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:963
+//line /Users/markf/src/trellis/views/header.qtpl:969
 	if p.Worktree != nil {
-//line views/header.qtpl:963
+//line /Users/markf/src/trellis/views/header.qtpl:969
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:965
+//line /Users/markf/src/trellis/views/header.qtpl:971
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:965
+//line /Users/markf/src/trellis/views/header.qtpl:971
 		qw422016.N().S(` (`)
-//line views/header.qtpl:965
+//line /Users/markf/src/trellis/views/header.qtpl:971
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:965
+//line /Users/markf/src/trellis/views/header.qtpl:971
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:967
+//line /Users/markf/src/trellis/views/header.qtpl:973
 	}
-//line views/header.qtpl:967
+//line /Users/markf/src/trellis/views/header.qtpl:973
 	qw422016.N().S(`
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
+                </button>
+                <button class="btn btn-sm btn-link text-muted" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
+                    <i class="fa-solid fa-inbox"></i>
                 </button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
                     <i class="fa-solid fa-sun" id="theme-icon-light"></i>
@@ -1115,13 +1124,13 @@ function showShortcutHelp() {
     var list = document.getElementById('shortcutHelpList');
     if (list) {
         // Built-in actions. `)
-//line views/header.qtpl:967
+//line /Users/markf/src/trellis/views/header.qtpl:973
 	qw422016.N().S("`")
-//line views/header.qtpl:967
+//line /Users/markf/src/trellis/views/header.qtpl:973
 	qw422016.N().S(`run`)
-//line views/header.qtpl:967
+//line /Users/markf/src/trellis/views/header.qtpl:973
 	qw422016.N().S("`")
-//line views/header.qtpl:967
+//line /Users/markf/src/trellis/views/header.qtpl:973
 	qw422016.N().S(` is resolved from the TrellisNav global so
         // we don't need to rely on function hoisting across scripts.
         var items = [
@@ -1133,7 +1142,9 @@ function showShortcutHelp() {
                   var hist = TrellisNav.getHistory ? TrellisNav.getHistory() : [];
                   if (!hist.length) { alert('No navigation history yet.'); return; }
                   TrellisNav.openHistoryPicker();
-              } }
+              } },
+            { label: 'Open session inbox',     keys: 'Cmd/Ctrl + I',
+              run: function() { window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720'); } }
         ];
         // Add per-worktree custom shortcuts when present.
         var custom = (window.TrellisNav && TrellisNav.getCustomShortcuts) ? TrellisNav.getCustomShortcuts() : [];
@@ -1216,45 +1227,46 @@ function showShortcutHelp() {
 <script src="/static/js/spa.js"></script>
 <script src="/static/js/command_palette.js"></script>
 `)
-//line views/header.qtpl:1116
+//line /Users/markf/src/trellis/views/header.qtpl:1127
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:1116
+//line /Users/markf/src/trellis/views/header.qtpl:1127
 	qw422016.N().S(`
+<script src="/static/js/inbox_main_ws.js"></script>
 <main>
 <div class="page-container container-fluid mt-4">
 `)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 }
 
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 }
 
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 func (p *BasePage) Header() string {
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 	return qs422016
-//line views/header.qtpl:1119
+//line /Users/markf/src/trellis/views/header.qtpl:1131
 }
 
-//line views/header.qtpl:1121
+//line /Users/markf/src/trellis/views/header.qtpl:1133
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:1121
+//line /Users/markf/src/trellis/views/header.qtpl:1133
 	qw422016.N().S(`
 </div>
 </main>
@@ -1262,31 +1274,31 @@ func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 }
 
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 }
 
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 	return qs422016
-//line views/header.qtpl:1127
+//line /Users/markf/src/trellis/views/header.qtpl:1139
 }

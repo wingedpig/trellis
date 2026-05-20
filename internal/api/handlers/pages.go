@@ -990,6 +990,13 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 	page.WriteRender(w)
 }
 
+// InboxPage renders the chromeless floating session-inbox window.
+func (h *PageHandler) InboxPage(w http.ResponseWriter, r *http.Request) {
+	page := &views.InboxPage{}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
 // CodexPage renders the Codex chat page for a specific session.
 func (h *PageHandler) CodexPage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

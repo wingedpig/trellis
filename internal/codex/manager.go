@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/agentmsg"
+	"github.com/wingedpig/trellis/internal/events"
 )
 
 // Message is the persisted form of one conversational turn.
@@ -115,6 +116,11 @@ type Session struct {
 	// Pending approval requests (carried across reconnects so a fresh
 	// WebSocket can re-show the prompt). Keyed by RequestID.
 	pendingApprovals map[string]StreamEvent
+
+	// Inbox unread tracking — see claude.Session for the rules.
+	unread             bool
+	viewerCount        int
+	lastPublishedState string
 	// approvalChans correlates a pending approval RequestID to the channel
 	// the JSON-RPC handler is parked on, so AnswerApproval can deliver the
 	// user's decision back to that handler.
@@ -123,6 +129,10 @@ type Session struct {
 	// Persistence
 	persistFn    func()
 	messagesFile string
+
+	// Back-reference for publishing inbox state-change events. May be nil
+	// in tests that construct Session directly.
+	manager *Manager
 }
 
 // ID returns the session UUID.
@@ -316,6 +326,78 @@ func (s *Session) PendingApprovals() []StreamEvent {
 	return out
 }
 
+// publishStateLocked emits a session.state_changed event reflecting the
+// session's current derived state. Caller must hold s.mu. Safe no-op if no
+// event bus has been wired into the manager.
+//
+// State is "needs_you" whenever the agent is not actively generating OR an
+// approval request is pending. Otherwise "running".
+//
+// Side effects: updates s.unread and s.lastPublishedState — see the claude
+// equivalent for the rules.
+func (s *Session) publishStateLocked() {
+	if s.manager == nil || s.manager.bus == nil {
+		return
+	}
+	state := events.SessionStateRunning
+	if !s.generating || len(s.pendingApprovals) > 0 {
+		state = events.SessionStateNeedsYou
+	}
+	if state == events.SessionStateNeedsYou &&
+		s.lastPublishedState == events.SessionStateRunning &&
+		s.viewerCount == 0 {
+		s.unread = true
+	} else if state == events.SessionStateRunning {
+		s.unread = false
+	}
+	s.lastPublishedState = state
+
+	bus := s.manager.bus
+	payload := map[string]interface{}{
+		"session_id":   s.id,
+		"agent":        "codex",
+		"worktree":     s.worktreeName,
+		"display_name": s.displayName,
+		"state":        state,
+		"unread":       s.unread,
+		"trashed":      s.trashedAt != nil,
+	}
+	_ = bus.Publish(context.Background(), events.Event{
+		Type:     events.EventSessionStateChanged,
+		Worktree: s.worktreeName,
+		Payload:  payload,
+	})
+}
+
+// IsUnread reports whether this session has a missed running→needs-you
+// transition that the user hasn't viewed yet.
+func (s *Session) IsUnread() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.unread
+}
+
+// BeginView marks the session as being actively viewed by one more client.
+// Clears the unread flag if it was set and re-publishes state if so.
+func (s *Session) BeginView() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.viewerCount++
+	if s.unread {
+		s.unread = false
+		s.publishStateLocked()
+	}
+}
+
+// EndView decrements the active-viewer count.
+func (s *Session) EndView() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.viewerCount > 0 {
+		s.viewerCount--
+	}
+}
+
 // Subscribe returns a channel that receives stream events. Stays open across
 // process restarts; close via Unsubscribe.
 func (s *Session) Subscribe() chan StreamEvent {
@@ -437,6 +519,7 @@ func (s *Session) EnsureProcess(ctx context.Context) error {
 		if s.rpcGen == gen {
 			s.started = false
 			s.generating = false
+			s.publishStateLocked()
 			s.cancel = nil
 			s.cmd = nil
 			s.rpc = nil
@@ -561,6 +644,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	s.currentItems = make(map[string]*Item)
 	s.currentOrder = nil
 	s.currentTurnID = ""
+	s.publishStateLocked()
 	rpc := s.rpc
 	threadID := s.threadID
 
@@ -633,6 +717,7 @@ func (s *Session) shutdownProcess() {
 	s.cmd = nil
 	s.started = false
 	s.generating = false
+	s.publishStateLocked()
 	s.mu.Unlock()
 	if rpc != nil {
 		rpc.Close()
@@ -645,6 +730,7 @@ func (s *Session) shutdownProcess() {
 func (s *Session) markNotGenerating() {
 	s.mu.Lock()
 	s.generating = false
+	s.publishStateLocked()
 	s.mu.Unlock()
 }
 
@@ -668,6 +754,7 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 		if s.currentTurnID == "" {
 			s.currentTurnID = p.Turn.ID
 		}
+		s.publishStateLocked()
 		s.mu.Unlock()
 		s.fanOut(StreamEvent{Type: "turn_started", ThreadID: p.ThreadID, TurnID: p.Turn.ID})
 
@@ -781,6 +868,7 @@ func (s *Session) handleServerRequest(method string, params json.RawMessage) (an
 		}
 		s.pendingApprovals[reqID] = ev
 		s.approvalChans[reqID] = respCh
+		s.publishStateLocked()
 		s.mu.Unlock()
 
 		s.fanOut(ev)
@@ -792,12 +880,14 @@ func (s *Session) handleServerRequest(method string, params json.RawMessage) (an
 			s.mu.Lock()
 			delete(s.pendingApprovals, reqID)
 			delete(s.approvalChans, reqID)
+			s.publishStateLocked()
 			s.mu.Unlock()
 			return decision, nil
 		case <-time.After(30 * time.Minute):
 			s.mu.Lock()
 			delete(s.pendingApprovals, reqID)
 			delete(s.approvalChans, reqID)
+			s.publishStateLocked()
 			s.mu.Unlock()
 			return ApprovalDecision{Decision: "cancel"}, nil
 		}
@@ -930,6 +1020,7 @@ func (s *Session) commitTurn(turnID, errMsg string) {
 	s.currentOrder = nil
 	s.currentTurnID = ""
 	s.generating = false
+	s.publishStateLocked()
 }
 
 // approvalChans needs to be on Session; declared here to keep the struct
@@ -949,6 +1040,16 @@ type Manager struct {
 	stateDir     string
 	sessionsFile string
 	messagesDir  string
+
+	bus events.EventBus // optional; for publishing inbox state changes
+}
+
+// SetEventBus wires the bus used for publishing inbox session-state events.
+// Safe to leave unset (publishing no-ops), which is the path taken by tests.
+func (m *Manager) SetEventBus(bus events.EventBus) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bus = bus
 }
 
 // NewManager creates a new Codex session manager.
@@ -984,6 +1085,7 @@ func (m *Manager) loadFromDisk() {
 			continue
 		}
 		s := newSessionStruct(rec.ID)
+		s.manager = m
 		s.worktreeName = rec.WorktreeName
 		s.displayName = rec.DisplayName
 		s.threadID = rec.ThreadID
@@ -1051,6 +1153,7 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	}
 
 	s := newSessionStruct(id)
+	s.manager = m
 	s.worktreeName = worktreeName
 	s.displayName = displayName
 	s.workDir = workDir
@@ -1064,6 +1167,9 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	m.worktreeIndex[worktreeName] = append(m.worktreeIndex[worktreeName], id)
 
 	go m.persist()
+	s.mu.Lock()
+	s.publishStateLocked()
+	s.mu.Unlock()
 	return s
 }
 
@@ -1177,6 +1283,7 @@ func (m *Manager) TrashSession(sessionID string) error {
 	now := time.Now()
 	s.trashedAt = &now
 	s.closeAllSubscribers()
+	s.publishStateLocked()
 	s.mu.Unlock()
 	m.persist()
 	return nil
@@ -1192,6 +1299,7 @@ func (m *Manager) RestoreSession(sessionID string) error {
 	}
 	s.mu.Lock()
 	s.trashedAt = nil
+	s.publishStateLocked()
 	s.mu.Unlock()
 	m.persist()
 	return nil
@@ -1263,6 +1371,7 @@ func (m *Manager) MoveSession(sessionID, newWorktreeName, newWorkDir string) err
 	s.worktreeName = newWorktreeName
 	s.workDir = newWorkDir
 	s.closeAllSubscribers()
+	s.publishStateLocked()
 	s.mu.Unlock()
 	m.persist()
 	return nil
@@ -1385,3 +1494,4 @@ func newSessionStruct(id string) *Session {
 		approvalChans:    make(map[string]chan ApprovalDecision),
 	}
 }
+

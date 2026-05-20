@@ -10,7 +10,8 @@ Trellis is a **local web app** that acts as a control panel for your development
 - Treat each git worktree as its own environment with isolated terminals, processes, and logs
 - Run and supervise your app's services locally, with automatic restart when binaries change
 - Create and manage tmux sessions without manual layout management
-- Chat with Claude Code directly in the web UI, with per-worktree sessions and transcript management
+- Chat with Claude Code (or OpenAI Codex) directly in the web UI, with per-worktree sessions and transcript management
+- Watch every active AI session across every worktree in a floating session-inbox popup that highlights the one waiting on you
 - Track work items (bugs, features, investigations) with cases that record notes, transcripts, trace reports, a per-commit timeline, and an auto-generated searchable summary
 - Run reverse proxies with path-based routing and TLS support to mirror production routing locally
 

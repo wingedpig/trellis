@@ -100,6 +100,9 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 	}
 	defer conn.Close()
 
+	session.BeginView()
+	defer session.EndView()
+
 	var writeMu sync.Mutex
 	writeJSON := func(msg codexServerMessage) error {
 		data, err := json.Marshal(msg)

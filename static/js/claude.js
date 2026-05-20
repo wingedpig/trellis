@@ -1944,11 +1944,19 @@
         }
 
         submitBtn.addEventListener('click', function() {
-            // Build answers map
+            // Build answers map keyed by question TEXT, not by index. The
+            // Claude CLI formats the human-readable tool_result content by
+            // iterating the answers map and looking up each entry's
+            // question — entries it can't match are dropped, which is why
+            // an index-keyed map produced an empty
+            // "Your questions have been answered: ." string. The schema's
+            // sibling `annotations` field is explicitly "keyed by question
+            // text"; `answers` follows the same convention.
             var answers = {};
             for (var k in selections) {
                 var val = selections[k];
-                answers[k] = Array.isArray(val) ? val.join(', ') : val;
+                var qText = (questions[k] && questions[k].question) || String(k);
+                answers[qText] = Array.isArray(val) ? val.join(', ') : val;
             }
             // Send control_response with answers in updatedInput
             var updatedInput = JSON.parse(JSON.stringify(input));

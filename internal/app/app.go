@@ -25,6 +25,7 @@ import (
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
+	"github.com/wingedpig/trellis/internal/inbox"
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/proxy"
 	"github.com/wingedpig/trellis/internal/service"
@@ -57,6 +58,7 @@ type App struct {
 	claudeManager    *claude.Manager
 	codexManager     *codex.Manager
 	caseManager      *cases.Manager
+	inboxAggregator  *inbox.Aggregator
 	proxyManager     *proxy.Manager
 	apiServer        *api.Server
 
@@ -288,10 +290,19 @@ func (app *App) Initialize(ctx context.Context) error {
 	// Initialize Claude Code session manager
 	claudeStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "claude")
 	app.claudeManager = claude.NewManager(claudeStateDir)
+	app.claudeManager.SetEventBus(app.eventBus)
 
 	// Initialize Codex session manager (sibling to Claude state)
 	codexStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "codex")
 	app.codexManager = codex.NewManager(codexStateDir)
+	app.codexManager.SetEventBus(app.eventBus)
+
+	// Inbox aggregator — merges claude + codex sessions for the popup window
+	if agg, err := inbox.NewAggregator(app.claudeManager, app.codexManager, app.eventBus); err == nil {
+		app.inboxAggregator = agg
+	} else {
+		log.Printf("inbox aggregator init failed: %v", err)
+	}
 
 	// Initialize case manager
 	casesDir := cfg.Cases.Dir
@@ -681,6 +692,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			ClaudeManager:   app.claudeManager,
 			CodexManager:    app.codexManager,
 			CaseManager:     app.caseManager,
+			InboxAggregator: app.inboxAggregator,
 			VSCodeHandler:   app.vsCodeHandler,
 			Shortcuts:       shortcuts,
 			Notifications:   notifications,

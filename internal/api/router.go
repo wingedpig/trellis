@@ -23,6 +23,7 @@ import (
 	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
+	"github.com/wingedpig/trellis/internal/inbox"
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
@@ -53,6 +54,7 @@ type Dependencies struct {
 	ClaudeManager   *claude.Manager              // Claude Code session manager
 	CodexManager    *codex.Manager               // OpenAI Codex session manager
 	CaseManager     *cases.Manager               // Case objects manager
+	InboxAggregator *inbox.Aggregator            // Cross-agent session inbox
 	VSCodeHandler   *handlers.VSCodeHandler
 	Shortcuts       []handlers.ShortcutConfig    // Keyboard shortcuts for terminal windows
 	Notifications   handlers.NotificationConfig  // Browser notification settings
@@ -125,6 +127,14 @@ func NewRouter(deps Dependencies) *mux.Router {
 	// Notify handler (for AI assistants and external tools)
 	notifyHandler := handlers.NewNotifyHandler(deps.EventBus)
 	api.HandleFunc("/notify", notifyHandler.Notify).Methods("POST")
+
+	// Session Inbox (popup window listing all claude+codex sessions, with
+	// real-time state, and routing navigate commands to the main window).
+	if deps.InboxAggregator != nil {
+		inboxHandler := handlers.NewInboxHandler(deps.InboxAggregator, deps.EventBus)
+		api.HandleFunc("/inbox/sessions", inboxHandler.Sessions).Methods("GET")
+		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
+	}
 
 	// Log viewer handlers
 	if deps.LogManager != nil {
@@ -200,6 +210,8 @@ func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
 	// Codex chat pages
 	r.HandleFunc("/codex/{worktree}/{session}", pageHandler.CodexPage).Methods("GET")
 	r.HandleFunc("/codex/{worktree}", pageHandler.CodexRedirect).Methods("GET")
+	// Floating session inbox (chromeless popup window)
+	r.HandleFunc("/inbox", pageHandler.InboxPage).Methods("GET")
 }
 
 // NewRouterWithTerminalHandler creates a router with a pre-created terminal handler.
@@ -267,6 +279,14 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// Notify handler (for AI assistants and external tools)
 	notifyHandler := handlers.NewNotifyHandler(deps.EventBus)
 	api.HandleFunc("/notify", notifyHandler.Notify).Methods("POST")
+
+	// Session Inbox (popup window listing all claude+codex sessions, with
+	// real-time state, and routing navigate commands to the main window).
+	if deps.InboxAggregator != nil {
+		inboxHandler := handlers.NewInboxHandler(deps.InboxAggregator, deps.EventBus)
+		api.HandleFunc("/inbox/sessions", inboxHandler.Sessions).Methods("GET")
+		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
+	}
 
 	// Terminal handlers (using the provided handler)
 	api.HandleFunc("/terminal/sessions", terminalHandler.ListSessions).Methods("GET")

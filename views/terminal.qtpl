@@ -332,6 +332,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 <button class="btn btn-sm btn-terminal" onclick="showHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+?)">
                     <i class="fa-solid fa-keyboard"></i>
                 </button>
+                <button class="btn btn-sm btn-terminal" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
+                    <i class="fa-solid fa-inbox"></i>
+                </button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
                     <i class="fa-solid fa-sun" id="theme-icon-light"></i>
                     <i class="fa-solid fa-moon" id="theme-icon-dark" style="display:none;"></i>
@@ -2680,6 +2683,11 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         if ((e.metaKey || e.ctrlKey) && e.key === 'h') {
             e.preventDefault();
             showHelp();
+        }
+        // Cmd/Ctrl+I to open the session inbox popup
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'i' || e.key === 'I')) {
+            e.preventDefault();
+            window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720');
         }
 
         // Check custom shortcuts for any other keys
@@ -5302,5 +5310,6 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
 
 </script>
 
+<script src="/static/js/inbox_main_ws.js"></script>
 {%= p.Footer() %}
 {% endfunc %}
