@@ -39,7 +39,11 @@ func (p *ArchivedCasesPage) StreamRender(qw422016 *qt422016.Writer) {
 
 <link href="/static/css/cases.css" rel="stylesheet">
 
-<div class="archived-cases">
+<div class="archived-cases" data-worktree-name="`)
+//line views/archived_cases.qtpl:16
+	qw422016.E().S(p.WorktreeName)
+//line views/archived_cases.qtpl:16
+	qw422016.N().S(`">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="mb-0"><i class="fa-solid fa-box-archive"></i> Archived cases <small class="text-muted">— `)
 //line views/archived_cases.qtpl:18

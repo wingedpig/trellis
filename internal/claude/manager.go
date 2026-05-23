@@ -318,8 +318,23 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 
 	id := uuid.New().String()
 	if displayName == "" {
-		// Auto-name: "Session N" based on count for this worktree
-		count := len(m.worktreeIndex[worktreeName])
+		// Auto-name: "Session N" based on the count of NON-trashed sessions
+		// for this worktree. TrashSession leaves entries in worktreeIndex so
+		// they can be restored, so a raw len() here keeps inflating the
+		// number even after the user "deletes" sessions from the UI.
+		count := 0
+		for _, sid := range m.worktreeIndex[worktreeName] {
+			s, ok := m.sessions[sid]
+			if !ok {
+				continue
+			}
+			s.mu.Lock()
+			trashed := s.trashedAt != nil
+			s.mu.Unlock()
+			if !trashed {
+				count++
+			}
+		}
 		displayName = fmt.Sprintf("Session %d", count+1)
 	}
 

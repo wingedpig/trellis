@@ -25,7 +25,7 @@ type WorktreeHomePage struct {
 <link href="/static/css/worktree_home.css" rel="stylesheet">
 <link href="/static/css/cases.css" rel="stylesheet">
 
-<div class="worktree-home">
+<div class="worktree-home" data-worktree-name="{%s p.WorktreeName %}">
     <div class="worktree-header mb-4">
         <h2><i class="fa-solid fa-folder-tree"></i> {%s p.WorktreeName %}</h2>
         {% if p.Branch != "" %}

@@ -35,7 +35,7 @@ type WrapUpCommitInfo struct {
 
 <link href="/static/css/cases.css" rel="stylesheet">
 
-<div class="case-detail">
+<div class="case-detail" data-worktree-name="{%s p.WorktreeName %}">
     <div class="case-header mb-4">
         <div class="d-flex justify-content-between align-items-start">
             <div style="flex: 1;">

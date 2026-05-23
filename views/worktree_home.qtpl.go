@@ -58,7 +58,11 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 <link href="/static/css/worktree_home.css" rel="stylesheet">
 <link href="/static/css/cases.css" rel="stylesheet">
 
-<div class="worktree-home">
+<div class="worktree-home" data-worktree-name="`)
+//line views/worktree_home.qtpl:28
+	qw422016.E().S(p.WorktreeName)
+//line views/worktree_home.qtpl:28
+	qw422016.N().S(`">
     <div class="worktree-header mb-4">
         <h2><i class="fa-solid fa-folder-tree"></i> `)
 //line views/worktree_home.qtpl:30

@@ -83,6 +83,7 @@
         }
         currentUrl = window.location.pathname + window.location.search;
         currentContainer.dataset.url = currentContainer.dataset.url || currentUrl;
+        syncPageGlobals(currentContainer);
         // Fire page-entered for the initial server-rendered page so scripts
         // can hook in with the same API they'll use for SPA-restored pages.
         dispatch(currentContainer, 'trellis:page-entered', { restored: false, firstLoad: true });
@@ -183,10 +184,27 @@
         } else {
             window.scrollTo(0, 0);
         }
+        syncPageGlobals(container);
         dispatch(container, 'trellis:page-entered', {
             restored: !!(info && info.restored),
             firstLoad: !(info && info.restored)
         });
+    }
+
+    // syncPageGlobals re-applies per-page window globals from data attributes
+    // on the mounted container. Inline page scripts run only on the *first*
+    // fetch of a URL; when the SPA restores a cached container the script
+    // does NOT re-execute, so any `var FOO = '...'` it declared keeps the
+    // value it had when some other page was last freshly loaded. Pages opt
+    // in by stamping `data-worktree-name="..."` on a child element; this
+    // helper makes window.WORKTREE_NAME track the visible page on every
+    // mount (fresh or cached).
+    function syncPageGlobals(container) {
+        if (!container) return;
+        var el = container.querySelector('[data-worktree-name]');
+        if (el && el.dataset.worktreeName) {
+            window.WORKTREE_NAME = el.dataset.worktreeName;
+        }
     }
 
     function fetchAndMount(url, push) {
@@ -227,6 +245,7 @@
 
             if (push) history.pushState({ spa: true }, '', url);
             window.scrollTo(0, 0);
+            syncPageGlobals(adopted);
             dispatch(adopted, 'trellis:page-entered', { restored: false, firstLoad: true });
             navigating = false;
         }).catch(function(err) {

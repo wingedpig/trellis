@@ -1149,7 +1149,23 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 
 	id := uuid.New().String()
 	if displayName == "" {
-		displayName = fmt.Sprintf("Session %d", len(m.worktreeIndex[worktreeName])+1)
+		// Count only non-trashed sessions: TrashSession (soft delete) leaves
+		// the entry in worktreeIndex for possible restore, so a raw len()
+		// keeps inflating "Session N" past every trashed session.
+		count := 0
+		for _, sid := range m.worktreeIndex[worktreeName] {
+			s, ok := m.sessions[sid]
+			if !ok {
+				continue
+			}
+			s.mu.Lock()
+			trashed := s.trashedAt != nil
+			s.mu.Unlock()
+			if !trashed {
+				count++
+			}
+		}
+		displayName = fmt.Sprintf("Session %d", count+1)
 	}
 
 	s := newSessionStruct(id)
