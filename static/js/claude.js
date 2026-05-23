@@ -2573,6 +2573,14 @@
 
     function updateTokenPopover(el) {
         if (!el || !tokenBreakdown.total) return;
+        // Guard against bootstrap not yet loaded. The footer that loads
+        // bootstrap.bundle.min.js is parsed AFTER this script, so a WS
+        // history message arriving in the small window before the footer
+        // executes would otherwise throw "bootstrap is not defined".
+        if (typeof bootstrap === 'undefined' || !bootstrap.Popover) {
+            setTimeout(function () { updateTokenPopover(el); }, 100);
+            return;
+        }
         var existing = bootstrap.Popover.getInstance(el);
         if (existing) {
             existing.dispose();

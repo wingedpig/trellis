@@ -662,14 +662,10 @@ func (h *TerminalHandler) CreateWindow(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tmuxSession := terminal.ToTmuxSessionName(h.worktreeToSession(worktreeName))
 
-	// Ensure tmux session exists
-	err := h.mgr.EnsureSession(ctx, tmuxSession, wt.Path, nil)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to ensure session: "+err.Error())
-		return
-	}
-
-	// Generate window name if not provided
+	// Generate window name if not provided. Do this before EnsureSession so
+	// we can pass it as the first window, avoiding a phantom default window
+	// when the session doesn't yet exist (tmux requires sessions to have at
+	// least one window at creation time).
 	windowName := req.Name
 	if windowName == "" {
 		// Auto-name: "shell", "shell-2", "shell-3", etc.
@@ -695,11 +691,12 @@ func (h *TerminalHandler) CreateWindow(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create the window via tmux
-	createCmd := exec.Command("tmux", "new-window", "-t", tmuxSession, "-n", windowName, "-c", wt.Path)
-	createCmd.Env = append(os.Environ(), "TMUX=")
-	if err := createCmd.Run(); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to create window: "+err.Error())
+	// EnsureSession handles both cases: if the session doesn't exist, it
+	// creates it with windowName as the first window; if it does exist, it
+	// adds windowName as a new window.
+	windows := []terminal.WindowConfig{{Name: windowName}}
+	if err := h.mgr.EnsureSession(ctx, tmuxSession, wt.Path, windows); err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to ensure session: "+err.Error())
 		return
 	}
 

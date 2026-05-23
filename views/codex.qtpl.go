@@ -5,23 +5,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line /Users/markf/src/trellis/views/codex.qtpl:4
+//line views/codex.qtpl:4
 package views
 
-//line /Users/markf/src/trellis/views/codex.qtpl:4
+//line views/codex.qtpl:4
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line /Users/markf/src/trellis/views/codex.qtpl:4
+//line views/codex.qtpl:4
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line /Users/markf/src/trellis/views/codex.qtpl:5
+//line views/codex.qtpl:5
 type CodexPage struct {
 	BasePage
 	WorktreeName     string
@@ -29,14 +29,14 @@ type CodexPage struct {
 	SessionCreatedAt string // ISO 8601 timestamp
 }
 
-//line /Users/markf/src/trellis/views/codex.qtpl:13
+//line views/codex.qtpl:13
 func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
-//line /Users/markf/src/trellis/views/codex.qtpl:13
+//line views/codex.qtpl:13
 	qw422016.N().S(`
 `)
-//line /Users/markf/src/trellis/views/codex.qtpl:14
+//line views/codex.qtpl:14
 	p.StreamHeader(qw422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:14
+//line views/codex.qtpl:14
 	qw422016.N().S(`
 
 <link href="/static/css/codex.css" rel="stylesheet">
@@ -82,14 +82,14 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 (function() {
 'use strict';
 window.CODEX_WORKTREE = '`)
-//line /Users/markf/src/trellis/views/codex.qtpl:58
+//line views/codex.qtpl:58
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line /Users/markf/src/trellis/views/codex.qtpl:58
+//line views/codex.qtpl:58
 	qw422016.N().S(`';
 window.CODEX_SESSION = '`)
-//line /Users/markf/src/trellis/views/codex.qtpl:59
+//line views/codex.qtpl:59
 	qw422016.E().S(JSAttr(p.SessionID))
-//line /Users/markf/src/trellis/views/codex.qtpl:59
+//line views/codex.qtpl:59
 	qw422016.N().S(`';
 window.WRAPUP_AGENT = 'codex';
 window.WRAPUP_WORKTREE = window.CODEX_WORKTREE;
@@ -98,9 +98,9 @@ window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CODEX_WORKTREE || '').split(/[-_
     return w ? w[0].toUpperCase() + w.slice(1) : '';
 }).join(' ');
 window.WRAPUP_SESSION_CREATED = '`)
-//line /Users/markf/src/trellis/views/codex.qtpl:66
+//line views/codex.qtpl:66
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line /Users/markf/src/trellis/views/codex.qtpl:66
+//line views/codex.qtpl:66
 	qw422016.N().S(`';
 window.WRAPUP_CASE = null;
 
@@ -363,40 +363,41 @@ window.codexSaveToCaseConfirm = function() {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/codex.js"></script>
+<script src="/static/js/pair.js"></script>
 <script src="/static/js/wrapup.js"></script>
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line /Users/markf/src/trellis/views/codex.qtpl:331
+//line views/codex.qtpl:332
 	p.StreamFooter(qw422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:331
+//line views/codex.qtpl:332
 	qw422016.N().S(`
 `)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 }
 
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	p.StreamRender(qw422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	qt422016.ReleaseWriter(qw422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 }
 
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 func (p *CodexPage) Render() string {
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	qb422016 := qt422016.AcquireByteBuffer()
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	p.WriteRender(qb422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	qs422016 := string(qb422016.B)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	qt422016.ReleaseByteBuffer(qb422016)
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 	return qs422016
-//line /Users/markf/src/trellis/views/codex.qtpl:332
+//line views/codex.qtpl:333
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/inbox"
 	"github.com/wingedpig/trellis/internal/logs"
+	"github.com/wingedpig/trellis/internal/pair"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
 	"github.com/wingedpig/trellis/internal/trace"
@@ -55,6 +56,7 @@ type Dependencies struct {
 	CodexManager    *codex.Manager               // OpenAI Codex session manager
 	CaseManager     *cases.Manager               // Case objects manager
 	InboxAggregator *inbox.Aggregator            // Cross-agent session inbox
+	PairRegistry    *pair.Registry               // Paired review loops
 	VSCodeHandler   *handlers.VSCodeHandler
 	Shortcuts       []handlers.ShortcutConfig    // Keyboard shortcuts for terminal windows
 	Notifications   handlers.NotificationConfig  // Browser notification settings
@@ -136,6 +138,11 @@ func NewRouter(deps Dependencies) *mux.Router {
 		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
 	}
 
+	// Pair handlers (paired review loops; see PAIRING_SPEC.md)
+	if deps.PairRegistry != nil {
+		registerPairRoutes(api, handlers.NewPairHandler(deps.PairRegistry, deps.EventBus))
+	}
+
 	// Log viewer handlers
 	if deps.LogManager != nil {
 		logHandler := handlers.NewLogHandler(deps.LogManager)
@@ -174,6 +181,23 @@ func NewRouter(deps Dependencies) *mux.Router {
 	api.HandleFunc("/commands", commandsHandler.List).Methods("GET")
 
 	return r
+}
+
+// registerPairRoutes mounts the paired-review-loop endpoints under api.
+// Order matters: more specific paths first.
+func registerPairRoutes(api *mux.Router, h *handlers.PairHandler) {
+	api.HandleFunc("/pair", h.List).Methods("GET")
+	api.HandleFunc("/pair", h.Create).Methods("POST")
+	api.HandleFunc("/pair/ws", h.WebSocket).Methods("GET")
+	api.HandleFunc("/pair/by-session/{session}", h.FindBySession).Methods("GET")
+	api.HandleFunc("/pair/{id}", h.Get).Methods("GET")
+	api.HandleFunc("/pair/{id}", h.Forget).Methods("DELETE")
+	api.HandleFunc("/pair/{id}/pause", h.Pause).Methods("POST")
+	api.HandleFunc("/pair/{id}/resume", h.Resume).Methods("POST")
+	api.HandleFunc("/pair/{id}/stop", h.Stop).Methods("POST")
+	api.HandleFunc("/pair/{id}/force-relay", h.ForceRelay).Methods("POST")
+	api.HandleFunc("/pair/{id}/config", h.UpdateConfig).Methods("POST")
+	api.HandleFunc("/pair/{id}/confirm", h.Confirm).Methods("POST")
 }
 
 // registerPageRoutes registers all UI page routes on the given router.
@@ -286,6 +310,11 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		inboxHandler := handlers.NewInboxHandler(deps.InboxAggregator, deps.EventBus)
 		api.HandleFunc("/inbox/sessions", inboxHandler.Sessions).Methods("GET")
 		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
+	}
+
+	// Pair handlers (paired review loops; see PAIRING_SPEC.md)
+	if deps.PairRegistry != nil {
+		registerPairRoutes(api, handlers.NewPairHandler(deps.PairRegistry, deps.EventBus))
 	}
 
 	// Terminal handlers (using the provided handler)

@@ -5,23 +5,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//line /Users/markf/src/trellis/views/claude.qtpl:4
+//line views/claude.qtpl:4
 package views
 
-//line /Users/markf/src/trellis/views/claude.qtpl:4
+//line views/claude.qtpl:4
 import (
 	qtio422016 "io"
 
 	qt422016 "github.com/valyala/quicktemplate"
 )
 
-//line /Users/markf/src/trellis/views/claude.qtpl:4
+//line views/claude.qtpl:4
 var (
 	_ = qtio422016.Copy
 	_ = qt422016.AcquireByteBuffer
 )
 
-//line /Users/markf/src/trellis/views/claude.qtpl:5
+//line views/claude.qtpl:5
 type ClaudePage struct {
 	BasePage
 	WorktreeName     string
@@ -29,14 +29,14 @@ type ClaudePage struct {
 	SessionCreatedAt string // ISO 8601 timestamp
 }
 
-//line /Users/markf/src/trellis/views/claude.qtpl:13
+//line views/claude.qtpl:13
 func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
-//line /Users/markf/src/trellis/views/claude.qtpl:13
+//line views/claude.qtpl:13
 	qw422016.N().S(`
 `)
-//line /Users/markf/src/trellis/views/claude.qtpl:14
+//line views/claude.qtpl:14
 	p.StreamHeader(qw422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:14
+//line views/claude.qtpl:14
 	qw422016.N().S(`
 
 <link href="/static/css/claude.css" rel="stylesheet">
@@ -88,14 +88,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // Expose on window so external scripts (claude.js, wrapup.js) and inline
 // onclick handlers can reach these values.
 window.CLAUDE_WORKTREE = '`)
-//line /Users/markf/src/trellis/views/claude.qtpl:64
+//line views/claude.qtpl:64
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line /Users/markf/src/trellis/views/claude.qtpl:64
+//line views/claude.qtpl:64
 	qw422016.N().S(`';
 window.CLAUDE_SESSION = '`)
-//line /Users/markf/src/trellis/views/claude.qtpl:65
+//line views/claude.qtpl:65
 	qw422016.E().S(JSAttr(p.SessionID))
-//line /Users/markf/src/trellis/views/claude.qtpl:65
+//line views/claude.qtpl:65
 	qw422016.N().S(`';
 var CLAUDE_WORKTREE = window.CLAUDE_WORKTREE;
 var CLAUDE_SESSION = window.CLAUDE_SESSION;
@@ -248,9 +248,9 @@ function doSaveTranscript(caseId, title) {
 window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
 window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
 window.WRAPUP_SESSION_CREATED = '`)
-//line /Users/markf/src/trellis/views/claude.qtpl:216
+//line views/claude.qtpl:216
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line /Users/markf/src/trellis/views/claude.qtpl:216
+//line views/claude.qtpl:216
 	qw422016.N().S(`';
 window.WRAPUP_CASE = null;
 window.WRAPUP_AGENT = 'claude';
@@ -387,40 +387,41 @@ window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CLAUDE_WORKTREE || '').split(/[-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/claude.js"></script>
+<script src="/static/js/pair.js"></script>
 <script src="/static/js/wrapup.js"></script>
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line /Users/markf/src/trellis/views/claude.qtpl:355
+//line views/claude.qtpl:356
 	p.StreamFooter(qw422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:355
+//line views/claude.qtpl:356
 	qw422016.N().S(`
 `)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 }
 
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	p.StreamRender(qw422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	qt422016.ReleaseWriter(qw422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 }
 
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 func (p *ClaudePage) Render() string {
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	qb422016 := qt422016.AcquireByteBuffer()
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	p.WriteRender(qb422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	qs422016 := string(qb422016.B)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	qt422016.ReleaseByteBuffer(qb422016)
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 	return qs422016
-//line /Users/markf/src/trellis/views/claude.qtpl:356
+//line views/claude.qtpl:357
 }

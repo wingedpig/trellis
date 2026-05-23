@@ -27,6 +27,7 @@ import (
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/inbox"
 	"github.com/wingedpig/trellis/internal/logs"
+	"github.com/wingedpig/trellis/internal/pair"
 	"github.com/wingedpig/trellis/internal/proxy"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
@@ -59,6 +60,7 @@ type App struct {
 	codexManager     *codex.Manager
 	caseManager      *cases.Manager
 	inboxAggregator  *inbox.Aggregator
+	pairRegistry     *pair.Registry
 	proxyManager     *proxy.Manager
 	apiServer        *api.Server
 
@@ -302,6 +304,23 @@ func (app *App) Initialize(ctx context.Context) error {
 		app.inboxAggregator = agg
 	} else {
 		log.Printf("inbox aggregator init failed: %v", err)
+	}
+
+	// Pair registry — ad-hoc paired review loops between two sessions
+	// (see PAIRING_SPEC.md). Records persist as JSON files; active loops
+	// resume on server start.
+	pairStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "pairs")
+	pairStore, err := pair.NewStore(pairStateDir)
+	if err != nil {
+		log.Printf("pair store init failed: %v", err)
+	} else {
+		app.pairRegistry = pair.NewRegistry(
+			pairStore,
+			&pair.Agents{Claude: app.claudeManager, Codex: app.codexManager},
+			app.eventBus,
+		)
+		pair.EnsureGlobalRegistry(app.pairRegistry)
+		app.pairRegistry.Rehydrate()
 	}
 
 	// Initialize case manager
@@ -693,6 +712,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			CodexManager:    app.codexManager,
 			CaseManager:     app.caseManager,
 			InboxAggregator: app.inboxAggregator,
+			PairRegistry:    app.pairRegistry,
 			VSCodeHandler:   app.vsCodeHandler,
 			Shortcuts:       shortcuts,
 			Notifications:   notifications,
@@ -839,6 +859,13 @@ func (app *App) Shutdown(ctx context.Context) error {
 	// Stop log viewers
 	if app.logManager != nil {
 		app.logManager.Stop()
+	}
+
+	// Stop pair drivers (records remain on disk; active loops resume on
+	// next start). Must run before Claude/Codex shutdown so persisted
+	// state reflects pre-shutdown step.
+	if app.pairRegistry != nil {
+		app.pairRegistry.Shutdown(shutdownCtx)
 	}
 
 	// Stop Claude sessions
