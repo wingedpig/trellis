@@ -2478,8 +2478,15 @@
     }
 
     // --- Actions ---
+    //
+    // These are exposed on window for inline onclick handlers and the slash
+    // menu. They MUST be re-bound on every page-entered event because the SPA
+    // does NOT re-execute scripts when restoring a cached page — without the
+    // rebind, window.claudeSend keeps pointing at whichever Claude page was
+    // most recently fresh-loaded, so sending from a cache-restored session
+    // would target a detached DOM and a stale WebSocket.
 
-    window.claudeSend = function() {
+    function localClaudeSend() {
         const text = inputEl.value.trim();
         if (!text || generating) return;
 
@@ -2507,13 +2514,13 @@
         autoResize();
         setGenerating(true);
         showWorkingIndicator();
-    };
+    }
 
-    window.claudeCancel = function() {
+    function localClaudeCancel() {
         sendWS({ type: 'cancel' });
-    };
+    }
 
-    window.claudeReset = function() {
+    function localClaudeReset() {
         sendWS({ type: 'reset' });
         inputEl.value = '';
         sessionStorage.removeItem(draftKey);
@@ -2529,7 +2536,18 @@
         updateContextUsage();
         setGenerating(false);
         showEmptyState();
-    };
+    }
+
+    function bindClaudeGlobals() {
+        window.claudeSend = localClaudeSend;
+        window.claudeCancel = localClaudeCancel;
+        window.claudeReset = localClaudeReset;
+    }
+    bindClaudeGlobals();
+    var __claudePageContainer = inputEl ? inputEl.closest('.page-container') : null;
+    if (__claudePageContainer) {
+        __claudePageContainer.addEventListener('trellis:page-entered', bindClaudeGlobals);
+    }
 
     function setGenerating(value) {
         generating = value;
@@ -2774,11 +2792,11 @@
         }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            claudeSend();
+            localClaudeSend();
         }
         if (e.key === 'Escape' && generating) {
             e.preventDefault();
-            claudeCancel();
+            localClaudeCancel();
         }
     });
 

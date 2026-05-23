@@ -345,6 +345,41 @@ var CASE_ID = '{%s JSAttr(p.Case.ID) %}';
 var CASE_NOTES_RAW = {%s= notesJSONSafe(p.Notes) %};
 var CASE_LINKS = {%s= linksJSONSafe(p.Case.Links) %};
 
+// SPA: when this container is restored from the LRU cache, the inline script
+// does NOT re-execute, so the globals above would otherwise hold whichever
+// case was most recently fresh-loaded. Snapshot the live values on every
+// page-leaving and restore them on every page-entered. Using page-leaving
+// (not the initial fresh-load values) preserves in-page mutations — e.g. if
+// the user edits notes or renames the case before navigating away, those
+// updates are captured in the snapshot and survive the round-trip through
+// the cache. Without this, mutating requests would target the wrong case
+// and the edit-notes textarea would seed from stale text.
+(function() {
+    var snap = {
+        worktree: WORKTREE_NAME,
+        caseId: CASE_ID,
+        notes: CASE_NOTES_RAW,
+        links: CASE_LINKS,
+    };
+    function captureLocal() {
+        snap.worktree = WORKTREE_NAME;
+        snap.caseId = CASE_ID;
+        snap.notes = CASE_NOTES_RAW;
+        snap.links = CASE_LINKS;
+    }
+    function restoreLocal() {
+        WORKTREE_NAME = snap.worktree;
+        CASE_ID = snap.caseId;
+        CASE_NOTES_RAW = snap.notes;
+        CASE_LINKS = snap.links;
+    }
+    var container = document.currentScript && document.currentScript.closest('.page-container');
+    if (container) {
+        container.addEventListener('trellis:page-leaving', captureLocal);
+        container.addEventListener('trellis:page-entered', restoreLocal);
+    }
+})();
+
 function initCaseDetailPage() {
     renderNotes();
     renderLinks();
@@ -656,6 +691,31 @@ function continueCodexTranscript(codexId) {
 var WRAPUP_WORKTREE = WORKTREE_NAME;
 var WRAPUP_SESSION_ID = null;
 var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind: '{%s p.Case.Kind %}'};
+// SPA: snapshot wrap-up globals on page-leaving and restore on page-entered.
+// Using page-leaving captures in-page mutations (e.g. WRAPUP_CASE.title being
+// updated after a rename) so they survive a round-trip through the cache.
+(function() {
+    var snap = {
+        worktree: WRAPUP_WORKTREE,
+        sessionId: WRAPUP_SESSION_ID,
+        caseObj: WRAPUP_CASE,
+    };
+    function captureWrap() {
+        snap.worktree = WRAPUP_WORKTREE;
+        snap.sessionId = WRAPUP_SESSION_ID;
+        snap.caseObj = WRAPUP_CASE;
+    }
+    function restoreWrap() {
+        WRAPUP_WORKTREE = snap.worktree;
+        WRAPUP_SESSION_ID = snap.sessionId;
+        WRAPUP_CASE = snap.caseObj;
+    }
+    var container = document.currentScript && document.currentScript.closest('.page-container');
+    if (container) {
+        container.addEventListener('trellis:page-leaving', captureWrap);
+        container.addEventListener('trellis:page-entered', restoreWrap);
+    }
+})();
 </script>
 
 <!-- Wrap Up Modal -->

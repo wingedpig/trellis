@@ -405,23 +405,35 @@ window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId,
         cb.checked = !!checked;
     });
 };
+// rebindModals points the modal vars at THIS container's modal elements.
+// On SPA cache restore, the inline script does NOT re-execute, so without
+// this the modal vars would keep pointing at a previously-fresh-loaded
+// worktree's (now-detached) modal DOM — clicking "new claude session"
+// after navigating worktree A -> B -> A would otherwise call .show() on
+// B's modal element.
+function rebindModals() {
+    importTranscriptModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('importTranscriptModal'));
+    moveSessionModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('moveSessionModal'));
+    newCaseModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('newCaseModal'));
+    newClaudeModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('newClaudeModal'));
+    newCodexModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('newCodexModal'));
+    newTerminalModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('newTerminalModal'));
+    renameModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('renameModal'));
+}
+
 function initWorktreeHomePage() {
-    importTranscriptModal = new bootstrap.Modal(document.getElementById('importTranscriptModal'));
-    moveSessionModal = new bootstrap.Modal(document.getElementById('moveSessionModal'));
+    rebindModals();
     document.getElementById('moveSessionConfirmBtn').addEventListener('click', submitMoveSession);
     document.getElementById('moveSessionModal').addEventListener('shown.bs.modal', function() {
         document.getElementById('moveSessionBranch').focus();
     });
 
-    newCaseModal = new bootstrap.Modal(document.getElementById('newCaseModal'));
     document.getElementById('newCaseModal').addEventListener('shown.bs.modal', function() {
         document.getElementById('caseTitle').focus();
     });
     document.getElementById('caseTitle').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') { e.preventDefault(); createCase(); }
     });
-    newClaudeModal = new bootstrap.Modal(document.getElementById('newClaudeModal'));
-    newCodexModal = new bootstrap.Modal(document.getElementById('newCodexModal'));
     document.getElementById('newCodexModal').addEventListener('shown.bs.modal', function() {
         document.getElementById('codexSessionName').focus();
     });
@@ -435,7 +447,6 @@ function initWorktreeHomePage() {
         if (e.key === 'Enter') { e.preventDefault(); createClaudeSession(); }
     });
 
-    newTerminalModal = new bootstrap.Modal(document.getElementById('newTerminalModal'));
     document.getElementById('newTerminalModal').addEventListener('shown.bs.modal', function() {
         document.getElementById('terminalName').focus();
     });
@@ -443,7 +454,6 @@ function initWorktreeHomePage() {
         if (e.key === 'Enter') { e.preventDefault(); createTerminal(); }
     });
 
-    renameModal = new bootstrap.Modal(document.getElementById('renameModal'));
     document.getElementById('renameModal').addEventListener('shown.bs.modal', function() {
         const input = document.getElementById('renameInput');
         input.focus();
@@ -455,6 +465,13 @@ function initWorktreeHomePage() {
     document.getElementById('renameConfirmBtn').addEventListener('click', function() {
         if (renameConfirmCallback) renameConfirmCallback();
     });
+
+    // On SPA cache-restore the inline script doesn't re-execute, so re-bind
+    // the modal vars to whichever worktree-home container is now active.
+    var container = document.getElementById('renameModal').closest('.page-container');
+    if (container) {
+        container.addEventListener('trellis:page-entered', rebindModals);
+    }
 }
 // Run init now for SPA navigations (DOM already loaded) or wait for
 // DOMContentLoaded on a fresh page load.
@@ -503,8 +520,10 @@ function deleteCodexSession(sessionId) {
 function renameCodexSession(sessionId, currentName) {
     document.getElementById('renameModalTitle').textContent = 'Rename Codex Session';
     document.getElementById('renameInput').value = currentName;
-    const btn = document.getElementById('renameConfirmBtn');
-    btn.onclick = function() {
+    // Use the shared renameConfirmCallback path (matches Claude/terminal rename)
+    // so the permanent click listener registered in initWorktreeHomePage doesn't
+    // also fire a stale callback from a previous rename.
+    renameConfirmCallback = function() {
         const name = document.getElementById('renameInput').value.trim();
         if (!name) return;
         fetch('/api/v1/codex/sessions/' + sessionId, {
@@ -512,7 +531,7 @@ function renameCodexSession(sessionId, currentName) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({display_name: name})
         })
-        .then(r => { if (!r.ok) throw new Error('Rename failed'); window.location.reload(); })
+        .then(r => { if (!r.ok) throw new Error('Rename failed'); renameModal.hide(); window.location.reload(); })
         .catch(err => alert('Failed: ' + err));
     };
     renameModal.show();

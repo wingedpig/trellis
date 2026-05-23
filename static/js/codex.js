@@ -1137,7 +1137,14 @@
     }
 
     // ---------- Send / cancel / input ----------
-    window.codexSend = function () {
+    //
+    // Exposed on window for inline onclick handlers. They MUST be re-bound on
+    // every page-entered event because the SPA does NOT re-execute scripts
+    // when restoring a cached page — without the rebind, window.codexSend
+    // would keep pointing at whichever Codex page was most recently
+    // fresh-loaded, so sending from a cache-restored session would target a
+    // detached DOM and a stale WebSocket.
+    function localCodexSend() {
         const text = inputEl.value.trim();
         if (!text || generating) return;
         inputEl.value = '';
@@ -1159,14 +1166,24 @@
         setGenerating(true);
         showWorking();
         scrollToBottom();
-    };
+    }
 
-    window.codexCancel = function () {
+    function localCodexCancel() {
         if (!generating) return;
         sendWS({ type: 'cancel' });
         setGenerating(false);
         hideWorking();
-    };
+    }
+
+    function bindCodexGlobals() {
+        window.codexSend = localCodexSend;
+        window.codexCancel = localCodexCancel;
+    }
+    bindCodexGlobals();
+    var __codexPageContainer = inputEl ? inputEl.closest('.page-container') : null;
+    if (__codexPageContainer) {
+        __codexPageContainer.addEventListener('trellis:page-entered', bindCodexGlobals);
+    }
 
     function autoResizeInput() {
         inputEl.style.height = 'auto';
@@ -1190,10 +1207,10 @@
     inputEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            window.codexSend();
+            localCodexSend();
         } else if (e.key === 'Escape' && generating) {
             e.preventDefault();
-            window.codexCancel();
+            localCodexCancel();
         }
     });
 

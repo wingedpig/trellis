@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -311,6 +312,36 @@ func (m *Manager) makePersistFn() func() {
 	return func() { m.persist() }
 }
 
+// nextSessionNameLocked picks the next "Session N" suffix that isn't already
+// in use by an active session for this worktree. Using "active count + 1"
+// collides when an interior session was trashed (e.g. trashing #2 of {1,2,3}
+// would propose "Session 3" again). Caller must hold m.mu.
+func (m *Manager) nextSessionNameLocked(worktreeName string) string {
+	maxN := 0
+	for _, sid := range m.worktreeIndex[worktreeName] {
+		s, ok := m.sessions[sid]
+		if !ok {
+			continue
+		}
+		s.mu.Lock()
+		trashed := s.trashedAt != nil
+		name := s.displayName
+		s.mu.Unlock()
+		if trashed {
+			continue
+		}
+		const prefix = "Session "
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		suffix := name[len(prefix):]
+		if n, err := strconv.Atoi(suffix); err == nil && n > maxN {
+			maxN = n
+		}
+	}
+	return fmt.Sprintf("Session %d", maxN+1)
+}
+
 // CreateSession creates a new session for a worktree.
 func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Session {
 	m.mu.Lock()
@@ -318,24 +349,7 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 
 	id := uuid.New().String()
 	if displayName == "" {
-		// Auto-name: "Session N" based on the count of NON-trashed sessions
-		// for this worktree. TrashSession leaves entries in worktreeIndex so
-		// they can be restored, so a raw len() here keeps inflating the
-		// number even after the user "deletes" sessions from the UI.
-		count := 0
-		for _, sid := range m.worktreeIndex[worktreeName] {
-			s, ok := m.sessions[sid]
-			if !ok {
-				continue
-			}
-			s.mu.Lock()
-			trashed := s.trashedAt != nil
-			s.mu.Unlock()
-			if !trashed {
-				count++
-			}
-		}
-		displayName = fmt.Sprintf("Session %d", count+1)
+		displayName = m.nextSessionNameLocked(worktreeName)
 	}
 
 	s := &Session{

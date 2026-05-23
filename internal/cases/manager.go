@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wingedpig/trellis/internal/claude"
@@ -451,8 +452,27 @@ func (m *Manager) AttachEvidence(worktreePath, caseID string, ev CaseEvidence, d
 		return fmt.Errorf("create evidence dir: %w", err)
 	}
 
-	// Write evidence file
-	filePath := filepath.Join(evidenceDir, ev.Filename)
+	// The filename comes from the uploader's multipart header and must not
+	// escape evidenceDir. Strip any directory component and verify the cleaned
+	// target stays under evidenceDir.
+	safeName := filepath.Base(filepath.Clean(ev.Filename))
+	if safeName == "" || safeName == "." || safeName == ".." || safeName == string(filepath.Separator) ||
+		strings.ContainsRune(safeName, filepath.Separator) || strings.ContainsRune(safeName, '/') {
+		return fmt.Errorf("invalid evidence filename: %q", ev.Filename)
+	}
+	ev.Filename = safeName
+	filePath := filepath.Join(evidenceDir, safeName)
+	absEvidence, err := filepath.Abs(evidenceDir)
+	if err != nil {
+		return fmt.Errorf("resolve evidence dir: %w", err)
+	}
+	absTarget, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("resolve evidence path: %w", err)
+	}
+	if rel, err := filepath.Rel(absEvidence, absTarget); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("invalid evidence filename: %q", ev.Filename)
+	}
 	if err := os.WriteFile(filePath, data, 0o644); err != nil {
 		return fmt.Errorf("write evidence file: %w", err)
 	}

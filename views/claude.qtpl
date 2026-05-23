@@ -59,16 +59,18 @@ type ClaudePage struct {
 <script>
 (function() {
 'use strict';
-// Expose on window so external scripts (claude.js, wrapup.js) and inline
-// onclick handlers can reach these values.
-window.CLAUDE_WORKTREE = '{%s JSAttr(p.WorktreeName) %}';
-window.CLAUDE_SESSION = '{%s JSAttr(p.SessionID) %}';
-var CLAUDE_WORKTREE = window.CLAUDE_WORKTREE;
-var CLAUDE_SESSION = window.CLAUDE_SESSION;
+// PAGE_* hold THIS session's values. They are captured at IIFE-execution
+// time and never change. window.CLAUDE_* and the save-to-case window
+// handlers are re-bound to these page-local values on every
+// trellis:page-entered, because the SPA does NOT re-execute scripts when
+// restoring a cached container — without the rebind, save-to-case / fork /
+// commit / wrap-up on a cache-restored session would target whichever
+// session was most recently fresh-loaded.
+var PAGE_WORKTREE = '{%s JSAttr(p.WorktreeName) %}';
+var PAGE_SESSION = '{%s JSAttr(p.SessionID) %}';
 
-window.showSaveToCaseModal = function showSaveToCaseModal() {
-    // Fetch open cases for this worktree
-    fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE))
+function localShowSaveToCaseModal() {
+    fetch('/api/v1/cases/' + encodeURIComponent(PAGE_WORKTREE))
     .then(r => r.json())
     .then(data => {
         const cases = data.data || data || [];
@@ -82,18 +84,18 @@ window.showSaveToCaseModal = function showSaveToCaseModal() {
         });
         select.innerHTML += '<option value="__new__">+ Create new case...</option>';
         document.getElementById('saveToCaseNewFields').style.display = 'none';
-        const modal = new bootstrap.Modal(document.getElementById('saveToCaseModal'));
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('saveToCaseModal'));
         modal.show();
     })
     .catch(err => alert('Failed to load cases: ' + err));
-};
+}
 
-window.onSaveToCaseSelectChange = function onSaveToCaseSelectChange() {
+function localOnSaveToCaseSelectChange() {
     const val = document.getElementById('saveToCaseSelect').value;
     document.getElementById('saveToCaseNewFields').style.display = (val === '__new__') ? 'block' : 'none';
-};
+}
 
-window.saveToCaseConfirm = function saveToCaseConfirm() {
+function localSaveToCaseConfirm() {
     const selectVal = document.getElementById('saveToCaseSelect').value;
     const title = document.getElementById('saveToCaseTitle').value.trim();
 
@@ -101,8 +103,7 @@ window.saveToCaseConfirm = function saveToCaseConfirm() {
         const newTitle = document.getElementById('saveToCaseNewTitle').value.trim();
         const newKind = document.getElementById('saveToCaseNewKind').value;
         if (!newTitle) { alert('Title is required'); return; }
-        // Create case first, then save transcript
-        fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE), {
+        fetch('/api/v1/cases/' + encodeURIComponent(PAGE_WORKTREE), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({title: newTitle, kind: newKind})
@@ -121,13 +122,13 @@ window.saveToCaseConfirm = function saveToCaseConfirm() {
     } else {
         alert('Please select a case');
     }
-};
+}
 
 function doSaveTranscript(caseId, title) {
-    fetch('/api/v1/cases/' + encodeURIComponent(CLAUDE_WORKTREE) + '/' + encodeURIComponent(caseId) + '/transcript', {
+    fetch('/api/v1/cases/' + encodeURIComponent(PAGE_WORKTREE) + '/' + encodeURIComponent(caseId) + '/transcript', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({session_id: CLAUDE_SESSION, title: title || ''})
+        body: JSON.stringify({session_id: PAGE_SESSION, title: title || ''})
     })
     .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Save failed'); });
@@ -138,6 +139,19 @@ function doSaveTranscript(caseId, title) {
         alert('Transcript saved to case.');
     })
     .catch(err => alert('Save failed: ' + err));
+}
+
+function bind() {
+    window.CLAUDE_WORKTREE = PAGE_WORKTREE;
+    window.CLAUDE_SESSION = PAGE_SESSION;
+    window.showSaveToCaseModal = localShowSaveToCaseModal;
+    window.onSaveToCaseSelectChange = localOnSaveToCaseSelectChange;
+    window.saveToCaseConfirm = localSaveToCaseConfirm;
+}
+bind();
+var container = document.currentScript && document.currentScript.closest('.page-container');
+if (container) {
+    container.addEventListener('trellis:page-entered', bind);
 }
 })();
 </script>
@@ -211,16 +225,35 @@ function doSaveTranscript(caseId, title) {
 <script>
 (function() {
 'use strict';
-window.WRAPUP_WORKTREE = window.CLAUDE_WORKTREE;
-window.WRAPUP_SESSION_ID = window.CLAUDE_SESSION;
-window.WRAPUP_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
-window.WRAPUP_CASE = null;
-window.WRAPUP_AGENT = 'claude';
-// Humanized worktree name used to prefill the title when creating a new case
-// on first commit (e.g., "ach-payments-stripe" -> "Ach Payments Stripe").
-window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CLAUDE_WORKTREE || '').split(/[-_]+/).map(function(w) {
+// Page-local copies of the wrap-up inputs that wrapup.js reads from window.
+// Snapshot live values on page-leaving so in-flight mutations to WRAPUP_CASE
+// (e.g. set after creating a new case via the wrap-up flow) survive the
+// SPA cache round-trip. Restore on page-entered.
+var PAGE_WORKTREE = '{%s JSAttr(p.WorktreeName) %}';
+var PAGE_SESSION = '{%s JSAttr(p.SessionID) %}';
+var PAGE_SESSION_CREATED = '{%s JSAttr(p.SessionCreatedAt) %}';
+var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
 }).join(' ');
+
+var snap = { caseObj: null };
+function captureWrap() {
+    snap.caseObj = window.WRAPUP_CASE;
+}
+function applyWrap() {
+    window.WRAPUP_WORKTREE = PAGE_WORKTREE;
+    window.WRAPUP_SESSION_ID = PAGE_SESSION;
+    window.WRAPUP_SESSION_CREATED = PAGE_SESSION_CREATED;
+    window.WRAPUP_CASE = snap.caseObj;
+    window.WRAPUP_AGENT = 'claude';
+    window.WRAPUP_WORKTREE_NAME_HUMANIZED = PAGE_WORKTREE_NAME_HUMANIZED;
+}
+applyWrap();
+var container = document.currentScript && document.currentScript.closest('.page-container');
+if (container) {
+    container.addEventListener('trellis:page-leaving', captureWrap);
+    container.addEventListener('trellis:page-entered', applyWrap);
+}
 })();
 </script>
 

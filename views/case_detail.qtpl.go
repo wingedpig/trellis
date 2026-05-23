@@ -847,6 +847,41 @@ var CASE_LINKS = `)
 //line views/case_detail.qtpl:346
 	qw422016.N().S(`;
 
+// SPA: when this container is restored from the LRU cache, the inline script
+// does NOT re-execute, so the globals above would otherwise hold whichever
+// case was most recently fresh-loaded. Snapshot the live values on every
+// page-leaving and restore them on every page-entered. Using page-leaving
+// (not the initial fresh-load values) preserves in-page mutations — e.g. if
+// the user edits notes or renames the case before navigating away, those
+// updates are captured in the snapshot and survive the round-trip through
+// the cache. Without this, mutating requests would target the wrong case
+// and the edit-notes textarea would seed from stale text.
+(function() {
+    var snap = {
+        worktree: WORKTREE_NAME,
+        caseId: CASE_ID,
+        notes: CASE_NOTES_RAW,
+        links: CASE_LINKS,
+    };
+    function captureLocal() {
+        snap.worktree = WORKTREE_NAME;
+        snap.caseId = CASE_ID;
+        snap.notes = CASE_NOTES_RAW;
+        snap.links = CASE_LINKS;
+    }
+    function restoreLocal() {
+        WORKTREE_NAME = snap.worktree;
+        CASE_ID = snap.caseId;
+        CASE_NOTES_RAW = snap.notes;
+        CASE_LINKS = snap.links;
+    }
+    var container = document.currentScript && document.currentScript.closest('.page-container');
+    if (container) {
+        container.addEventListener('trellis:page-leaving', captureLocal);
+        container.addEventListener('trellis:page-entered', restoreLocal);
+    }
+})();
+
 function initCaseDetailPage() {
     renderNotes();
     renderLinks();
@@ -1158,14 +1193,39 @@ function continueCodexTranscript(codexId) {
 var WRAPUP_WORKTREE = WORKTREE_NAME;
 var WRAPUP_SESSION_ID = null;
 var WRAPUP_CASE = {id: CASE_ID, title: `)
-//line views/case_detail.qtpl:658
+//line views/case_detail.qtpl:693
 	qw422016.N().S(notesJSONSafe(p.Case.Title))
-//line views/case_detail.qtpl:658
+//line views/case_detail.qtpl:693
 	qw422016.N().S(`, kind: '`)
-//line views/case_detail.qtpl:658
+//line views/case_detail.qtpl:693
 	qw422016.E().S(p.Case.Kind)
-//line views/case_detail.qtpl:658
+//line views/case_detail.qtpl:693
 	qw422016.N().S(`'};
+// SPA: snapshot wrap-up globals on page-leaving and restore on page-entered.
+// Using page-leaving captures in-page mutations (e.g. WRAPUP_CASE.title being
+// updated after a rename) so they survive a round-trip through the cache.
+(function() {
+    var snap = {
+        worktree: WRAPUP_WORKTREE,
+        sessionId: WRAPUP_SESSION_ID,
+        caseObj: WRAPUP_CASE,
+    };
+    function captureWrap() {
+        snap.worktree = WRAPUP_WORKTREE;
+        snap.sessionId = WRAPUP_SESSION_ID;
+        snap.caseObj = WRAPUP_CASE;
+    }
+    function restoreWrap() {
+        WRAPUP_WORKTREE = snap.worktree;
+        WRAPUP_SESSION_ID = snap.sessionId;
+        WRAPUP_CASE = snap.caseObj;
+    }
+    var container = document.currentScript && document.currentScript.closest('.page-container');
+    if (container) {
+        container.addEventListener('trellis:page-leaving', captureWrap);
+        container.addEventListener('trellis:page-entered', restoreWrap);
+    }
+})();
 </script>
 
 <!-- Wrap Up Modal -->
@@ -1270,224 +1330,224 @@ var WRAPUP_CASE = {id: CASE_ID, title: `)
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/case_detail.qtpl:762
+//line views/case_detail.qtpl:822
 	p.StreamFooter(qw422016)
-//line views/case_detail.qtpl:762
+//line views/case_detail.qtpl:822
 	qw422016.N().S(`
 `)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 }
 
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 func (p *CaseDetailPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	p.StreamRender(qw422016)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	qt422016.ReleaseWriter(qw422016)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 }
 
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 func (p *CaseDetailPage) Render() string {
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	p.WriteRender(qb422016)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	qs422016 := string(qb422016.B)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 	return qs422016
-//line views/case_detail.qtpl:763
+//line views/case_detail.qtpl:823
 }
 
-//line views/case_detail.qtpl:765
+//line views/case_detail.qtpl:825
 func streamrenderSummary(qw422016 *qt422016.Writer, s *cases.CaseSummary) {
-//line views/case_detail.qtpl:765
+//line views/case_detail.qtpl:825
 	qw422016.N().S(`
 `)
-//line views/case_detail.qtpl:766
+//line views/case_detail.qtpl:826
 	if s == nil {
-//line views/case_detail.qtpl:766
+//line views/case_detail.qtpl:826
 		return
-//line views/case_detail.qtpl:766
+//line views/case_detail.qtpl:826
 	}
-//line views/case_detail.qtpl:766
+//line views/case_detail.qtpl:826
 	qw422016.N().S(`
 <dl class="case-summary mb-0">
     `)
-//line views/case_detail.qtpl:768
+//line views/case_detail.qtpl:828
 	if s.Synopsis != "" {
-//line views/case_detail.qtpl:768
+//line views/case_detail.qtpl:828
 		qw422016.N().S(`
     <dt>Synopsis</dt>
     <dd data-field="synopsis">`)
-//line views/case_detail.qtpl:770
+//line views/case_detail.qtpl:830
 		qw422016.E().S(s.Synopsis)
-//line views/case_detail.qtpl:770
+//line views/case_detail.qtpl:830
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:771
+//line views/case_detail.qtpl:831
 	}
-//line views/case_detail.qtpl:771
+//line views/case_detail.qtpl:831
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:772
+//line views/case_detail.qtpl:832
 	if s.Symptoms != "" {
-//line views/case_detail.qtpl:772
+//line views/case_detail.qtpl:832
 		qw422016.N().S(`
     <dt>Symptoms</dt>
     <dd data-field="symptoms">`)
-//line views/case_detail.qtpl:774
+//line views/case_detail.qtpl:834
 		qw422016.E().S(s.Symptoms)
-//line views/case_detail.qtpl:774
+//line views/case_detail.qtpl:834
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:775
+//line views/case_detail.qtpl:835
 	}
-//line views/case_detail.qtpl:775
+//line views/case_detail.qtpl:835
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:776
+//line views/case_detail.qtpl:836
 	if s.RootCause != "" {
-//line views/case_detail.qtpl:776
+//line views/case_detail.qtpl:836
 		qw422016.N().S(`
     <dt>Root cause</dt>
     <dd data-field="root_cause">`)
-//line views/case_detail.qtpl:778
+//line views/case_detail.qtpl:838
 		qw422016.E().S(s.RootCause)
-//line views/case_detail.qtpl:778
+//line views/case_detail.qtpl:838
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:779
+//line views/case_detail.qtpl:839
 	}
-//line views/case_detail.qtpl:779
+//line views/case_detail.qtpl:839
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:780
+//line views/case_detail.qtpl:840
 	if s.Resolution != "" {
-//line views/case_detail.qtpl:780
+//line views/case_detail.qtpl:840
 		qw422016.N().S(`
     <dt>Resolution</dt>
     <dd data-field="resolution">`)
-//line views/case_detail.qtpl:782
+//line views/case_detail.qtpl:842
 		qw422016.E().S(s.Resolution)
-//line views/case_detail.qtpl:782
+//line views/case_detail.qtpl:842
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:783
+//line views/case_detail.qtpl:843
 	}
-//line views/case_detail.qtpl:783
+//line views/case_detail.qtpl:843
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:784
+//line views/case_detail.qtpl:844
 	if len(s.Components) > 0 {
-//line views/case_detail.qtpl:784
+//line views/case_detail.qtpl:844
 		qw422016.N().S(`
     <dt>Components</dt>
     <dd data-field="components">
         `)
-//line views/case_detail.qtpl:787
+//line views/case_detail.qtpl:847
 		for _, c := range s.Components {
-//line views/case_detail.qtpl:787
+//line views/case_detail.qtpl:847
 			qw422016.N().S(`<span class="badge bg-info me-1">`)
-//line views/case_detail.qtpl:787
+//line views/case_detail.qtpl:847
 			qw422016.E().S(c)
-//line views/case_detail.qtpl:787
+//line views/case_detail.qtpl:847
 			qw422016.N().S(`</span>`)
-//line views/case_detail.qtpl:787
+//line views/case_detail.qtpl:847
 		}
-//line views/case_detail.qtpl:787
+//line views/case_detail.qtpl:847
 		qw422016.N().S(`
     </dd>
     `)
-//line views/case_detail.qtpl:789
+//line views/case_detail.qtpl:849
 	}
-//line views/case_detail.qtpl:789
+//line views/case_detail.qtpl:849
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:790
+//line views/case_detail.qtpl:850
 	if len(s.Keywords) > 0 {
-//line views/case_detail.qtpl:790
+//line views/case_detail.qtpl:850
 		qw422016.N().S(`
     <dt>Keywords</dt>
     <dd data-field="keywords">
         `)
-//line views/case_detail.qtpl:793
+//line views/case_detail.qtpl:853
 		for _, k := range s.Keywords {
-//line views/case_detail.qtpl:793
+//line views/case_detail.qtpl:853
 			qw422016.N().S(`<span class="badge bg-secondary me-1">`)
-//line views/case_detail.qtpl:793
+//line views/case_detail.qtpl:853
 			qw422016.E().S(k)
-//line views/case_detail.qtpl:793
+//line views/case_detail.qtpl:853
 			qw422016.N().S(`</span>`)
-//line views/case_detail.qtpl:793
+//line views/case_detail.qtpl:853
 		}
-//line views/case_detail.qtpl:793
+//line views/case_detail.qtpl:853
 		qw422016.N().S(`
     </dd>
     `)
-//line views/case_detail.qtpl:795
+//line views/case_detail.qtpl:855
 	}
-//line views/case_detail.qtpl:795
+//line views/case_detail.qtpl:855
 	qw422016.N().S(`
 </dl>
 <div class="small text-muted mt-2">
     `)
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 	if s.Model != "" {
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 		qw422016.N().S(`Model: `)
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 		qw422016.E().S(s.Model)
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 		qw422016.N().S(`. `)
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 	}
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 	qw422016.N().S(`Generated `)
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 	qw422016.E().S(s.GeneratedAt.Format("2006-01-02 15:04"))
-//line views/case_detail.qtpl:798
+//line views/case_detail.qtpl:858
 	qw422016.N().S(`.
 </div>
 `)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 }
 
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 func writerenderSummary(qq422016 qtio422016.Writer, s *cases.CaseSummary) {
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	streamrenderSummary(qw422016, s)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	qt422016.ReleaseWriter(qw422016)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 }
 
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 func renderSummary(s *cases.CaseSummary) string {
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	writerenderSummary(qb422016, s)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	qs422016 := string(qb422016.B)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 	return qs422016
-//line views/case_detail.qtpl:800
+//line views/case_detail.qtpl:860
 }
 
 // firstLine returns the first non-empty line of s, used to render commit
 // messages compactly on the case detail page.
 //
-//line views/case_detail.qtpl:803
+//line views/case_detail.qtpl:863
 func firstLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)

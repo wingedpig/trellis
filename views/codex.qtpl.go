@@ -81,31 +81,32 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 <script>
 (function() {
 'use strict';
-window.CODEX_WORKTREE = '`)
-//line views/codex.qtpl:58
+// PAGE_* hold THIS session's values. window.CODEX_*, window.WRAPUP_*, and
+// the save-to-case window handlers are re-bound to these page-local values
+// on every trellis:page-entered; mutable wrap-up state is snapshotted on
+// page-leaving. Without this, the SPA cache restore would leave globals
+// pointing at whichever Codex session was most recently fresh-loaded.
+var PAGE_WORKTREE = '`)
+//line views/codex.qtpl:63
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:58
+//line views/codex.qtpl:63
 	qw422016.N().S(`';
-window.CODEX_SESSION = '`)
-//line views/codex.qtpl:59
+var PAGE_SESSION = '`)
+//line views/codex.qtpl:64
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:59
+//line views/codex.qtpl:64
 	qw422016.N().S(`';
-window.WRAPUP_AGENT = 'codex';
-window.WRAPUP_WORKTREE = window.CODEX_WORKTREE;
-window.WRAPUP_SESSION_ID = window.CODEX_SESSION;
-window.WRAPUP_WORKTREE_NAME_HUMANIZED = (window.CODEX_WORKTREE || '').split(/[-_]+/).map(function(w) {
+var PAGE_SESSION_CREATED = '`)
+//line views/codex.qtpl:65
+	qw422016.E().S(JSAttr(p.SessionCreatedAt))
+//line views/codex.qtpl:65
+	qw422016.N().S(`';
+var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
 }).join(' ');
-window.WRAPUP_SESSION_CREATED = '`)
-//line views/codex.qtpl:66
-	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:66
-	qw422016.N().S(`';
-window.WRAPUP_CASE = null;
 
-window.showCodexSaveToCaseModal = function showCodexSaveToCaseModal() {
-    fetch('/api/v1/cases/' + encodeURIComponent(window.CODEX_WORKTREE))
+function localShowCodexSaveToCaseModal() {
+    fetch('/api/v1/cases/' + encodeURIComponent(PAGE_WORKTREE))
     .then(r => r.json())
     .then(data => {
         const cases = data.data || data || [];
@@ -119,26 +120,26 @@ window.showCodexSaveToCaseModal = function showCodexSaveToCaseModal() {
         });
         select.innerHTML += '<option value="__new__">+ Create new case...</option>';
         document.getElementById('codexSaveToCaseNewFields').style.display = 'none';
-        const modal = new bootstrap.Modal(document.getElementById('codexSaveToCaseModal'));
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('codexSaveToCaseModal'));
         modal.show();
     })
     .catch(err => alert('Failed to load cases: ' + err));
-};
+}
 
-window.onCodexSaveToCaseSelectChange = function() {
+function localOnCodexSaveToCaseSelectChange() {
     const val = document.getElementById('codexSaveToCaseSelect').value;
     document.getElementById('codexSaveToCaseNewFields').style.display = (val === '__new__') ? 'block' : 'none';
-};
+}
 
-window.codexSaveToCaseConfirm = function() {
+function localCodexSaveToCaseConfirm() {
     const selectVal = document.getElementById('codexSaveToCaseSelect').value;
     const title = document.getElementById('codexSaveToCaseTitle').value.trim();
 
     function doSave(caseId) {
-        fetch('/api/v1/cases/' + encodeURIComponent(window.CODEX_WORKTREE) + '/' + encodeURIComponent(caseId) + '/codex-transcript', {
+        fetch('/api/v1/cases/' + encodeURIComponent(PAGE_WORKTREE) + '/' + encodeURIComponent(caseId) + '/codex-transcript', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({session_id: window.CODEX_SESSION, title: title || ''})
+            body: JSON.stringify({session_id: PAGE_SESSION, title: title || ''})
         })
         .then(r => {
             if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Save failed'); });
@@ -155,7 +156,7 @@ window.codexSaveToCaseConfirm = function() {
         const newTitle = document.getElementById('codexSaveToCaseNewTitle').value.trim();
         const newKind = document.getElementById('codexSaveToCaseNewKind').value;
         if (!newTitle) { alert('Title is required'); return; }
-        fetch('/api/v1/cases/' + encodeURIComponent(window.CODEX_WORKTREE), {
+        fetch('/api/v1/cases/' + encodeURIComponent(PAGE_WORKTREE), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({title: newTitle, kind: newKind})
@@ -174,7 +175,31 @@ window.codexSaveToCaseConfirm = function() {
     } else {
         alert('Please select a case');
     }
-};
+}
+
+var snap = { caseObj: null };
+function captureWrap() {
+    snap.caseObj = window.WRAPUP_CASE;
+}
+function bind() {
+    window.CODEX_WORKTREE = PAGE_WORKTREE;
+    window.CODEX_SESSION = PAGE_SESSION;
+    window.WRAPUP_AGENT = 'codex';
+    window.WRAPUP_WORKTREE = PAGE_WORKTREE;
+    window.WRAPUP_SESSION_ID = PAGE_SESSION;
+    window.WRAPUP_SESSION_CREATED = PAGE_SESSION_CREATED;
+    window.WRAPUP_WORKTREE_NAME_HUMANIZED = PAGE_WORKTREE_NAME_HUMANIZED;
+    window.WRAPUP_CASE = snap.caseObj;
+    window.showCodexSaveToCaseModal = localShowCodexSaveToCaseModal;
+    window.onCodexSaveToCaseSelectChange = localOnCodexSaveToCaseSelectChange;
+    window.codexSaveToCaseConfirm = localCodexSaveToCaseConfirm;
+}
+bind();
+var container = document.currentScript && document.currentScript.closest('.page-container');
+if (container) {
+    container.addEventListener('trellis:page-leaving', captureWrap);
+    container.addEventListener('trellis:page-entered', bind);
+}
 })();
 </script>
 
@@ -368,36 +393,36 @@ window.codexSaveToCaseConfirm = function() {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:332
+//line views/codex.qtpl:357
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:332
+//line views/codex.qtpl:357
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 }
 
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 }
 
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 	return qs422016
-//line views/codex.qtpl:333
+//line views/codex.qtpl:358
 }
