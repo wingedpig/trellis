@@ -5,22 +5,86 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wingedpig/trellis/internal/api/middleware"
 	"github.com/wingedpig/trellis/internal/events"
 )
 
-var upgrader = websocket.Upgrader{
+// NewUpgrader builds a *websocket.Upgrader whose CheckOrigin enforces a
+// per-router policy: the Origin header must match (scheme and all) either a
+// loopback origin whose host equals the request's Host header or an explicit
+// entry in cfg.AllowedOrigins. The Host header is also re-validated as
+// DNS-rebinding defense (unless cfg.PermitAnyHost is set, mirroring the
+// CORS middleware); the CORS middleware ahead of this would normally have
+// caught a bad Host, but the WS upgrader keeps a belt-and-braces check in
+// case ordering or middleware composition changes.
+//
+// The policy is captured by the closure, so two routers can carry different
+// policies without stepping on each other.
+func NewUpgrader(cfg middleware.CORSConfig) *websocket.Upgrader {
+	normalized := middleware.NormalizeOrigins(cfg.AllowedOrigins)
+	permitAnyHost := cfg.PermitAnyHost
+	return &websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			if !permitAnyHost && !middleware.IsAllowedHost(r, normalized) {
+				log.Printf("WebSocket upgrade rejected: host %q not in allow-list", r.Host)
+				return false
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return false
+			}
+			if middleware.IsAllowedOrigin(r, origin, normalized) {
+				return true
+			}
+			if permitAnyHost && middleware.IsSameOriginRequest(r, origin) {
+				return true
+			}
+			log.Printf("WebSocket upgrade rejected: origin %q does not match host %q", origin, r.Host)
+			return false
+		},
+	}
+}
+
+// defaultUpgrader is the fallback used by handlers that were constructed
+// without an explicit upgrader (e.g. unit tests that exercise non-WS methods).
+// It fails closed: every CheckOrigin returns false, so attempting an upgrade
+// without a configured policy produces a 403 rather than a wide-open accept.
+var defaultUpgrader = &websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin:     func(r *http.Request) bool { return false },
+}
+
+// upgraderHolder is embedded by handlers that need to perform WebSocket
+// upgrades. Router constructors call SetUpgrader once with a per-router
+// upgrader; if SetUpgrader is never called, WebSocket methods use
+// defaultUpgrader (fail-closed).
+type upgraderHolder struct {
+	upgrader *websocket.Upgrader
+}
+
+// SetUpgrader attaches a *websocket.Upgrader to the handler. Safe to call
+// once at router construction time.
+func (h *upgraderHolder) SetUpgrader(u *websocket.Upgrader) { h.upgrader = u }
+
+func (h *upgraderHolder) ws() *websocket.Upgrader {
+	if h.upgrader != nil {
+		return h.upgrader
+	}
+	return defaultUpgrader
 }
 
 // EventHandler handles event-related API requests.
 type EventHandler struct {
+	upgraderHolder
 	bus events.EventBus
 }
 
@@ -77,7 +141,7 @@ func (h *EventHandler) History(w http.ResponseWriter, r *http.Request) {
 
 // WebSocket handles the WebSocket connection for real-time events.
 func (h *EventHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

@@ -40,6 +40,20 @@ type LogSource interface {
 	ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error
 }
 
+// ServerSideGrep is an optional capability for LogSources whose ReadRange
+// already filters lines against the grep pattern (and supplies -B/-A context)
+// at the server. Sources that implement this interface and return true are
+// trusted by the viewer to have done the filtering; the viewer skips its own
+// fallback client-side grep so context lines from -B/-A are preserved.
+//
+// Sources that ignore the grep argument (FileSource, DockerSource,
+// KubernetesSource, CommandSource, ServiceSource) should NOT implement this
+// interface, so the viewer applies grep client-side instead of silently
+// returning the full time-range result set.
+type ServerSideGrep interface {
+	HandlesGrep() bool
+}
+
 // SourceStatus represents the connection status of a log source.
 type SourceStatus struct {
 	Connected   bool      `json:"connected"`

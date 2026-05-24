@@ -19,6 +19,7 @@ import (
 
 	"github.com/wingedpig/trellis/internal/api"
 	"github.com/wingedpig/trellis/internal/api/handlers"
+	"github.com/wingedpig/trellis/internal/api/middleware"
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/codex"
@@ -691,13 +692,38 @@ func (app *App) Initialize(ctx context.Context) error {
 		}
 	}
 
-	// Initialize API server
+	// Initialize API server. PublicURL is folded into the allow-list so the
+	// CORS/WS layer accepts requests from the externally-reachable hostname
+	// without forcing the operator to list it twice. When the operator binds
+	// to a wildcard or non-loopback address they've opted into wide network
+	// access, so we relax the DNS-rebinding Host gate — Origin-based CORS
+	// still applies. For a specific (non-wildcard, non-loopback) bind we
+	// also auto-add that exact host:port as an allowed origin so a browser
+	// loading the UI directly from that address gets an Origin match.
+	allowedOrigins := cfg.Server.AllowedOrigins
+	if pu := strings.TrimSpace(cfg.Server.PublicURL); pu != "" {
+		allowedOrigins = append([]string{pu}, allowedOrigins...)
+	}
+	bindHost := strings.TrimSpace(cfg.Server.Host)
+	loopbackBind := middleware.IsLoopbackHost(bindHost)
+	wildcardBind := middleware.IsWildcardBindHost(bindHost)
+	permitAnyHost := !loopbackBind
+	if !loopbackBind && !wildcardBind {
+		scheme := "http"
+		if cfg.Server.TLSCert != "" && cfg.Server.TLSKey != "" {
+			scheme = "https"
+		}
+		allowedOrigins = append(allowedOrigins,
+			fmt.Sprintf("%s://%s:%d", scheme, bindHost, cfg.Server.Port))
+	}
 	app.apiServer = api.NewServer(
 		api.ServerConfig{
-			Host:    cfg.Server.Host,
-			Port:    cfg.Server.Port,
-			TLSCert: cfg.Server.TLSCert,
-			TLSKey:  cfg.Server.TLSKey,
+			Host:           cfg.Server.Host,
+			Port:           cfg.Server.Port,
+			TLSCert:        cfg.Server.TLSCert,
+			TLSKey:         cfg.Server.TLSKey,
+			AllowedOrigins: allowedOrigins,
+			PermitAnyHost:  permitAnyHost,
 		},
 		api.Dependencies{
 			ServiceManager:  app.serviceManager,

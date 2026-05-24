@@ -23,6 +23,7 @@ import (
 // forwards it to every connected role=main client (regular trellis tabs) so
 // the main window does the actual navigation.
 type InboxHandler struct {
+	upgraderHolder
 	agg *inbox.Aggregator
 	bus events.EventBus
 
@@ -79,7 +80,7 @@ func (h *InboxHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
 // serveInbox forwards session.state_changed events to the inbox window and
 // fans incoming navigate commands out to all connected main-window clients.
 func (h *InboxHandler) serveInbox(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
@@ -194,7 +195,7 @@ func (h *InboxHandler) dispatchNavigate(path string, writeJSON func(inboxServerM
 // can push navigate commands to it. Reads are drained for close detection
 // and ping/pong; the page never sends application messages over this socket.
 func (h *InboxHandler) serveMain(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

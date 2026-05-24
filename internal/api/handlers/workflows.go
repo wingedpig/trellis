@@ -20,6 +20,7 @@ import (
 
 // WorkflowHandler handles workflow-related API requests.
 type WorkflowHandler struct {
+	upgraderHolder
 	runner      workflow.Runner
 	worktreeMgr worktree.Manager
 }
@@ -139,7 +140,7 @@ func (h *WorkflowHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upgrade to WebSocket
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Workflow stream: upgrade failed: %v", err)
 		return

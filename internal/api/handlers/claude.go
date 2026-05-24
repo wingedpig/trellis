@@ -29,6 +29,7 @@ import (
 
 // ClaudeHandler handles Claude Code WebSocket connections.
 type ClaudeHandler struct {
+	upgraderHolder
 	manager     *claude.Manager
 	codexMgr    *codex.Manager // for cross-agent operations like wrap-up capturing related codex sessions
 	worktreeMgr worktree.Manager
@@ -102,7 +103,7 @@ func (h *ClaudeHandler) WebSocketByWorktree(w http.ResponseWriter, r *http.Reque
 
 // serveSession runs the WebSocket loop for a given session.
 func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, session *claude.Session) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

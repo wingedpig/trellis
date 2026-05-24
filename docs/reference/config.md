@@ -292,6 +292,10 @@ server: {
   port: 1234              // HTTP port
   tls_cert: "path"        // TLS certificate (for HTTPS)
   tls_key: "path"         // TLS private key
+  public_url: "https://trellis.example.com"  // External URL clients use (folds into allowed_origins)
+  allowed_origins: [      // Extra cross-origin browser origins permitted
+    "https://review.example.com"
+  ]
 }
 ```
 
@@ -301,6 +305,10 @@ server: {
 | `port` | `1234` | HTTP server port |
 | `tls_cert` | (none) | Path to TLS certificate for HTTPS |
 | `tls_key` | (none) | Path to TLS private key |
+| `public_url` | (none) | External URL the UI is reachable at (e.g., behind a reverse proxy). Automatically permitted as a browser origin. |
+| `allowed_origins` | `[]` | Additional cross-origin browser origins permitted to call the API and open WebSockets. Loopback (`localhost`, `127.0.0.1`, `::1`) is always allowed. |
+
+When `host` is loopback-only the server runs in DNS-rebinding-safe mode: requests are rejected unless the Host header is loopback or appears in `allowed_origins`/`public_url`. Binding to `0.0.0.0` (or any non-loopback address) is treated as opt-in to wide network access — the Host gate is relaxed, but Origin-based CORS still blocks browser-driven cross-origin attacks. List your external hostname in `public_url` (or `allowed_origins`) so a browser loading the UI from that address gets an Origin match.
 
 ### proxy
 

@@ -58,6 +58,8 @@ Or create `trellis.hjson` manually in your project root:
 
 ```hjson
 {
+  version: "1.0"
+
   project: {
     name: "myapp"
   }

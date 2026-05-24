@@ -40,6 +40,17 @@ type ServerConfig struct {
 	Port    int
 	TLSCert string // Path to TLS certificate file
 	TLSKey  string // Path to TLS private key file
+	// AllowedOrigins is the list of cross-origin browser origins permitted to
+	// reach this server. Loopback origins are always allowed. Set this when
+	// the server is reachable at a different origin than the page driving it
+	// (e.g., a configured public_url or a reverse-proxy front end).
+	AllowedOrigins []string
+	// PermitAnyHost disables the Host-header allow-list check (DNS-rebinding
+	// gate). Callers should set this when the bind address is wildcard or
+	// non-loopback — the operator has opted into wide network access and we
+	// can't enumerate every hostname clients might use. Origin-based CORS
+	// continues to apply.
+	PermitAnyHost bool
 }
 
 // Dependencies holds all dependencies for API handlers.
@@ -62,16 +73,26 @@ type Dependencies struct {
 	Notifications   handlers.NotificationConfig  // Browser notification settings
 	Links           []handlers.LinkConfig        // Links for terminal picker
 	Version         string                       // Application version string
+	AllowedOrigins  []string                     // Cross-origin browser origins permitted to reach the API
+	PermitAnyHost   bool                         // Skip Host-header allow-list (set when bind is non-loopback)
 }
 
 // NewRouter creates a new API router.
 func NewRouter(deps Dependencies) *mux.Router {
 	r := mux.NewRouter()
 
-	// Apply global middleware
+	corsCfg := middleware.CORSConfig{
+		AllowedOrigins: deps.AllowedOrigins,
+		PermitAnyHost:  deps.PermitAnyHost,
+	}
+	// Build a per-router WebSocket upgrader so two routers (e.g., in tests)
+	// can carry different allow-lists without overwriting each other's policy.
+	ws := handlers.NewUpgrader(corsCfg)
+
+	// Apply global middleware.
 	r.Use(middleware.Logging)
 	r.Use(middleware.Recovery)
-	r.Use(middleware.CORS)
+	r.Use(middleware.CORS(corsCfg))
 	r.Use(version.Middleware)
 
 	// Static file serving from embedded filesystem
@@ -115,6 +136,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 
 	// Workflow handlers
 	workflowHandler := handlers.NewWorkflowHandler(deps.WorkflowRunner, deps.WorktreeManager)
+	workflowHandler.SetUpgrader(ws)
 	api.HandleFunc("/workflows", workflowHandler.List).Methods("GET")
 	api.HandleFunc("/workflows/{id}", workflowHandler.Get).Methods("GET")
 	api.HandleFunc("/workflows/{id}/run", workflowHandler.Run).Methods("POST")
@@ -123,6 +145,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 
 	// Event handlers
 	eventHandler := handlers.NewEventHandler(deps.EventBus)
+	eventHandler.SetUpgrader(ws)
 	api.HandleFunc("/events", eventHandler.History).Methods("GET")
 	api.HandleFunc("/events/ws", eventHandler.WebSocket).Methods("GET")
 
@@ -134,18 +157,22 @@ func NewRouter(deps Dependencies) *mux.Router {
 	// real-time state, and routing navigate commands to the main window).
 	if deps.InboxAggregator != nil {
 		inboxHandler := handlers.NewInboxHandler(deps.InboxAggregator, deps.EventBus)
+		inboxHandler.SetUpgrader(ws)
 		api.HandleFunc("/inbox/sessions", inboxHandler.Sessions).Methods("GET")
 		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
 	}
 
 	// Pair handlers (paired review loops; see PAIRING_SPEC.md)
 	if deps.PairRegistry != nil {
-		registerPairRoutes(api, handlers.NewPairHandler(deps.PairRegistry, deps.EventBus))
+		pairHandler := handlers.NewPairHandler(deps.PairRegistry, deps.EventBus)
+		pairHandler.SetUpgrader(ws)
+		registerPairRoutes(api, pairHandler)
 	}
 
 	// Log viewer handlers
 	if deps.LogManager != nil {
 		logHandler := handlers.NewLogHandler(deps.LogManager)
+		logHandler.SetUpgrader(ws)
 		api.HandleFunc("/logs", logHandler.List).Methods("GET")
 		api.HandleFunc("/logs/{name}", logHandler.Get).Methods("GET")
 		api.HandleFunc("/logs/{name}/entries", logHandler.GetEntries).Methods("GET")
@@ -242,10 +269,19 @@ func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
 func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.TerminalHandler) *mux.Router {
 	r := mux.NewRouter()
 
-	// Apply global middleware
+	corsCfg := middleware.CORSConfig{
+		AllowedOrigins: deps.AllowedOrigins,
+		PermitAnyHost:  deps.PermitAnyHost,
+	}
+	// Build a per-router WebSocket upgrader so two routers (e.g., in tests)
+	// can carry different allow-lists without overwriting each other's policy.
+	ws := handlers.NewUpgrader(corsCfg)
+	terminalHandler.SetUpgrader(ws)
+
+	// Apply global middleware.
 	r.Use(middleware.Logging)
 	r.Use(middleware.Recovery)
-	r.Use(middleware.CORS)
+	r.Use(middleware.CORS(corsCfg))
 	r.Use(version.Middleware)
 
 	// Static file serving from embedded filesystem
@@ -289,6 +325,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 
 	// Workflow handlers
 	workflowHandler := handlers.NewWorkflowHandler(deps.WorkflowRunner, deps.WorktreeManager)
+	workflowHandler.SetUpgrader(ws)
 	api.HandleFunc("/workflows", workflowHandler.List).Methods("GET")
 	api.HandleFunc("/workflows/{id}", workflowHandler.Get).Methods("GET")
 	api.HandleFunc("/workflows/{id}/run", workflowHandler.Run).Methods("POST")
@@ -297,6 +334,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 
 	// Event handlers
 	eventHandler := handlers.NewEventHandler(deps.EventBus)
+	eventHandler.SetUpgrader(ws)
 	api.HandleFunc("/events", eventHandler.History).Methods("GET")
 	api.HandleFunc("/events/ws", eventHandler.WebSocket).Methods("GET")
 
@@ -308,13 +346,16 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// real-time state, and routing navigate commands to the main window).
 	if deps.InboxAggregator != nil {
 		inboxHandler := handlers.NewInboxHandler(deps.InboxAggregator, deps.EventBus)
+		inboxHandler.SetUpgrader(ws)
 		api.HandleFunc("/inbox/sessions", inboxHandler.Sessions).Methods("GET")
 		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
 	}
 
 	// Pair handlers (paired review loops; see PAIRING_SPEC.md)
 	if deps.PairRegistry != nil {
-		registerPairRoutes(api, handlers.NewPairHandler(deps.PairRegistry, deps.EventBus))
+		pairHandler := handlers.NewPairHandler(deps.PairRegistry, deps.EventBus)
+		pairHandler.SetUpgrader(ws)
+		registerPairRoutes(api, pairHandler)
 	}
 
 	// Terminal handlers (using the provided handler)
@@ -366,6 +407,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// Claude Code handlers
 	if deps.ClaudeManager != nil {
 		claudeHandler := handlers.NewClaudeHandler(deps.ClaudeManager, deps.CodexManager, deps.WorktreeManager, deps.CaseManager, deps.TraceManager, deps.EventBus)
+		claudeHandler.SetUpgrader(ws)
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.ListSessions).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.CreateSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}", claudeHandler.RenameSessionAPI).Methods("PATCH")
@@ -392,6 +434,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// Codex handlers (parallel to Claude)
 	if deps.CodexManager != nil {
 		codexHandler := handlers.NewCodexHandler(deps.CodexManager, deps.ClaudeManager, deps.WorktreeManager, deps.CaseManager, deps.TraceManager, deps.EventBus)
+		codexHandler.SetUpgrader(ws)
 		api.HandleFunc("/codex/{worktree}/sessions", codexHandler.ListSessions).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/sessions", codexHandler.CreateSessionAPI).Methods("POST")
 		api.HandleFunc("/codex/sessions/{session}", codexHandler.RenameSessionAPI).Methods("PATCH")
@@ -418,6 +461,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	// Log viewer handlers
 	if deps.LogManager != nil {
 		logHandler := handlers.NewLogHandler(deps.LogManager)
+		logHandler.SetUpgrader(ws)
 		api.HandleFunc("/logs", logHandler.List).Methods("GET")
 		api.HandleFunc("/logs/{name}", logHandler.Get).Methods("GET")
 		api.HandleFunc("/logs/{name}/entries", logHandler.GetEntries).Methods("GET")
@@ -468,6 +512,12 @@ type Server struct {
 
 // NewServer creates a new API server.
 func NewServer(cfg ServerConfig, deps Dependencies) *Server {
+	if deps.AllowedOrigins == nil {
+		deps.AllowedOrigins = cfg.AllowedOrigins
+	}
+	if !deps.PermitAnyHost {
+		deps.PermitAnyHost = cfg.PermitAnyHost
+	}
 	terminalHandler := handlers.NewTerminalHandler(deps.TerminalManager, deps.WorktreeManager)
 	return &Server{
 		router:          NewRouterWithTerminalHandler(deps, terminalHandler),

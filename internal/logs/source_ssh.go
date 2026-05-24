@@ -414,6 +414,10 @@ func (s *SSHSource) SeekToTime(ctx context.Context, target time.Time, parseTS fu
 	return BackwardCursor{FileIndex: 0, Offset: off, FilePath: f.Path}, nil
 }
 
+// HandlesGrep reports that SSHSource performs grep filtering server-side as
+// part of ReadRange, so the viewer should not double-filter the line stream.
+func (s *SSHSource) HandlesGrep() bool { return true }
+
 // ReadRange reads log lines from a time range in rotated files.
 func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
 	log.Printf("SSH ReadRange: start=%v end=%v grep=%q before=%d after=%d", start, end, grep, grepBefore, grepAfter)
@@ -580,6 +584,15 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 	// If only user: grep [-B N] [-A N] 'user' file
 	// If neither: cat file
 
+	// All values that reach the remote shell are passed through shellQuote so
+	// that a single quote in userGrep (or unexpected metacharacters in a file
+	// path) cannot break out and execute arbitrary commands on the host.
+	// Patterns are followed by `--` so a leading `-` in the pattern is treated
+	// as the pattern rather than as a grep option.
+	quotedPath := shellQuote(file.Path)
+	quotedTimestamp := shellQuote(timestampPattern)
+	quotedUserGrep := shellQuote(userGrep)
+
 	if timestampPattern == "" && userGrep == "" {
 		// No pattern - read entire file (fallback)
 		if file.Compressed {
@@ -590,9 +603,9 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 			if decompressCmd == "" {
 				return fmt.Errorf("no decompress command for %s", file.Path)
 			}
-			remoteCmd = fmt.Sprintf("%s %s", decompressCmd, file.Path)
+			remoteCmd = fmt.Sprintf("%s %s", decompressCmd, quotedPath)
 		} else {
-			remoteCmd = fmt.Sprintf("cat %s", file.Path)
+			remoteCmd = fmt.Sprintf("cat %s", quotedPath)
 		}
 	} else {
 		// Build grep command with one or both patterns
@@ -607,21 +620,21 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 			// Decompress and pipe through grep(s)
 			// Use -E for extended regex (needed for alternation patterns like (a|b|c))
 			if timestampPattern != "" && userGrep != "" {
-				remoteCmd = fmt.Sprintf("%s %s | grep -E '%s' | grep -E%s '%s' || true", decompressCmd, file.Path, timestampPattern, contextFlags, userGrep)
+				remoteCmd = fmt.Sprintf("%s %s | grep -E -- %s | grep -E%s -- %s || true", decompressCmd, quotedPath, quotedTimestamp, contextFlags, quotedUserGrep)
 			} else if timestampPattern != "" {
-				remoteCmd = fmt.Sprintf("%s %s | grep -E '%s' || true", decompressCmd, file.Path, timestampPattern)
+				remoteCmd = fmt.Sprintf("%s %s | grep -E -- %s || true", decompressCmd, quotedPath, quotedTimestamp)
 			} else {
-				remoteCmd = fmt.Sprintf("%s %s | grep -E%s '%s' || true", decompressCmd, file.Path, contextFlags, userGrep)
+				remoteCmd = fmt.Sprintf("%s %s | grep -E%s -- %s || true", decompressCmd, quotedPath, contextFlags, quotedUserGrep)
 			}
 		} else {
 			// Uncompressed file - use grep directly
 			// Use -E for extended regex (needed for alternation patterns like (a|b|c))
 			if timestampPattern != "" && userGrep != "" {
-				remoteCmd = fmt.Sprintf("grep -E '%s' %s | grep -E%s '%s' || true", timestampPattern, file.Path, contextFlags, userGrep)
+				remoteCmd = fmt.Sprintf("grep -E -- %s %s | grep -E%s -- %s || true", quotedTimestamp, quotedPath, contextFlags, quotedUserGrep)
 			} else if timestampPattern != "" {
-				remoteCmd = fmt.Sprintf("grep -E '%s' %s || true", timestampPattern, file.Path)
+				remoteCmd = fmt.Sprintf("grep -E -- %s %s || true", quotedTimestamp, quotedPath)
 			} else {
-				remoteCmd = fmt.Sprintf("grep -E%s '%s' %s || true", contextFlags, userGrep, file.Path)
+				remoteCmd = fmt.Sprintf("grep -E%s -- %s %s || true", contextFlags, quotedUserGrep, quotedPath)
 			}
 		}
 	}

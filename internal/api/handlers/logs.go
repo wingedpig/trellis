@@ -99,6 +99,7 @@ const ErrLogViewerError = "LOG_VIEWER_ERROR"
 
 // LogHandler handles log viewer API requests.
 type LogHandler struct {
+	upgraderHolder
 	manager *logs.Manager
 }
 
@@ -446,7 +447,7 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upgrade to WebSocket
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Log stream: upgrade failed: %v", err)
 		return

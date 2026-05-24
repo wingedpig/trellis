@@ -208,19 +208,41 @@ func (m *RealManager) KillSession(ctx context.Context, worktree string) error {
 	return m.tmux.KillSession(ctx, session)
 }
 
-// sanitizeForPath replaces characters that are unsafe for filesystem paths.
+// SanitizeForPath is the exported form of sanitizeForPath, for use by callers
+// outside this package that need to build matching FIFO paths.
+func SanitizeForPath(s string) string { return sanitizeForPath(s) }
+
+// ShellQuotePath is the exported form of shellQuotePath.
+func ShellQuotePath(s string) string { return shellQuotePath(s) }
+
+// sanitizeForPath reduces a string to a strict filename-safe form: only
+// [A-Za-z0-9._-] survives; everything else (including spaces and shell
+// metacharacters like ;, ', $, `, ", \, |, &, <, >, *, ?, /) becomes an
+// underscore. This is used to build pipe FIFO paths under /tmp and must
+// produce a value that is safe both as a filename and as a shell-word
+// (combined with shellQuotePath at the consumer for defense in depth).
 func sanitizeForPath(s string) string {
-	// Replace slashes, spaces, and other problematic characters with underscores
 	result := make([]byte, len(s))
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c == '/' || c == ' ' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|' {
-			result[i] = '_'
-		} else {
+		switch {
+		case c >= 'A' && c <= 'Z',
+			c >= 'a' && c <= 'z',
+			c >= '0' && c <= '9',
+			c == '.', c == '_', c == '-':
 			result[i] = c
+		default:
+			result[i] = '_'
 		}
 	}
 	return string(result)
+}
+
+// shellQuotePath wraps a path in single quotes for safe use inside a shell
+// command string. Single quotes inside the path are escaped using the
+// standard '\'' close/escape/reopen sequence.
+func shellQuotePath(p string) string {
+	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }
 
 // AttachReader attaches to a terminal and returns a reader for output.

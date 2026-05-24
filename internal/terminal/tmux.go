@@ -158,9 +158,13 @@ func (e *RealTmuxExecutor) SendText(ctx context.Context, target string, text str
 	return pasteCmd.Run()
 }
 
-// StartPipePane starts pipe-pane for output streaming.
+// StartPipePane starts pipe-pane for output streaming. The pipe-pane shell
+// command runs under the user's login shell on the local machine, so pipePath
+// is shell-quoted to prevent metacharacters in the path (or in any name
+// component that leaked through sanitization) from being interpreted by the
+// shell.
 func (e *RealTmuxExecutor) StartPipePane(ctx context.Context, target, pipePath string) error {
-	pipeCmd := fmt.Sprintf("cat >> %s", pipePath)
+	pipeCmd := fmt.Sprintf("cat >> %s", shellQuotePath(pipePath))
 	cmd := exec.CommandContext(ctx, "tmux", "pipe-pane", "-t", target, "-o", pipeCmd)
 	return cmd.Run()
 }

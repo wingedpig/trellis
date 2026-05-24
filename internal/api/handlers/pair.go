@@ -19,6 +19,7 @@ import (
 
 // PairHandler serves the paired-review-loop API (PAIRING_SPEC §9).
 type PairHandler struct {
+	upgraderHolder
 	reg *pair.Registry
 	bus events.EventBus
 }
@@ -274,7 +275,7 @@ func (h *PairHandler) resolve(w http.ResponseWriter, r *http.Request) *pair.Pair
 //
 // No client-to-server messages are accepted; reads are drained for keepalive.
 func (h *PairHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

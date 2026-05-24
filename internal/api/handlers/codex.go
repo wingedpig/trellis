@@ -31,6 +31,7 @@ import (
 // app-server protocol uses thread/turn/item events rather than Claude's
 // NDJSON content blocks.
 type CodexHandler struct {
+	upgraderHolder
 	manager     *codex.Manager
 	claudeMgr   *claude.Manager // for cross-agent operations like wrap-up capturing related claude sessions
 	worktreeMgr worktree.Manager
@@ -94,7 +95,7 @@ func (h *CodexHandler) WebSocketByWorktree(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, session *codex.Session) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

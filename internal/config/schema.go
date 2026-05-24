@@ -63,6 +63,12 @@ type ServerConfig struct {
 	TLSCert   string `json:"tls_cert"`   // Path to TLS certificate file (enables HTTPS if both cert and key set)
 	TLSKey    string `json:"tls_key"`    // Path to TLS private key file
 	PublicURL string `json:"public_url"` // Externally reachable URL clients should use (overrides host/port for trellis-ctl and TRELLIS_API)
+	// AllowedOrigins is the explicit allow list of cross-origin browser origins
+	// (scheme://host[:port]) permitted to talk to the API and open WebSockets.
+	// Same-origin requests are always allowed; set this only when the UI is
+	// served from a different origin than the API (for example, when a reverse
+	// proxy fronts the API on a separate hostname).
+	AllowedOrigins []string `json:"allowed_origins"`
 }
 
 // ProxyListenerConfig configures a reverse proxy listener.

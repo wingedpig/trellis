@@ -133,22 +133,33 @@ func TestUIPages(t *testing.T) {
 	}
 }
 
-// TestCORS tests that CORS headers are set correctly.
+// TestCORS verifies the same-origin policy enforced by the CORS middleware:
+// a same-origin Origin header is echoed back, a cross-origin one is rejected.
 func TestCORS(t *testing.T) {
 	deps := createTestDependencies(t)
 	server := httptest.NewServer(api.NewRouter(deps))
 	defer server.Close()
 
-	// Make GET request with Origin header
+	// Same-origin: server.URL itself is the page origin.
 	req, _ := http.NewRequest("GET", server.URL+"/api/v1/services", nil)
-	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Origin", server.URL)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	// CORS middleware should set Access-Control-Allow-Origin
-	assert.NotEmpty(t, resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, server.URL, resp.Header.Get("Access-Control-Allow-Origin"))
 	resp.Body.Close()
+
+	// Cross-origin: a foreign page must be denied before the handler runs,
+	// not merely have its response header stripped (a CORS-simple POST would
+	// otherwise still trigger side effects).
+	req2, _ := http.NewRequest("POST", server.URL+"/api/v1/services/foo/start", nil)
+	req2.Header.Set("Origin", "http://evil.example.com")
+	resp2, err := http.DefaultClient.Do(req2)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusForbidden, resp2.StatusCode)
+	assert.Empty(t, resp2.Header.Get("Access-Control-Allow-Origin"))
+	resp2.Body.Close()
 }
 
 // TestServiceLogs tests the service logs API.

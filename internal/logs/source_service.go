@@ -78,6 +78,12 @@ func (s *ServiceSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, er
 	return nil, nil
 }
 
+// HandlesGrep reports that ServiceSource filters grep server-side as part of
+// ReadRange (with a literal-string fallback for invalid regexes), so the
+// viewer should not recompile and re-apply the pattern client-side — doing so
+// would break literal searches whose text isn't a valid regex.
+func (s *ServiceSource) HandlesGrep() bool { return true }
+
 // ReadRange reads log lines from the service's in-memory buffer.
 // It retrieves all lines from the buffer and sends them through the channel,
 // optionally filtering by grep pattern. Time filtering is handled by the

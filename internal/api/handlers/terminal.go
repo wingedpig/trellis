@@ -44,6 +44,7 @@ type terminalMessage struct {
 
 // TerminalHandler handles terminal-related API requests.
 type TerminalHandler struct {
+	upgraderHolder
 	mgr       terminal.Manager
 	worktrees worktree.Manager
 	mu        sync.Mutex
@@ -124,7 +125,7 @@ func (h *TerminalHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upgrade to WebSocket
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.ws().Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Terminal WebSocket: upgrade failed: %v", err)
 		return
@@ -474,7 +475,13 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 	// NOTE: tmux pipe-pane only supports one output destination per pane, so
 	// a new connection will take over streaming from any existing connection.
 	// Multiple viewers of the same pane are not supported.
-	pipeName := fmt.Sprintf("/tmp/trellis-pipe-%s-%s-%d.fifo", terminal.ToTmuxSessionName(session), window, time.Now().UnixNano())
+	// Both name components are passed through the terminal sanitizer to ensure
+	// only filename-safe characters reach the shell command below; without
+	// this, a crafted window name could break out of the cat >> ... command.
+	pipeName := fmt.Sprintf("/tmp/trellis-pipe-%s-%s-%d.fifo",
+		terminal.SanitizeForPath(terminal.ToTmuxSessionName(session)),
+		terminal.SanitizeForPath(window),
+		time.Now().UnixNano())
 
 	// Stop any existing pipe-pane (takes over streaming from previous client)
 	exec.Command("tmux", "pipe-pane", "-t", target, "").Run()
@@ -491,9 +498,11 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 	defer exec.Command("rm", "-f", pipeName).Run()
 	defer exec.Command("tmux", "pipe-pane", "-t", target, "").Run()
 
-	// Start pipe-pane to capture output (use cat like runner does)
-	// Quote pipeName to handle any shell-sensitive characters in session/window names
-	pipeCmd := fmt.Sprintf("cat >> '%s'", pipeName)
+	// Start pipe-pane to capture output (use cat like runner does).
+	// Shell-quote the pipe path: it has been sanitized above, but defense in
+	// depth — a future change that loosens the sanitizer must not become a
+	// shell injection.
+	pipeCmd := fmt.Sprintf("cat >> %s", terminal.ShellQuotePath(pipeName))
 	if err := exec.Command("tmux", "pipe-pane", "-t", target, "-o", pipeCmd).Run(); err != nil {
 		log.Printf("Terminal WebSocket: failed to start pipe-pane: %v", err)
 		writeMu.Lock()

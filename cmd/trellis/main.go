@@ -255,6 +255,9 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   //   {{.Worktree.Name}}     - Worktree directory name
   //   {{.Service.Name}}      - Current service name (in service context)
 
+  // Schema version this config targets.
+  version: "1.0"
+
   // ---------------------------------------------------------------------------
   // Project Metadata
   // ---------------------------------------------------------------------------
@@ -269,7 +272,11 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
   // Server Settings
   // ---------------------------------------------------------------------------
   server: {
-    // Host to bind to (use "0.0.0.0" to allow remote access)
+    // Host to bind to. Loopback (127.0.0.1) is DNS-rebinding-safe. Set to
+    // "0.0.0.0" to allow remote access from LAN / Tailscale; browsers
+    // loading the UI at the same address you bound to will work
+    // automatically. If a reverse proxy fronts the server on a different
+    // hostname, set public_url (or allowed_origins) below.
     host: "127.0.0.1"
 
     // Port for the web UI and API
@@ -280,6 +287,14 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
     // For HTTPS, uncomment and set paths to your certificates:
     // tls_cert: "~/.trellis/cert.pem"
     // tls_key: "~/.trellis/key.pem"
+
+    // External URL clients use to reach this server (e.g. behind a reverse
+    // proxy). Folded into allowed_origins automatically.
+    // public_url: "https://trellis.example.com"
+
+    // Additional cross-origin browser origins permitted to drive the API
+    // and open WebSockets. Loopback origins are always allowed.
+    // allowed_origins: ["https://review.example.com"]
   }
 
   // ---------------------------------------------------------------------------

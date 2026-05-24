@@ -6,7 +6,9 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,7 +79,16 @@ func (l *Loader) Load(ctx context.Context, path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// LoadWithDefaults loads config with default values applied.
+// LoadWithDefaults loads config with default values applied. The config is
+// also passed through the schema validator so invalid ports, duplicate names,
+// bad duration strings, broken cross-references, and similar mistakes show
+// up at startup instead of surfacing as obscure runtime failures.
+//
+// Validation errors are reported as warnings rather than aborting startup:
+// an existing config with a benign typo (e.g. a misspelled log_viewer name
+// referenced from trace_groups) should not block the whole server. The
+// invalid items will still fail at the point of use, but with their normal
+// runtime error messages.
 func (l *Loader) LoadWithDefaults(ctx context.Context, path string) (*Config, error) {
 	cfg, err := l.Load(ctx, path)
 	if err != nil {
@@ -85,6 +96,18 @@ func (l *Loader) LoadWithDefaults(ctx context.Context, path string) (*Config, er
 	}
 
 	applyDefaults(cfg)
+
+	if err := NewValidator().Validate(cfg); err != nil {
+		var verr *ValidationError
+		if errors.As(err, &verr) {
+			for _, fe := range verr.Errors {
+				log.Printf("config warning: %s: %s", fe.Field, fe.Message)
+			}
+		} else {
+			log.Printf("config warning: %v", err)
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -153,6 +176,13 @@ func (l *Loader) FindConfigUp(startDir string) (string, error) {
 
 // applyDefaults sets default values for missing config fields.
 func applyDefaults(cfg *Config) {
+	// Schema version. The validator requires this, but `trellis init` and
+	// hand-written README examples have historically omitted it, so default
+	// rather than fail at startup. Bump alongside schema-breaking changes.
+	if cfg.Version == "" {
+		cfg.Version = "1.0"
+	}
+
 	// Server defaults
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 1234

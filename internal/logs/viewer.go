@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"regexp"
 	"sync"
 	"time"
 
@@ -351,6 +352,26 @@ var errStreamLimitReached = errors.New("stream limit reached")
 func (v *Viewer) StreamHistoricalEntries(ctx context.Context, start, end time.Time, filter *Filter, limit int, grep string, grepBefore, grepAfter int, fn func(LogEntry) error) error {
 	log.Printf("StreamHistoricalEntries: start=%v end=%v limit=%d grep=%q before=%d after=%d", start, end, limit, grep, grepBefore, grepAfter)
 
+	// Determine whether the source filters grep server-side. Sources that
+	// don't (file, docker, k8s, command, service) require client-side grep
+	// here — otherwise the user's pattern would be silently discarded and
+	// every line in the time window would be returned (e.g., trace ID searches
+	// would return the full window with no filtering).
+	var grepRe *regexp.Regexp
+	if grep != "" {
+		serverHandles := false
+		if g, ok := v.source.(ServerSideGrep); ok && g.HandlesGrep() {
+			serverHandles = true
+		}
+		if !serverHandles {
+			re, err := regexp.Compile(grep)
+			if err != nil {
+				return err
+			}
+			grepRe = re
+		}
+	}
+
 	lineCh := make(chan string, 1000)
 	errCh := make(chan error, 1)
 
@@ -373,6 +394,14 @@ func (v *Viewer) StreamHistoricalEntries(ctx context.Context, start, end time.Ti
 	var fnErr error
 	for line := range lineCh {
 		linesReceived++
+
+		// Client-side grep fallback for sources that don't filter
+		// themselves. -B/-A context lines are not reconstructed here; that
+		// stays an SSH-only feature for now.
+		if grepRe != nil && !grepRe.MatchString(line) {
+			continue
+		}
+
 		entry := v.parser.Parse(line)
 		entry.Source = v.name
 
