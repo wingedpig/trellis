@@ -56,8 +56,9 @@
 
     var clientActions = {
         shortcuts: function() {
-            var modal = document.getElementById('shortcutHelpModal');
-            if (modal) new bootstrap.Modal(modal).show();
+            // Defer to the shared "Commands & Shortcuts" dialog. It creates
+            // the modal element lazily, so we can't look it up directly.
+            if (typeof window.showShortcutHelp === 'function') window.showShortcutHelp();
         },
         copyUrl: function() {
             if (navigator.clipboard) navigator.clipboard.writeText(window.location.href);
