@@ -494,6 +494,15 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 		}
 	}
 
+	// Refresh the worktree list BEFORE publishing the event so any
+	// subscriber that consults the manager (e.g. the session-cleanup
+	// subscriber in app.go that uses GetByName to detect orphaned sessions)
+	// sees the post-delete state and doesn't accidentally find the
+	// just-removed worktree still listed.
+	if err := m.Refresh(); err != nil {
+		return err
+	}
+
 	// Emit event
 	if m.bus != nil {
 		m.bus.Publish(ctx, events.Event{
@@ -501,6 +510,7 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 			Worktree: name,
 			Payload: map[string]interface{}{
 				"name":          name,
+				"canonicalName": wt.Name(),
 				"path":          wt.Path,
 				"branch":        wt.Branch,
 				"branchDeleted": deleteBranch,
@@ -508,6 +518,5 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 		})
 	}
 
-	// Refresh worktree list
-	return m.Refresh()
+	return nil
 }

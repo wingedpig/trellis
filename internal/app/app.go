@@ -307,6 +307,53 @@ func (app *App) Initialize(ctx context.Context) error {
 		log.Printf("inbox aggregator init failed: %v", err)
 	}
 
+	// When a worktree is deleted, soft-delete (trash) any Claude/Codex
+	// sessions whose worktree no longer exists. We can't just match by the
+	// deleted alias because sessions get stored under whatever alias was used
+	// when they were created (canonical dir name, branch name, with/without
+	// project prefix, etc.) — and that may not match the alias passed to
+	// delete. Instead, the worktree manager Refresh()es before publishing the
+	// event, so by the time we run, any session whose stored worktreeName no
+	// longer resolves via GetByName is an orphan and should be trashed.
+	// This also catches pre-existing orphans from earlier sessions of Trellis
+	// that ran without this cleanup wired up.
+	if app.eventBus != nil {
+		claudeMgr := app.claudeManager
+		codexMgr := app.codexManager
+		worktreeMgr := app.worktreeManager
+		_, err := app.eventBus.SubscribeAsync(events.EventWorktreeDeleted, func(_ context.Context, _ events.Event) error {
+			if worktreeMgr == nil {
+				return nil
+			}
+			if claudeMgr != nil {
+				for _, info := range claudeMgr.AllSessions() {
+					if _, ok := worktreeMgr.GetByName(info.WorktreeName); ok {
+						continue
+					}
+					if err := claudeMgr.TrashSession(info.ID); err != nil {
+						log.Printf("worktree-deleted: trash claude session %s (worktree %q) failed: %v",
+							info.ID, info.WorktreeName, err)
+					}
+				}
+			}
+			if codexMgr != nil {
+				for _, info := range codexMgr.AllSessions() {
+					if _, ok := worktreeMgr.GetByName(info.WorktreeName); ok {
+						continue
+					}
+					if err := codexMgr.TrashSession(info.ID); err != nil {
+						log.Printf("worktree-deleted: trash codex session %s (worktree %q) failed: %v",
+							info.ID, info.WorktreeName, err)
+					}
+				}
+			}
+			return nil
+		}, 16)
+		if err != nil {
+			log.Printf("worktree-deleted session cleanup subscribe failed: %v", err)
+		}
+	}
+
 	// Pair registry — ad-hoc paired review loops between two sessions
 	// (see PAIRING_SPEC.md). Records persist as JSON files; active loops
 	// resume on server start.
