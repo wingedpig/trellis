@@ -393,7 +393,12 @@ if (document.readyState === 'loading') {
 function renderNotes() {
     var el = document.getElementById('case-notes');
     if (CASE_NOTES_RAW && typeof marked !== 'undefined') {
-        el.innerHTML = marked.parse(CASE_NOTES_RAW);
+        // Case notes/summaries can carry AI-generated content (the wrap-up
+        // workflow writes them), so sanitize the rendered Markdown before it
+        // reaches innerHTML. marked v12 has no sanitizer. Fail closed if
+        // DOMPurify didn't load.
+        var notesHTML = marked.parse(CASE_NOTES_RAW);
+        el.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(notesHTML) : '';
         el.style.display = '';
     } else {
         el.innerHTML = '<span class="text-muted">No notes yet.</span>';
@@ -447,7 +452,7 @@ function renderLinks() {
     }
     el.innerHTML = CASE_LINKS.map(function(link, i) {
         return '<li class="case-link-item">' +
-            '<a href="' + escapeAttr(link.url) + '" target="_blank" rel="noopener">' + escapeHTML(link.title) + '</a>' +
+            '<a href="' + escapeAttr(safeURL(link.url)) + '" target="_blank" rel="noopener">' + escapeHTML(link.title) + '</a>' +
             '<button class="btn btn-outline-danger btn-sm case-link-delete" onclick="deleteLink(' + i + ')" title="Remove link">' +
             '<i class="fa-solid fa-xmark"></i></button>' +
             '</li>';
@@ -458,6 +463,15 @@ function escapeHTML(s) {
     var d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+}
+
+// safeURL blocks javascript:/data:/etc. link targets — only http(s),
+// mailto, and scheme-less (relative) URLs pass through.
+function safeURL(u) {
+    u = String(u || '').trim();
+    if (/^(https?:|mailto:)/i.test(u)) return u;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return '#';
+    return u;
 }
 
 function escapeAttr(s) {
@@ -816,6 +830,7 @@ var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind
 
 <link href="/static/css/claude.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="/static/js/wrapup.js"></script>
 <script src="/static/js/workflow_picker.js"></script>
 

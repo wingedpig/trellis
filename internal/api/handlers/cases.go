@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -294,12 +293,6 @@ func (h *CaseHandler) AttachEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "read file: "+err.Error())
-		return
-	}
-
 	title := r.FormValue("title")
 	if title == "" {
 		title = header.Filename
@@ -320,7 +313,7 @@ func (h *CaseHandler) AttachEvidence(w http.ResponseWriter, r *http.Request) {
 		AddedAt:  time.Now(),
 	}
 
-	if err := h.caseMgr.AttachEvidence(wt.Path, caseID, ev, data); err != nil {
+	if err := h.caseMgr.AttachEvidence(wt.Path, caseID, ev, file); err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
 		return
 	}

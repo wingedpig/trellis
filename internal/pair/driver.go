@@ -35,6 +35,10 @@ type PairRuntime struct {
 
 	cmds   chan command
 	events chan events.Event
+	// relay carries debounce-timer wakeups onto the driver goroutine so that
+	// capture+relay only ever runs there — never concurrently on the timer's
+	// own goroutine — preventing double-relay and RoundCount races.
+	relay chan struct{}
 
 	subID events.SubscriptionID
 
@@ -59,6 +63,11 @@ type PairRuntime struct {
 
 	debounceTimer *time.Timer
 
+	// stopRequested guarantees Stop is never lost: even if the command
+	// channel is full, the run loop checks this flag on every iteration.
+	stopRequested bool
+	stopReasonReq StopReason
+
 	started bool
 }
 
@@ -70,6 +79,7 @@ func newRuntime(p *Pair, store *Store, agents *Agents, bus events.EventBus) *Pai
 		bus:       bus,
 		cmds:      make(chan command, 16),
 		events:    make(chan events.Event, 64),
+		relay:     make(chan struct{}, 1),
 		prevState: make(map[string]string),
 	}
 }
@@ -101,6 +111,7 @@ type command struct {
 	confirmAct  string // "send" | "skip" | "stop"
 	editedText  string
 	stopReason  StopReason
+	done        chan struct{} // if non-nil, closed by the driver once the command has been applied
 }
 
 type commandKind int
@@ -116,38 +127,61 @@ const (
 
 // ----- public control surface -----
 
+// commandAckTimeout bounds how long the synchronous control methods wait for
+// the driver to apply a command before returning anyway.
+const commandAckTimeout = 2 * time.Second
+
 // Pause transitions the loop to paused. In-flight relays complete; no new
-// relays scheduled (PAIRING_SPEC §7.3).
+// relays scheduled (PAIRING_SPEC §7.3). Returns once applied (bounded).
 func (rt *PairRuntime) Pause() {
-	rt.send(command{kind: cmdPause})
+	rt.sendWait(command{kind: cmdPause})
 }
 
 // Resume returns the loop to running from whatever step it was in.
+// Returns once applied (bounded).
 func (rt *PairRuntime) Resume() {
-	rt.send(command{kind: cmdResume})
+	rt.sendWait(command{kind: cmdResume})
 }
 
-// Stop terminates the loop with the given reason.
+// Stop terminates the loop with the given reason. Stop is guaranteed: the
+// request is recorded under rt.mu before the command is sent, and the run
+// loop checks the flag on every iteration, so a full command channel cannot
+// drop it. Returns once applied (bounded).
 func (rt *PairRuntime) Stop(reason StopReason) {
-	rt.send(command{kind: cmdStop, stopReason: reason})
+	if reason == "" {
+		reason = StopReasonManual
+	}
+	rt.mu.Lock()
+	stopped := rt.pair.State == StateStopped
+	if !stopped {
+		rt.stopRequested = true
+		rt.stopReasonReq = reason
+	}
+	rt.mu.Unlock()
+	if stopped {
+		return
+	}
+	rt.sendWait(command{kind: cmdStop, stopReason: reason})
 }
 
 // ForceRelay skips the remaining debounce on the current await step.
+// Fire-and-forget: the relay itself can be slow, so callers don't wait.
 func (rt *PairRuntime) ForceRelay() {
 	rt.send(command{kind: cmdForceRelay})
 }
 
 // UpdateConfig replaces the editable config fields. Per-field semantics live
-// in handleConfigUpdate (PAIRING_SPEC §7.4).
+// in handleConfigUpdate (PAIRING_SPEC §7.4). Returns once applied (bounded).
 func (rt *PairRuntime) UpdateConfig(newCfg Config, changed []string) {
 	patch := newCfg
-	rt.send(command{kind: cmdUpdateConfig, configPatch: &patch, changed: changed})
+	rt.sendWait(command{kind: cmdUpdateConfig, configPatch: &patch, changed: changed})
 }
 
 // ConfirmRelay supplies the user's decision when the loop is paused on a
 // PendingConfirm step. action is one of "send", "skip", "stop".
+// Returns once applied (bounded).
 func (rt *PairRuntime) ConfirmRelay(action, editedText string) {
-	rt.send(command{kind: cmdConfirm, confirmAct: action, editedText: editedText})
+	rt.sendWait(command{kind: cmdConfirm, confirmAct: action, editedText: editedText})
 }
 
 func (rt *PairRuntime) send(c command) {
@@ -161,6 +195,35 @@ func (rt *PairRuntime) send(c command) {
 	case rt.cmds <- c:
 	default:
 		log.Printf("pair %s: command channel full, dropping %v", rt.pair.ID, c.kind)
+	}
+}
+
+// sendWait sends a command and waits (bounded by commandAckTimeout) for the
+// driver to apply it, so HTTP handlers can return state that reflects the
+// transition instead of sleeping and hoping. Returns true if the command was
+// acked in time.
+func (rt *PairRuntime) sendWait(c command) bool {
+	rt.mu.Lock()
+	stopped := rt.pair.State == StateStopped
+	rt.mu.Unlock()
+	if stopped {
+		return true
+	}
+	c.done = make(chan struct{})
+	timer := time.NewTimer(commandAckTimeout)
+	defer timer.Stop()
+	select {
+	case rt.cmds <- c:
+	case <-timer.C:
+		log.Printf("pair %s: command channel full, dropping %v", rt.pair.ID, c.kind)
+		return false
+	}
+	select {
+	case <-c.done:
+		return true
+	case <-timer.C:
+		log.Printf("pair %s: timed out waiting for %v to apply", rt.pair.ID, c.kind)
+		return false
 	}
 }
 
@@ -297,6 +360,10 @@ func (rt *PairRuntime) run(kickoff KickoffMode) {
 			rt.handleCommand(c)
 		case ev := <-rt.events:
 			rt.handleStateEvent(ev)
+		case <-rt.relay:
+			// Debounce timer fired (signaled from its goroutine). Run the
+			// capture+relay here on the single driver goroutine.
+			rt.maybeCaptureAndRelay()
 		case <-ticker.C:
 			// Periodic self-check — catches the edge case where a needs_you
 			// transition was missed (e.g., subscription buffer overrun) by
@@ -305,15 +372,26 @@ func (rt *PairRuntime) run(kickoff KickoffMode) {
 		}
 		rt.mu.Lock()
 		stopped := rt.pair.State == StateStopped
+		stopReq := rt.stopRequested
+		stopReason := rt.stopReasonReq
 		rt.mu.Unlock()
+		if stopReq && !stopped {
+			// Stop arrived while the command channel was full (the cmdStop
+			// frame may have been dropped) — honor it here.
+			rt.terminate(stopReason)
+			return
+		}
 		if stopped {
 			return
 		}
 	}
 }
 
-// handleCommand dispatches a single command.
+// handleCommand dispatches a single command and acks it when done.
 func (rt *PairRuntime) handleCommand(c command) {
+	if c.done != nil {
+		defer close(c.done)
+	}
 	switch c.kind {
 	case cmdPause:
 		rt.transitionState(StatePaused, "manual")
@@ -405,8 +483,15 @@ func (rt *PairRuntime) armDebounce() {
 	}
 	pairID := rt.pair.ID
 	rt.debounceTimer = time.AfterFunc(debounceWindow, func() {
-		log.Printf("pair %s: debounce fired, attempting capture", pairID)
-		rt.maybeCaptureAndRelay()
+		log.Printf("pair %s: debounce fired, signaling driver", pairID)
+		// Hand the wakeup to the driver goroutine rather than running
+		// capture+relay on this timer goroutine — otherwise this and the
+		// driver could relay the same turn concurrently (double-relay +
+		// RoundCount race). Non-blocking: a pending signal already covers us.
+		select {
+		case rt.relay <- struct{}{}:
+		default:
+		}
 	})
 	rt.mu.Unlock()
 }
@@ -599,7 +684,8 @@ func (rt *PairRuntime) dispatchRelay(direction string, srcRef, dstRef AgentRef, 
 	rt.kickoffBaselineText = ""
 
 	cap := rt.pair.Config.MaxRounds
-	capHit := rt.pair.RoundCount >= cap
+	roundCount := rt.pair.RoundCount
+	capHit := roundCount >= cap
 	pairID := rt.pair.ID
 	rt.mu.Unlock()
 
@@ -607,7 +693,7 @@ func (rt *PairRuntime) dispatchRelay(direction string, srcRef, dstRef AgentRef, 
 
 	rt.publish("pair.round", map[string]interface{}{
 		"pair_id":      pairID,
-		"round_n":      rt.pair.RoundCount,
+		"round_n":      roundCount,
 		"direction":    direction,
 		"delivered_at": now,
 	})

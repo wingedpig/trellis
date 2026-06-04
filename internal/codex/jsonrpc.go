@@ -110,10 +110,29 @@ func NewClient(r io.Reader, w io.Writer, onNotification NotificationHandler, onR
 // Run reads frames from r forever and dispatches them. Returns the io error
 // that ended the loop (typically io.EOF).
 //
-// Notifications and server-requests are dispatched on per-frame goroutines so
-// a slow handler never blocks reading. Responses are routed to the channel
-// registered by Call.
+// Notifications form an ordered stream (item/started before its deltas
+// before item/completed), so they are drained in arrival order by a single
+// worker goroutine — per-frame goroutines would race and intermittently
+// misattribute or drop assistant content. Server-requests (approval prompts)
+// can block on user input, so they stay on per-frame goroutines. Responses
+// are routed to the channel registered by Call.
 func (c *Client) Run(ctx context.Context) error {
+	notifyCh := make(chan rpcMessage, 256)
+	var notifyWg sync.WaitGroup
+	if c.onNotification != nil {
+		notifyWg.Add(1)
+		go func() {
+			defer notifyWg.Done()
+			for msg := range notifyCh {
+				c.onNotification(msg.Method, msg.Params)
+			}
+		}()
+	}
+	defer func() {
+		close(notifyCh)
+		notifyWg.Wait()
+	}()
+
 	// 16MB max line — Codex events with file diffs / command output can be large.
 	br := bufio.NewReaderSize(c.r, 1024*1024)
 	for {
@@ -138,9 +157,12 @@ func (c *Client) Run(ctx context.Context) error {
 			// Server-initiated request — reply asynchronously.
 			go c.handleServerRequest(msg)
 		case msg.Method != "":
-			// Notification.
+			// Notification — queue for the ordered worker. A full queue
+			// applies backpressure to the read loop; handlers are quick
+			// state updates and never block on a pending Call, so this
+			// cannot deadlock response delivery.
 			if c.onNotification != nil {
-				go c.onNotification(msg.Method, msg.Params)
+				notifyCh <- msg
 			}
 		case msg.ID != nil:
 			// Response to one of our requests.

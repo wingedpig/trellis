@@ -49,7 +49,7 @@ func (l *LogClient) List(ctx context.Context) ([]LogViewer, error) {
 //
 // Use opts to filter entries by time range, level, or grep pattern.
 func (l *LogClient) GetEntries(ctx context.Context, name string, opts *LogEntriesOptions) ([]LogEntry, error) {
-	path := "/api/v1/logs/" + name + "/entries"
+	path := "/api/v1/logs/" + url.PathEscape(name) + "/entries"
 
 	if opts != nil {
 		params := url.Values{}
@@ -128,7 +128,7 @@ func (l *LogClient) GetHistoryEntries(ctx context.Context, name string, opts *Lo
 		}
 	}
 
-	path := "/api/v1/logs/" + name + "/history"
+	path := "/api/v1/logs/" + url.PathEscape(name) + "/history"
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
@@ -212,7 +212,7 @@ func (l *LogClient) GetHistory(ctx context.Context, name string, start, end time
 	params.Set("start", start.Format(time.RFC3339))
 	params.Set("end", end.Format(time.RFC3339))
 
-	path := "/api/v1/logs/" + name + "/history?" + params.Encode()
+	path := "/api/v1/logs/" + url.PathEscape(name) + "/history?" + params.Encode()
 	data, err := l.c.get(ctx, path)
 	if err != nil {
 		return nil, err

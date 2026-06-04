@@ -53,7 +53,7 @@
             var contentDiv = document.createElement('div');
             contentDiv.className = 'claude-plan-mode-content';
             if (planContent) {
-                contentDiv.innerHTML = marked.parse(planContent);
+                contentDiv.innerHTML = mdSafe(planContent);
                 addCopyButtons(contentDiv);
             }
             banner.appendChild(contentDiv);
@@ -156,6 +156,20 @@
         breaks: false,
         gfm: true
     });
+
+    // mdSafe renders untrusted Markdown (Claude transcript text, tool/sub-agent
+    // results, plan content, Write-tool file content) to sanitized HTML. The
+    // transcript is attacker-influenceable — anything the model emits or echoes
+    // from a file/branch/repo it reads can contain <img onerror>/<script>, and
+    // marked v12 ships no sanitizer. Without DOMPurify here that is stored XSS
+    // in the operator's browser (full control-panel access). Uses bracket
+    // notation for parse() so it isn't itself rewritten to mdSafe. Fails closed
+    // (escapes) if DOMPurify didn't load.
+    function mdSafe(text) {
+        var raw = marked['parse'](text == null ? '' : String(text));
+        if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(raw);
+        return escapeHtml(text == null ? '' : String(text));
+    }
 
     // Theme switching for highlight.js
     window.addEventListener('trellis-theme-change', function(e) {
@@ -587,7 +601,7 @@
                                                     var pre = toolDivs[ti].querySelector('.claude-tool-body pre');
                                                     var writeInput = JSON.parse(pre.textContent);
                                                     if (writeInput.content) {
-                                                        contentDiv.innerHTML = marked.parse(writeInput.content);
+                                                        contentDiv.innerHTML = mdSafe(writeInput.content);
                                                         addCopyButtons(contentDiv);
                                                         // Hide the Write tool block since plan is shown in banner
                                                         toolDivs[ti].style.display = 'none';
@@ -955,7 +969,7 @@
         var resultPre = resultDiv.querySelector('pre');
         var rendered = document.createElement('div');
         rendered.className = 'claude-subagent-result';
-        rendered.innerHTML = marked.parse(content);
+        rendered.innerHTML = mdSafe(content);
         addCopyButtons(rendered);
         if (resultPre) resultPre.style.display = 'none';
         if (resultLabel) {
@@ -998,7 +1012,7 @@
 
     function renderAssistantMarkdown() {
         if (!currentTextEl) return;
-        currentTextEl.innerHTML = marked.parse(accumulatedText);
+        currentTextEl.innerHTML = mdSafe(accumulatedText);
         addCopyButtons(currentTextEl);
         scrollToBottom();
     }
@@ -1135,7 +1149,7 @@
                     try { content = JSON.stringify(content, null, 2); } catch(e) { content = String(content); }
                 }
                 if (content) {
-                    contentDiv.innerHTML = marked.parse(content);
+                    contentDiv.innerHTML = mdSafe(content);
                     addCopyButtons(contentDiv);
                     scrollToBottom();
                 }
@@ -1463,7 +1477,7 @@
                 if (textAcc) {
                     const textEl = document.createElement('div');
                     textEl.className = 'claude-text-content';
-                    textEl.innerHTML = marked.parse(textAcc);
+                    textEl.innerHTML = mdSafe(textAcc);
                     addCopyButtons(textEl);
                     bubble.appendChild(textEl);
                     textAcc = '';
@@ -1482,7 +1496,7 @@
         if (textAcc) {
             trailingTextEl = document.createElement('div');
             trailingTextEl.className = 'claude-text-content';
-            trailingTextEl.innerHTML = marked.parse(textAcc);
+            trailingTextEl.innerHTML = mdSafe(textAcc);
             if (!pending) addCopyButtons(trailingTextEl);
             bubble.appendChild(trailingTextEl);
         }
@@ -2380,7 +2394,7 @@
         if (planText) {
             var contentDiv = document.createElement('div');
             contentDiv.className = 'claude-plan-mode-content';
-            contentDiv.innerHTML = marked.parse(planText);
+            contentDiv.innerHTML = mdSafe(planText);
             addCopyButtons(contentDiv);
             div.appendChild(contentDiv);
         }
@@ -2814,7 +2828,7 @@
         connect();
     }
 
-    document.addEventListener('visibilitychange', function() {
+    function onVisibilityChange() {
         if (document.hidden) {
             hiddenAt = Date.now();
         } else {
@@ -2824,14 +2838,33 @@
                 forceReconnect();
             }
         }
-    });
-
-    window.addEventListener('pageshow', function(e) {
+    }
+    function onPageShow(e) {
         if (e.persisted) {
             // Page restored from bfcache — WebSocket is definitely dead
             forceReconnect();
         }
-    });
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
+
+    // SPA teardown: when this page's cached container is evicted from the LRU,
+    // this IIFE instance is abandoned — but its WebSocket, reconnect timer, and
+    // document/window listeners would otherwise live forever, leaking a socket
+    // and firing forceReconnect() for every past session on each tab focus.
+    // Release them on eviction. (Cached-but-live pages stay warm.)
+    if (__claudePageContainer) {
+        __claudePageContainer.addEventListener('trellis:page-evicted', function() {
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+                ws = null;
+            }
+            clearTimeout(reconnectTimer);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            window.removeEventListener('pageshow', onPageShow);
+        });
+    }
 
     // Initialize
     showInitialLoading();

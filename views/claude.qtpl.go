@@ -426,6 +426,7 @@ if (container) {
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/claude.js"></script>
 <script src="/static/js/pair.js"></script>
@@ -433,36 +434,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:389
+//line views/claude.qtpl:390
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:389
+//line views/claude.qtpl:390
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 }
 
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 }
 
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 	return qs422016
-//line views/claude.qtpl:390
+//line views/claude.qtpl:391
 }

@@ -436,31 +436,34 @@ func (app *App) Initialize(ctx context.Context) error {
 	)
 
 	// Initialize log manager (if services exist OR log viewers configured)
-	if len(cfg.LogViewers) > 0 || len(cfg.Services) > 0 {
-		app.logManager = logs.NewManager(app.eventBus, cfg.LogViewerSettings)
-		if len(cfg.LogViewers) > 0 {
-			if err := app.logManager.Initialize(cfg.LogViewers); err != nil {
+	// Use the expanded config from here on: createServiceLogViewers and
+	// injectServicesTraceGroup append svc:* entries to the config they're
+	// given, and the pristine originalConfig must not accumulate them.
+	if len(expandedConfig.LogViewers) > 0 || len(expandedConfig.Services) > 0 {
+		app.logManager = logs.NewManager(app.eventBus, expandedConfig.LogViewerSettings)
+		if len(expandedConfig.LogViewers) > 0 {
+			if err := app.logManager.Initialize(expandedConfig.LogViewers); err != nil {
 				log.Printf("Warning: failed to initialize log viewers: %v", err)
 			} else {
-				log.Printf("Initialized %d log viewers", len(cfg.LogViewers))
+				log.Printf("Initialized %d log viewers", len(expandedConfig.LogViewers))
 			}
 		}
 	}
 
 	// Create service log viewers (svc:* viewers from service log buffers)
-	if app.logManager != nil && len(cfg.Services) > 0 {
-		svcViewerNames := app.createServiceLogViewers(cfg)
-		app.injectServicesTraceGroup(cfg, svcViewerNames)
+	if app.logManager != nil && len(expandedConfig.Services) > 0 {
+		svcViewerNames := app.createServiceLogViewers(expandedConfig)
+		app.injectServicesTraceGroup(expandedConfig, svcViewerNames)
 	}
 
 	// Initialize trace manager (requires log manager)
-	if app.logManager != nil && (len(cfg.TraceGroups) > 0) {
+	if app.logManager != nil && (len(expandedConfig.TraceGroups) > 0) {
 		var err error
-		app.traceManager, err = trace.NewManager(app.logManager, cfg, app.eventBus)
+		app.traceManager, err = trace.NewManager(app.logManager, expandedConfig, app.eventBus)
 		if err != nil {
 			log.Printf("Warning: failed to initialize trace manager: %v", err)
 		} else {
-			log.Printf("Initialized trace manager with %d groups", len(cfg.TraceGroups))
+			log.Printf("Initialized trace manager with %d groups", len(expandedConfig.TraceGroups))
 		}
 	}
 
@@ -526,15 +529,18 @@ func (app *App) Initialize(ctx context.Context) error {
 		}
 	}
 
-	// Subscribe to binary/file change events for auto-restart
-	app.eventBus.Subscribe(events.EventBinaryChanged, func(ctx context.Context, event events.Event) error {
+	// Subscribe to binary/file change events for auto-restart. Async (on its own
+	// delivery goroutine) so the watcher's publish goroutine isn't blocked for
+	// the full restart, and so a slow restart can't stall delivery to other
+	// subscribers — the bus invokes synchronous handlers inline and serially.
+	app.eventBus.SubscribeAsync(events.EventBinaryChanged, func(ctx context.Context, event events.Event) error {
 		if serviceName, ok := event.Payload["service"].(string); ok {
 			path, _ := event.Payload["path"].(string)
 			log.Printf("File changed for service %s (%s), restarting...", serviceName, path)
 			return app.serviceManager.Restart(ctx, serviceName, service.RestartWatch)
 		}
 		return nil
-	})
+	}, 16)
 
 	// Subscribe to worktree activation events to restart services with new config
 	app.eventBus.Subscribe("worktree.activated", func(ctx context.Context, event events.Event) error {
@@ -741,12 +747,16 @@ func (app *App) Initialize(ctx context.Context) error {
 
 	// Initialize API server. PublicURL is folded into the allow-list so the
 	// CORS/WS layer accepts requests from the externally-reachable hostname
-	// without forcing the operator to list it twice. When the operator binds
-	// to a wildcard or non-loopback address they've opted into wide network
-	// access, so we relax the DNS-rebinding Host gate — Origin-based CORS
-	// still applies. For a specific (non-wildcard, non-loopback) bind we
-	// also auto-add that exact host:port as an allowed origin so a browser
-	// loading the UI directly from that address gets an Origin match.
+	// without forcing the operator to list it twice.
+	//
+	// The DNS-rebinding Host gate is relaxed ONLY for a true wildcard bind
+	// (0.0.0.0 / ::), where clients may reach the server under any of several
+	// hostnames we can't enumerate. For a specific non-loopback bind (e.g. a
+	// Tailscale or LAN IP) the host is known, so we keep the Host gate enabled
+	// and auto-add that exact host:port as an allowed origin: a browser loading
+	// the UI from that address still matches, while DNS-rebinding stays blocked.
+	// (If you reach a specific-IP bind via a different hostname — e.g. a MagicDNS
+	// name — set server.public_url / server.allowed_origins to that hostname.)
 	allowedOrigins := cfg.Server.AllowedOrigins
 	if pu := strings.TrimSpace(cfg.Server.PublicURL); pu != "" {
 		allowedOrigins = append([]string{pu}, allowedOrigins...)
@@ -754,7 +764,7 @@ func (app *App) Initialize(ctx context.Context) error {
 	bindHost := strings.TrimSpace(cfg.Server.Host)
 	loopbackBind := middleware.IsLoopbackHost(bindHost)
 	wildcardBind := middleware.IsWildcardBindHost(bindHost)
-	permitAnyHost := !loopbackBind
+	permitAnyHost := wildcardBind
 	if !loopbackBind && !wildcardBind {
 		scheme := "http"
 		if cfg.Server.TLSCert != "" && cfg.Server.TLSKey != "" {
@@ -762,6 +772,20 @@ func (app *App) Initialize(ctx context.Context) error {
 		}
 		allowedOrigins = append(allowedOrigins,
 			fmt.Sprintf("%s://%s:%d", scheme, bindHost, cfg.Server.Port))
+	}
+
+	// Trellis has no user authentication, so any non-loopback bind exposes a
+	// control plane that can run workflows, open terminals, and control services
+	// to anyone who can reach the port. Warn loudly so this is never a silent
+	// surprise, and nudge toward TLS.
+	if !loopbackBind {
+		log.Printf("⚠ SECURITY: binding to non-loopback address %s:%d with NO authentication — "+
+			"any host that can reach this port can run workflows, open terminals, and control services. "+
+			"Only expose Trellis on a trusted network (e.g. Tailscale).", bindHost, cfg.Server.Port)
+		if cfg.Server.TLSCert == "" || cfg.Server.TLSKey == "" {
+			log.Printf("⚠ SECURITY: TLS is not configured — all traffic (including terminal I/O) is sent in " +
+				"plaintext. Set server.tls_cert and server.tls_key to enable HTTPS.")
+		}
 	}
 	app.apiServer = api.NewServer(
 		api.ServerConfig{
@@ -1163,9 +1187,20 @@ func (app *App) createServiceLogViewers(cfg *config.Config) []string {
 		app.logManager.AddViewer(viewer)
 		viewerNames = append(viewerNames, viewerName)
 
-		// Append config to cfg.LogViewers so trace manager's logViewerConfig map
-		// picks up the parser.id field for two-pass ID expansion
-		cfg.LogViewers = append(cfg.LogViewers, viewerCfg)
+		// Add config to cfg.LogViewers so trace manager's logViewerConfig map
+		// picks up the parser.id field for two-pass ID expansion. Replace any
+		// existing entry with the same name (idempotent across repeat calls).
+		replaced := false
+		for i := range cfg.LogViewers {
+			if cfg.LogViewers[i].Name == viewerName {
+				cfg.LogViewers[i] = viewerCfg
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			cfg.LogViewers = append(cfg.LogViewers, viewerCfg)
+		}
 	}
 
 	if len(viewerNames) > 0 {

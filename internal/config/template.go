@@ -152,6 +152,28 @@ func (e *TemplateExpander) ExpandConfig(cfg *Config, ctx *TemplateContext) (*Con
 	}
 	expanded.Workflows = expandedWorkflows
 
+	// Deep-copy LogViewers and TraceGroups. They contain no templates, but the
+	// app appends svc:* entries to them at runtime (createServiceLogViewers /
+	// injectServicesTraceGroup); without a copy those appends alias and mutate
+	// the original config shared across worktree switches.
+	if len(cfg.LogViewers) > 0 {
+		expandedViewers := make([]LogViewerConfig, len(cfg.LogViewers))
+		copy(expandedViewers, cfg.LogViewers)
+		expanded.LogViewers = expandedViewers
+	}
+	if len(cfg.TraceGroups) > 0 {
+		expandedGroups := make([]TraceGroupConfig, len(cfg.TraceGroups))
+		copy(expandedGroups, cfg.TraceGroups)
+		for i := range expandedGroups {
+			if len(expandedGroups[i].LogViewers) > 0 {
+				viewers := make([]string, len(expandedGroups[i].LogViewers))
+				copy(viewers, expandedGroups[i].LogViewers)
+				expandedGroups[i].LogViewers = viewers
+			}
+		}
+		expanded.TraceGroups = expandedGroups
+	}
+
 	// Expand proxy configs
 	if len(cfg.Proxy) > 0 {
 		expandedProxy := make([]ProxyListenerConfig, len(cfg.Proxy))

@@ -180,6 +180,20 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 	// Sanitize name to match what storage will use for the filename
 	reportName = sanitizeName(reportName)
 
+	// Reserve the name while it's running. Without this, a second Execute
+	// with the same name would clobber the first trace's cancel func in
+	// activeTraces (orphaning an uncancellable goroutine) and race it on
+	// the report file.
+	runCtx, cancel := context.WithCancel(context.Background())
+	m.activeMu.Lock()
+	if _, active := m.activeTraces[reportName]; active {
+		m.activeMu.Unlock()
+		cancel()
+		return nil, fmt.Errorf("trace %q is already running", reportName)
+	}
+	m.activeTraces[reportName] = cancel
+	m.activeMu.Unlock()
+
 	// Create initial report with "running" status
 	createdAt := time.Now()
 	report := &TraceReport{
@@ -202,6 +216,10 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 
 	// Save the initial report
 	if _, err := storage.Save(report); err != nil {
+		m.activeMu.Lock()
+		delete(m.activeTraces, reportName)
+		m.activeMu.Unlock()
+		cancel()
 		return nil, fmt.Errorf("saving initial report: %w", err)
 	}
 
@@ -214,7 +232,7 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 	})
 
 	// Run the search asynchronously, passing the original creation time
-	go m.executeAsync(reportName, req, viewerNames, createdAt)
+	go m.executeAsync(runCtx, cancel, reportName, req, viewerNames, createdAt)
 
 	return &ExecuteResult{
 		Name:   reportName,
@@ -223,13 +241,13 @@ func (m *Manager) Execute(ctx context.Context, req TraceRequest) (*ExecuteResult
 }
 
 // executeAsync runs the actual trace search and updates the report when done.
-func (m *Manager) executeAsync(reportName string, req TraceRequest, viewerNames []string, createdAt time.Time) {
+// The context/cancel pair is created (and registered in activeTraces) by
+// Execute, which reserves the report name before this goroutine starts.
+// No global timeout — each file has its own per-file timeout. The context is
+// cancelled on shutdown or explicit user cancellation.
+func (m *Manager) executeAsync(ctx context.Context, cancel context.CancelFunc, reportName string, req TraceRequest, viewerNames []string, createdAt time.Time) {
 	startTime := time.Now()
 
-	// Create cancellable context — no global timeout since each file has
-	// its own per-file timeout. This context is cancelled on shutdown or
-	// explicit user cancellation.
-	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Also cancel on shutdown
@@ -241,10 +259,7 @@ func (m *Manager) executeAsync(reportName string, req TraceRequest, viewerNames 
 		}
 	}()
 
-	// Register this trace so it can be cancelled
-	m.activeMu.Lock()
-	m.activeTraces[reportName] = cancel
-	m.activeMu.Unlock()
+	// Unregister this trace when done (registered by Execute)
 	defer func() {
 		m.activeMu.Lock()
 		delete(m.activeTraces, reportName)

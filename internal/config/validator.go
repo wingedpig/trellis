@@ -5,7 +5,9 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -83,6 +85,63 @@ func (v *Validator) validateServer(cfg *Config, errs *ValidationError) {
 		if cfg.Server.Port < 0 || cfg.Server.Port > 65535 {
 			errs.Add("server.port", "must be between 0 and 65535")
 		}
+	}
+
+	// TLS requires both cert and key — half a pair would otherwise silently
+	// downgrade the server to plain HTTP.
+	if (cfg.Server.TLSCert == "") != (cfg.Server.TLSKey == "") {
+		errs.Add("server", "both tls_cert and tls_key must be specified together")
+	}
+
+	v.validatePortConflicts(cfg, errs)
+}
+
+// validatePortConflicts flags the API server and proxy listeners (or two
+// proxy listeners) configured to bind the same port. Binds on different
+// specific hosts are allowed; a wildcard host conflicts with any other bind
+// on the same port. Templated listen addresses are skipped — they can't be
+// resolved until expansion.
+func (v *Validator) validatePortConflicts(cfg *Config, errs *ValidationError) {
+	type bind struct{ host, port, field string }
+	var binds []bind
+	isWildcard := func(h string) bool {
+		return h == "" || h == "0.0.0.0" || h == "::" || h == "[::]"
+	}
+
+	add := func(field, host, port string) {
+		if port == "" || port == "0" {
+			return
+		}
+		for _, b := range binds {
+			if b.port != port {
+				continue
+			}
+			if b.host == host || isWildcard(b.host) || isWildcard(host) {
+				errs.Add(field, fmt.Sprintf("listen address conflicts with %s (both bind port %s)", b.field, port))
+				return
+			}
+		}
+		binds = append(binds, bind{host: host, port: port, field: field})
+	}
+
+	if cfg.Server.Port > 0 {
+		add("server.port", cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
+	}
+	for i, listener := range cfg.Proxy {
+		if listener.Listen == "" || strings.Contains(listener.Listen, "{{") {
+			continue
+		}
+		host, port, err := net.SplitHostPort(listener.Listen)
+		if err != nil {
+			// Bare-port forms like "8443" are not valid host:port — treat
+			// the whole value as the port if it's numeric.
+			if _, convErr := strconv.Atoi(listener.Listen); convErr == nil {
+				host, port = "", listener.Listen
+			} else {
+				continue
+			}
+		}
+		add(fmt.Sprintf("proxy[%d].listen", i), host, port)
 	}
 }
 

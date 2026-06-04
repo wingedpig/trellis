@@ -6,6 +6,7 @@ package cases
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -100,6 +101,19 @@ func (m *Manager) archivedDir(worktreePath string) string {
 	return filepath.Join(worktreePath, m.casesRelDir+"-archived")
 }
 
+// validID guards an identifier (case id, transcript/trace ref id) that is used
+// verbatim as a path segment. These ids reach the manager from HTTP route vars
+// and — critically — from the request body (commits.go's case_id), which is not
+// path-cleaned by the router. A single non-traversing path component is the only
+// thing that may not escape the per-worktree cases tree.
+func validID(id string) error {
+	if id == "" || id == "." || id == ".." ||
+		strings.ContainsAny(id, `/\`) || filepath.Base(id) != id {
+		return fmt.Errorf("invalid id: %q", id)
+	}
+	return nil
+}
+
 // List returns open cases sorted by created_at descending.
 func (m *Manager) List(worktreePath string) ([]CaseInfo, error) {
 	cases, err := scanCases(m.casesDir(worktreePath))
@@ -126,6 +140,9 @@ func (m *Manager) ListArchived(worktreePath string) ([]CaseInfo, error) {
 
 // Get returns the full case manifest.
 func (m *Manager) Get(worktreePath, caseID string) (*CaseJSON, error) {
+	if err := validID(caseID); err != nil {
+		return nil, err
+	}
 	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
 	c, err := loadCase(path)
 	if err != nil {
@@ -142,6 +159,9 @@ func (m *Manager) Get(worktreePath, caseID string) (*CaseJSON, error) {
 
 // GetNotes reads the notes.md file for a case.
 func (m *Manager) GetNotes(worktreePath, caseID string) (string, error) {
+	if err := validID(caseID); err != nil {
+		return "", err
+	}
 	path := filepath.Join(m.casesDir(worktreePath), caseID, "notes.md")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -260,6 +280,9 @@ func (m *Manager) Create(worktreePath, title, kind, worktreeName, branch, baseCo
 
 // Update applies partial updates to a case.
 func (m *Manager) Update(worktreePath, caseID string, updates CaseUpdate) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
 	c, err := loadCase(path)
 	if err != nil {
@@ -296,6 +319,9 @@ func (m *Manager) Update(worktreePath, caseID string, updates CaseUpdate) error 
 
 // Archive moves a case from the active cases directory to the archived directory.
 func (m *Manager) Archive(worktreePath, caseID string) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	src := filepath.Join(m.casesDir(worktreePath), caseID)
 	if _, err := os.Stat(src); os.IsNotExist(err) {
 		return fmt.Errorf("case not found: %s", caseID)
@@ -314,6 +340,9 @@ func (m *Manager) Archive(worktreePath, caseID string) error {
 // directory. Refused if an open case already exists in the worktree (the
 // one-open-case-per-worktree invariant applies to reopen too).
 func (m *Manager) Reopen(worktreePath, caseID string) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	src := filepath.Join(m.archivedDir(worktreePath), caseID)
 	if _, err := os.Stat(src); os.IsNotExist(err) {
 		return fmt.Errorf("archived case not found: %s", caseID)
@@ -335,6 +364,9 @@ func (m *Manager) Reopen(worktreePath, caseID string) error {
 // IsArchived reports whether the case lives in the archived directory.
 // Returns false if the case is open or doesn't exist.
 func (m *Manager) IsArchived(worktreePath, caseID string) bool {
+	if err := validID(caseID); err != nil {
+		return false
+	}
 	archivedPath := filepath.Join(m.archivedDir(worktreePath), caseID, "case.json")
 	if _, err := os.Stat(archivedPath); err == nil {
 		return true
@@ -344,6 +376,9 @@ func (m *Manager) IsArchived(worktreePath, caseID string) bool {
 
 // Delete permanently removes a case directory.
 func (m *Manager) Delete(worktreePath, caseID string) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	// Try active first
 	path := filepath.Join(m.casesDir(worktreePath), caseID)
 	if _, err := os.Stat(path); err == nil {
@@ -361,6 +396,9 @@ func (m *Manager) Delete(worktreePath, caseID string) error {
 // The case must be in the active (non-archived) directory — wrap-up commits
 // are not recorded here.
 func (m *Manager) AppendCommit(worktreePath, caseID string, entry CommitEntry) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
 	c, err := loadCase(path)
 	if err != nil {
@@ -373,6 +411,9 @@ func (m *Manager) AppendCommit(worktreePath, caseID string, entry CommitEntry) e
 // SetSummary writes the generated summary onto the (open) case manifest.
 // Used at wrap-up before the case is archived.
 func (m *Manager) SetSummary(worktreePath, caseID string, summary *CaseSummary) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
 	c, err := loadCase(path)
 	if err != nil {
@@ -384,6 +425,9 @@ func (m *Manager) SetSummary(worktreePath, caseID string, summary *CaseSummary) 
 
 // UpdateSummary applies partial summary edits. Works on archived cases too.
 func (m *Manager) UpdateSummary(worktreePath, caseID string, upd SummaryUpdate) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	for _, base := range []string{m.casesDir(worktreePath), m.archivedDir(worktreePath)} {
 		path := filepath.Join(base, caseID, "case.json")
 		if _, err := os.Stat(path); err != nil {
@@ -422,6 +466,9 @@ func (m *Manager) UpdateSummary(worktreePath, caseID string, upd SummaryUpdate) 
 // ReplaceSummary overwrites the entire summary. Works on archived cases too.
 // Used after regeneration.
 func (m *Manager) ReplaceSummary(worktreePath, caseID string, summary *CaseSummary) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	for _, base := range []string{m.casesDir(worktreePath), m.archivedDir(worktreePath)} {
 		path := filepath.Join(base, caseID, "case.json")
 		if _, err := os.Stat(path); err != nil {
@@ -437,8 +484,11 @@ func (m *Manager) ReplaceSummary(worktreePath, caseID string, summary *CaseSumma
 	return fmt.Errorf("case not found: %s", caseID)
 }
 
-// AttachEvidence adds an evidence file to a case.
-func (m *Manager) AttachEvidence(worktreePath, caseID string, ev CaseEvidence, data []byte) error {
+// AttachEvidence adds an evidence file to a case, streaming src to disk.
+func (m *Manager) AttachEvidence(worktreePath, caseID string, ev CaseEvidence, src io.Reader) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
 	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
 	casePath := filepath.Join(caseDir, "case.json")
 	c, err := loadCase(casePath)
@@ -473,7 +523,18 @@ func (m *Manager) AttachEvidence(worktreePath, caseID string, ev CaseEvidence, d
 	if rel, err := filepath.Rel(absEvidence, absTarget); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("invalid evidence filename: %q", ev.Filename)
 	}
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	// Stream to disk rather than buffering the whole upload in memory.
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("write evidence file: %w", err)
+	}
+	if _, err := io.Copy(f, src); err != nil {
+		f.Close()
+		os.Remove(filePath)
+		return fmt.Errorf("write evidence file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(filePath)
 		return fmt.Errorf("write evidence file: %w", err)
 	}
 
@@ -486,6 +547,12 @@ func (m *Manager) AttachEvidence(worktreePath, caseID string, ev CaseEvidence, d
 // SaveTranscript writes a Claude transcript to the case and updates case.json.
 // Uses the v2 split format: JSONL messages + JSON metadata sidecar.
 func (m *Manager) SaveTranscript(worktreePath, caseID, claudeRefID, title, sourceSessionID string, transcript *claude.Transcript) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	if err := validID(claudeRefID); err != nil {
+		return err
+	}
 	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
 	casePath := filepath.Join(caseDir, "case.json")
 	c, err := loadCase(casePath)
@@ -518,6 +585,12 @@ func (m *Manager) SaveTranscript(worktreePath, caseID, claudeRefID, title, sourc
 // UpdateTranscript overwrites an existing transcript in the case with fresh data.
 // If the existing transcript is v1 format (.json), it upgrades to v2 split format.
 func (m *Manager) UpdateTranscript(worktreePath, caseID, refID string, transcript *claude.Transcript) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	if err := validID(refID); err != nil {
+		return err
+	}
 	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
 	casePath := filepath.Join(caseDir, "case.json")
 	c, err := loadCase(casePath)
@@ -559,6 +632,12 @@ func (m *Manager) UpdateTranscript(worktreePath, caseID, refID string, transcrip
 // Codex transcripts live under codex_transcripts/ to avoid filename collisions
 // with Claude transcripts in the same case.
 func (m *Manager) SaveCodexTranscript(worktreePath, caseID, refID, title, sourceSessionID string, transcript *codex.Transcript) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	if err := validID(refID); err != nil {
+		return err
+	}
 	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
 	casePath := filepath.Join(caseDir, "case.json")
 	c, err := loadCase(casePath)
@@ -594,6 +673,12 @@ func (m *Manager) SaveCodexTranscript(worktreePath, caseID, refID, title, source
 
 // UpdateCodexTranscript overwrites an existing Codex transcript in the case.
 func (m *Manager) UpdateCodexTranscript(worktreePath, caseID, refID string, transcript *codex.Transcript) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	if err := validID(refID); err != nil {
+		return err
+	}
 	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
 	casePath := filepath.Join(caseDir, "case.json")
 	c, err := loadCase(casePath)
@@ -623,6 +708,12 @@ func (m *Manager) UpdateCodexTranscript(worktreePath, caseID, refID string, tran
 
 // GetCodexTranscript reads a codex transcript from a case (open or archived).
 func (m *Manager) GetCodexTranscript(worktreePath, caseID, refID string) (*codex.Transcript, error) {
+	if err := validID(caseID); err != nil {
+		return nil, err
+	}
+	if err := validID(refID); err != nil {
+		return nil, err
+	}
 	for _, base := range []string{
 		filepath.Join(m.casesDir(worktreePath), caseID, "codex_transcripts"),
 		filepath.Join(m.archivedDir(worktreePath), caseID, "codex_transcripts"),
@@ -653,6 +744,12 @@ func (m *Manager) BackfillCodexPreviews(worktreePath, caseID string, refs []Case
 
 // SaveTrace writes a full trace report as a standalone JSON file in the traces/ subdirectory.
 func (m *Manager) SaveTrace(worktreePath, caseID, traceRefID string, report *trace.TraceReport) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	if err := validID(traceRefID); err != nil {
+		return err
+	}
 	caseDir := filepath.Join(m.casesDir(worktreePath), caseID)
 	casePath := filepath.Join(caseDir, "case.json")
 	if _, err := loadCase(casePath); err != nil {
@@ -679,6 +776,9 @@ func (m *Manager) SaveTrace(worktreePath, caseID, traceRefID string, report *tra
 
 // ListTraces scans the traces/ subdirectory and returns lightweight summaries.
 func (m *Manager) ListTraces(worktreePath, caseID string) ([]CaseTraceSummary, error) {
+	if err := validID(caseID); err != nil {
+		return nil, err
+	}
 	tracesDir := m.tracesDir(worktreePath, caseID)
 	if tracesDir == "" {
 		return nil, nil
@@ -721,6 +821,12 @@ func (m *Manager) ListTraces(worktreePath, caseID string) ([]CaseTraceSummary, e
 
 // GetTrace reads a full trace report from the traces/ subdirectory.
 func (m *Manager) GetTrace(worktreePath, caseID, traceRefID string) (*trace.TraceReport, error) {
+	if err := validID(caseID); err != nil {
+		return nil, err
+	}
+	if err := validID(traceRefID); err != nil {
+		return nil, err
+	}
 	tracesDir := m.tracesDir(worktreePath, caseID)
 	if tracesDir == "" {
 		return nil, fmt.Errorf("trace not found: %s", traceRefID)
@@ -741,6 +847,12 @@ func (m *Manager) GetTrace(worktreePath, caseID, traceRefID string) (*trace.Trac
 
 // DeleteTrace removes a trace report file from the traces/ subdirectory.
 func (m *Manager) DeleteTrace(worktreePath, caseID, traceRefID string) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	if err := validID(traceRefID); err != nil {
+		return err
+	}
 	tracesDir := m.tracesDir(worktreePath, caseID)
 	if tracesDir == "" {
 		return fmt.Errorf("trace not found: %s", traceRefID)
@@ -769,6 +881,12 @@ func (m *Manager) tracesDir(worktreePath, caseID string) string {
 // GetTranscript reads a transcript from a case.
 // Probes for v2 split format (.jsonl + .json sidecar) first, then falls back to v1 (.json monolith).
 func (m *Manager) GetTranscript(worktreePath, caseID, claudeRefID string) (*claude.Transcript, error) {
+	if err := validID(caseID); err != nil {
+		return nil, err
+	}
+	if err := validID(claudeRefID); err != nil {
+		return nil, err
+	}
 	dirs := []string{
 		filepath.Join(m.casesDir(worktreePath), caseID, "transcripts"),
 		filepath.Join(m.archivedDir(worktreePath), caseID, "transcripts"),

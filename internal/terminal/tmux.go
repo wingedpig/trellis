@@ -23,9 +23,11 @@ func NewRealTmuxExecutor() *RealTmuxExecutor {
 	return &RealTmuxExecutor{}
 }
 
-// HasSession checks if a session exists.
+// HasSession checks if a session exists. The target is exact-matched: tmux's
+// default prefix/glob fallback would otherwise report "proj" as existing when
+// only "proj-feature" does.
 func (e *RealTmuxExecutor) HasSession(ctx context.Context, session string) bool {
-	cmd := exec.CommandContext(ctx, "tmux", "has-session", "-t", session)
+	cmd := exec.CommandContext(ctx, "tmux", "has-session", "-t", ExactSessionTarget(session))
 	return cmd.Run() == nil
 }
 
@@ -74,15 +76,16 @@ func (e *RealTmuxExecutor) NewSession(ctx context.Context, session, workdir, fir
 	return nil
 }
 
-// KillSession kills a tmux session.
+// KillSession kills a tmux session (exact-match only, so a dead session's
+// name can never prefix-match and kill a similarly-named live session).
 func (e *RealTmuxExecutor) KillSession(ctx context.Context, session string) error {
-	cmd := exec.CommandContext(ctx, "tmux", "kill-session", "-t", session)
+	cmd := exec.CommandContext(ctx, "tmux", "kill-session", "-t", ExactSessionTarget(session))
 	return cmd.Run()
 }
 
 // NewWindow creates a new window in a session.
 func (e *RealTmuxExecutor) NewWindow(ctx context.Context, session, window, workdir string, command []string) error {
-	args := []string{"new-window", "-t", session, "-n", window}
+	args := []string{"new-window", "-t", ExactSessionTarget(session), "-n", window}
 	if workdir != "" {
 		args = append(args, "-c", workdir)
 	}
@@ -104,15 +107,14 @@ func (e *RealTmuxExecutor) NewWindow(ctx context.Context, session, window, workd
 
 // KillWindow kills a window in a session.
 func (e *RealTmuxExecutor) KillWindow(ctx context.Context, session, window string) error {
-	target := fmt.Sprintf("%s:%s", session, window)
-	cmd := exec.CommandContext(ctx, "tmux", "kill-window", "-t", target)
+	cmd := exec.CommandContext(ctx, "tmux", "kill-window", "-t", ExactWindowTarget(session, window))
 	return cmd.Run()
 }
 
 // ListWindows lists windows in a session.
 func (e *RealTmuxExecutor) ListWindows(ctx context.Context, session string) ([]WindowInfo, error) {
 	// Use #{?window_active,*,} to show * for active windows (like default tmux output)
-	cmd := exec.CommandContext(ctx, "tmux", "list-windows", "-t", session, "-F", "#{window_index}: #{window_name}#{?window_active,*,}")
+	cmd := exec.CommandContext(ctx, "tmux", "list-windows", "-t", ExactSessionTarget(session), "-F", "#{window_index}: #{window_name}#{?window_active,*,}")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -199,13 +201,13 @@ func (e *RealTmuxExecutor) GetCursorPosition(ctx context.Context, target string)
 
 // SetEnvironment sets an environment variable in a session.
 func (e *RealTmuxExecutor) SetEnvironment(ctx context.Context, session, name, value string) error {
-	cmd := exec.CommandContext(ctx, "tmux", "set-environment", "-t", session, name, value)
+	cmd := exec.CommandContext(ctx, "tmux", "set-environment", "-t", ExactSessionTarget(session), name, value)
 	return cmd.Run()
 }
 
 // SetOption sets a tmux option for a session.
 func (e *RealTmuxExecutor) SetOption(ctx context.Context, session, name, value string) error {
-	cmd := exec.CommandContext(ctx, "tmux", "set-option", "-t", session, name, value)
+	cmd := exec.CommandContext(ctx, "tmux", "set-option", "-t", ExactSessionTarget(session), name, value)
 	return cmd.Run()
 }
 

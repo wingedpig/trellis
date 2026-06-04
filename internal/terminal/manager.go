@@ -60,18 +60,18 @@ func (m *RealManager) resolveWindowTarget(ctx context.Context, session, window s
 	windows, err := m.tmux.ListWindows(ctx, session)
 	if err != nil {
 		// Fallback to name-based targeting
-		return fmt.Sprintf("%s:%s", session, window)
+		return ExactWindowTarget(session, window)
 	}
 
 	// Find the first window with matching name
 	for _, w := range windows {
 		if w.Name == window {
-			return fmt.Sprintf("%s:%d", session, w.Index)
+			return ExactWindowIndexTarget(session, w.Index)
 		}
 	}
 
 	// Fallback to name-based targeting
-	return fmt.Sprintf("%s:%s", session, window)
+	return ExactWindowTarget(session, window)
 }
 
 // CreateSession creates a tmux session for a worktree.

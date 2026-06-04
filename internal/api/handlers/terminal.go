@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/wingedpig/trellis/internal/terminal"
+	"github.com/wingedpig/trellis/internal/validate"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
 
@@ -122,6 +123,20 @@ func (h *TerminalHandler) WebSocket(w http.ResponseWriter, r *http.Request) {
 	if session == "" || window == "" {
 		http.Error(w, "session and window parameters required", http.StatusBadRequest)
 		return
+	}
+
+	// Local session/window names become tmux argv values — validate before
+	// any command is built (rejects leading '-' argument injection). Remote
+	// names are matched against configured remote windows instead.
+	if !isRemote {
+		if err := validate.Name("session", session); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := validate.Name("window", window); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Upgrade to WebSocket
@@ -315,8 +330,10 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 	tmuxSession := terminal.ToTmuxSessionName(session)
 	log.Printf("Terminal WebSocket: target=%s:%s", tmuxSession, window)
 
-	// Check if the session exists; if not, recreate it from worktree info
-	checkCmd := exec.Command("tmux", "has-session", "-t", tmuxSession)
+	// Check if the session exists; if not, recreate it from worktree info.
+	// Exact-match the target: tmux's prefix fallback would otherwise resolve
+	// a dead session's name to a similarly-named live session.
+	checkCmd := exec.Command("tmux", "has-session", "-t", terminal.ExactSessionTarget(tmuxSession))
 	if err := checkCmd.Run(); err != nil {
 		log.Printf("Terminal WebSocket: session %s does not exist, attempting to recreate", tmuxSession)
 
@@ -353,7 +370,7 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 
 	// Check if the window exists, if not create it (matches runner's approach)
 	// Also get window index for unambiguous targeting (avoids issues with similar window names)
-	checkWindowCmd := exec.Command("tmux", "list-windows", "-t", tmuxSession, "-F", "#{window_index}:#{window_name}")
+	checkWindowCmd := exec.Command("tmux", "list-windows", "-t", terminal.ExactSessionTarget(tmuxSession), "-F", "#{window_index}:#{window_name}")
 	windowsOutput, err := checkWindowCmd.Output()
 	windowExists := false
 	windowIndex := -1
@@ -371,7 +388,7 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 	if !windowExists {
 		log.Printf("Terminal WebSocket: Window %s does not exist in session %s, creating it", window, tmuxSession)
 		// Get the working directory from the first window
-		getCwdCmd := exec.Command("tmux", "display-message", "-t", tmuxSession+":0", "-p", "#{pane_current_path}")
+		getCwdCmd := exec.Command("tmux", "display-message", "-t", terminal.ExactWindowIndexTarget(tmuxSession, 0), "-p", "#{pane_current_path}")
 		cwdOutput, _ := getCwdCmd.Output()
 		cwd := strings.TrimSpace(string(cwdOutput))
 		if cwd == "" {
@@ -379,7 +396,7 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 		}
 
 		// Create the window
-		createWindowCmd := exec.Command("tmux", "new-window", "-t", tmuxSession, "-n", window, "-c", cwd)
+		createWindowCmd := exec.Command("tmux", "new-window", "-t", terminal.ExactSessionTarget(tmuxSession), "-n", window, "-c", cwd)
 		createWindowCmd.Env = append(os.Environ(), "TMUX=")
 		if err := createWindowCmd.Run(); err != nil {
 			errMsg := fmt.Sprintf("Failed to create window %s: %v", window, err)
@@ -395,7 +412,7 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 		h.mgr.SaveWindow(tmuxSession, window)
 
 		// Get the index of the newly created window
-		getIndexCmd := exec.Command("tmux", "list-windows", "-t", tmuxSession, "-F", "#{window_index}:#{window_name}")
+		getIndexCmd := exec.Command("tmux", "list-windows", "-t", terminal.ExactSessionTarget(tmuxSession), "-F", "#{window_index}:#{window_name}")
 		if indexOutput, err := getIndexCmd.Output(); err == nil {
 			for _, line := range strings.Split(strings.TrimSpace(string(indexOutput)), "\n") {
 				parts := strings.SplitN(line, ":", 2)
@@ -410,10 +427,10 @@ func (h *TerminalHandler) handleLocalTerminal(conn *websocket.Conn, r *http.Requ
 	// Build unambiguous target using window index (avoids issues when multiple windows have similar names)
 	var target string
 	if windowIndex >= 0 {
-		target = fmt.Sprintf("%s:%d", tmuxSession, windowIndex)
+		target = terminal.ExactWindowIndexTarget(tmuxSession, windowIndex)
 	} else {
 		// Fallback to name-based targeting if we couldn't get the index
-		target = fmt.Sprintf("%s:%s", tmuxSession, window)
+		target = terminal.ExactWindowTarget(tmuxSession, window)
 	}
 	log.Printf("Terminal WebSocket: resolved target=%s", target)
 
@@ -657,6 +674,15 @@ func (h *TerminalHandler) CreateWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A requested window name becomes a tmux argv value — validate it
+	// (auto-generated names below are always safe).
+	if req.Name != "" {
+		if err := validate.Name("window", req.Name); err != nil {
+			WriteError(w, http.StatusBadRequest, ErrTerminalError, err.Error())
+			return
+		}
+	}
+
 	// Resolve worktree path
 	if h.worktrees == nil {
 		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "worktree manager not available")
@@ -713,7 +739,7 @@ func (h *TerminalHandler) CreateWindow(w http.ResponseWriter, r *http.Request) {
 	h.mgr.SaveWindow(tmuxSession, windowName)
 
 	if req.Command != "" {
-		target := tmuxSession + ":" + windowName
+		target := terminal.ExactWindowTarget(tmuxSession, windowName)
 		exec.Command("tmux", "send-keys", "-t", target, req.Command, "Enter").Run()
 	}
 
@@ -741,8 +767,31 @@ func (h *TerminalHandler) RenameWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Window names (old and new) become tmux argv values — validate both.
+	// The new name in particular is a positional arg, so a leading '-'
+	// would be parsed as a flag.
+	if err := validate.Name("window", windowName); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrTerminalError, err.Error())
+		return
+	}
+	if err := validate.Name("window", body.Name); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrTerminalError, err.Error())
+		return
+	}
+
+	// Resolve the worktree like CreateWindow does, rather than trusting the
+	// URL variable to map onto a session name.
+	if h.worktrees == nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "worktree manager not available")
+		return
+	}
+	if _, ok := h.worktrees.GetByName(worktreeName); !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found: "+worktreeName)
+		return
+	}
+
 	tmuxSession := terminal.ToTmuxSessionName(h.worktreeToSession(worktreeName))
-	target := tmuxSession + ":" + windowName
+	target := terminal.ExactWindowTarget(tmuxSession, windowName)
 
 	cmd := exec.Command("tmux", "rename-window", "-t", target, body.Name)
 	if err := cmd.Run(); err != nil {
@@ -762,10 +811,27 @@ func (h *TerminalHandler) DeleteWindow(w http.ResponseWriter, r *http.Request) {
 	worktreeName := vars["worktree"]
 	windowName := vars["window"]
 
+	// Validate the window name before it reaches tmux argv.
+	if err := validate.Name("window", windowName); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrTerminalError, err.Error())
+		return
+	}
+
+	// Resolve the worktree like CreateWindow does, rather than trusting the
+	// URL variable to map onto a session name.
+	if h.worktrees == nil {
+		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "worktree manager not available")
+		return
+	}
+	if _, ok := h.worktrees.GetByName(worktreeName); !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found: "+worktreeName)
+		return
+	}
+
 	tmuxSession := terminal.ToTmuxSessionName(h.worktreeToSession(worktreeName))
 
 	// Kill the window
-	killCmd := exec.Command("tmux", "kill-window", "-t", tmuxSession+":"+windowName)
+	killCmd := exec.Command("tmux", "kill-window", "-t", terminal.ExactWindowTarget(tmuxSession, windowName))
 	if err := killCmd.Run(); err != nil {
 		WriteError(w, http.StatusInternalServerError, ErrTerminalError, "failed to delete window: "+err.Error())
 		return

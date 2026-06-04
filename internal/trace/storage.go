@@ -26,7 +26,8 @@ func NewStorage(dir string) (*Storage, error) {
 	return &Storage{dir: dir}, nil
 }
 
-// Save writes a trace report to disk.
+// Save writes a trace report to disk atomically (tmp + rename, matching the
+// other stores) so a crash or concurrent reader never sees a partial report.
 func (s *Storage) Save(report *TraceReport) (string, error) {
 	filename := s.reportPath(report.Name)
 
@@ -35,8 +36,13 @@ func (s *Storage) Save(report *TraceReport) (string, error) {
 		return "", fmt.Errorf("marshaling report: %w", err)
 	}
 
-	if err := os.WriteFile(filename, data, 0644); err != nil {
+	tmp := filename + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return "", fmt.Errorf("writing report: %w", err)
+	}
+	if err := os.Rename(tmp, filename); err != nil {
+		os.Remove(tmp)
+		return "", fmt.Errorf("renaming report: %w", err)
 	}
 
 	return filename, nil

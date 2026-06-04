@@ -112,7 +112,12 @@
         if (!text) return '';
         if (typeof marked === 'undefined') return escapeHtml(text);
         try {
-            return marked.parse(text);
+            // Codex agent output / tool results are untrusted (the model can
+            // emit or echo raw HTML). marked v12 has no sanitizer, so run the
+            // result through DOMPurify before it reaches innerHTML. Fail closed
+            // (escape) if DOMPurify didn't load.
+            var html = marked.parse(text);
+            return (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(html) : escapeHtml(text);
         } catch (e) {
             return escapeHtml(text);
         }
@@ -1183,6 +1188,17 @@
     var __codexPageContainer = inputEl ? inputEl.closest('.page-container') : null;
     if (__codexPageContainer) {
         __codexPageContainer.addEventListener('trellis:page-entered', bindCodexGlobals);
+        // SPA teardown: close the WebSocket and stop the reconnect timer when
+        // this page's cached container is evicted, so an abandoned IIFE instance
+        // doesn't keep a live socket (and 3s reconnect loop) against detached DOM.
+        __codexPageContainer.addEventListener('trellis:page-evicted', function () {
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+                ws = null;
+            }
+            clearTimeout(reconnectTimer);
+        });
     }
 
     function autoResizeInput() {

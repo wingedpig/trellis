@@ -15,6 +15,7 @@ import (
 
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/events"
+	"github.com/wingedpig/trellis/internal/validate"
 )
 
 // WorktreeManager manages git worktrees.
@@ -357,9 +358,10 @@ func (m *WorktreeManager) ProjectName() string {
 
 // Create creates a new worktree with the given branch name.
 func (m *WorktreeManager) Create(ctx context.Context, branchName string, switchTo bool) error {
-	// Validate branch name
-	if branchName == "" {
-		return fmt.Errorf("branch name is required")
+	// Validate branch name before it reaches git argv (rejects leading '-'
+	// flag/argument injection and other unsafe characters).
+	if err := validate.Name("branch", branchName); err != nil {
+		return err
 	}
 
 	// Determine the worktree directory name (projectName-branchName)
@@ -466,9 +468,12 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 		return fmt.Errorf("cannot remove the main repository")
 	}
 
-	// Kill any tmux session for this worktree (use canonical wt.Name(), not request alias)
+	// Kill any tmux session for this worktree (use canonical wt.Name(), not
+	// request alias). Exact-match the target ("=" prefix): if the session is
+	// already gone, tmux's prefix fallback would otherwise kill a
+	// similarly-named sibling (e.g. "proj-foo" resolving to "proj-foo-bar").
 	sessionName := strings.ReplaceAll(wt.Name(), ".", "_")
-	killTmux := exec.CommandContext(ctx, "tmux", "kill-session", "-t", sessionName)
+	killTmux := exec.CommandContext(ctx, "tmux", "kill-session", "-t", "="+sessionName)
 	killTmux.Run() // Ignore error - session may not exist
 
 	// Remove binaries directory

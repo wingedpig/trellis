@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -129,24 +130,10 @@ func (s *KubernetesSource) streamLogs(ctx context.Context, lineCh chan<- string,
 		}
 	}()
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	s.forwardLines(ctx, stdout, lineCh, errCh)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		select {
-		case <-ctx.Done():
-			return
-		case lineCh <- line:
-			s.incrementLines()
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		s.setError(err)
-		errCh <- fmt.Errorf("reading kubectl logs: %w", err)
-	}
-
+	// Always reap the process — on ctx cancel CommandContext has already
+	// killed it, and skipping Wait would leak a zombie plus the pipe FDs.
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() == nil {
 			s.setError(err)
@@ -187,32 +174,46 @@ func (s *KubernetesSource) ReadRange(ctx context.Context, start, end time.Time, 
 		return fmt.Errorf("starting kubectl logs: %w", err)
 	}
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	reader := bufio.NewReaderSize(stdout, 64*1024)
+	const maxLineSize = 1024 * 1024 // 1MB max line size
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, readErr := reader.ReadString('\n')
+		if len(line) > 0 {
+			line = strings.TrimSuffix(line, "\n")
+			if len(line) > maxLineSize {
+				line = line[:maxLineSize] + "... [truncated]"
+			}
 
-		// Parse timestamp from line to filter by end time
-		// Format: "2024-01-15T10:30:00.000000000Z message"
-		if len(line) >= 30 {
-			if ts, err := time.Parse(time.RFC3339Nano, line[:30]); err == nil {
-				if ts.After(end) {
-					break // Stop when we pass the end time
+			// Parse timestamp from line to filter by end time
+			// Format: "2024-01-15T10:30:00.000000000Z message"
+			if len(line) >= 30 {
+				if ts, err := time.Parse(time.RFC3339Nano, line[:30]); err == nil {
+					if ts.After(end) {
+						// Past the end time — kill the stream rather than
+						// leaving kubectl blocked writing to a full pipe.
+						cmd.Process.Kill()
+						cmd.Wait()
+						return nil
+					}
 				}
 			}
-		}
 
-		select {
-		case <-ctx.Done():
-			cmd.Process.Kill()
-			return ctx.Err()
-		case lineCh <- line:
+			select {
+			case <-ctx.Done():
+				cmd.Process.Kill()
+				cmd.Wait()
+				return ctx.Err()
+			case lineCh <- line:
+			}
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("reading: %w", err)
+		if readErr != nil {
+			if readErr != io.EOF {
+				cmd.Wait()
+				return fmt.Errorf("reading: %w", readErr)
+			}
+			break
+		}
 	}
 
 	return cmd.Wait()

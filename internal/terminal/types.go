@@ -5,6 +5,7 @@ package terminal
 
 import (
 	"context"
+	"fmt"
 	"io"
 )
 
@@ -159,6 +160,26 @@ func ToTmuxSessionName(worktree string) string {
 		}
 	}
 	return string(result)
+}
+
+// ExactSessionTarget returns a tmux target that matches the session name
+// exactly. Bare names in tmux targets fall back to prefix and then glob
+// matching when no exact match exists, so "proj" silently resolves to
+// "proj-feature" once the "proj" session is gone. The '=' prefix restricts
+// resolution to exact matches only.
+func ExactSessionTarget(session string) string { return "=" + session }
+
+// ExactWindowTarget returns a tmux target for a window referenced by name,
+// with both the session and window parts forced to exact matches (window
+// names are subject to the same prefix/glob fallback as session names).
+func ExactWindowTarget(session, window string) string {
+	return "=" + session + ":=" + window
+}
+
+// ExactWindowIndexTarget returns a tmux target for a window referenced by
+// index, with the session part forced to an exact match.
+func ExactWindowIndexTarget(session string, index int) string {
+	return fmt.Sprintf("=%s:%d", session, index)
 }
 
 // ToDisplayName converts a session name to a display name with prefix.

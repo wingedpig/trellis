@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"strconv"
@@ -77,137 +78,12 @@ type Dependencies struct {
 	PermitAnyHost   bool                         // Skip Host-header allow-list (set when bind is non-loopback)
 }
 
-// NewRouter creates a new API router.
+// NewRouter creates a new API router with its own terminal handler. It is a
+// thin wrapper over NewRouterWithTerminalHandler so the two construction
+// paths can't drift apart (the full route table lives in one place).
 func NewRouter(deps Dependencies) *mux.Router {
-	r := mux.NewRouter()
-
-	corsCfg := middleware.CORSConfig{
-		AllowedOrigins: deps.AllowedOrigins,
-		PermitAnyHost:  deps.PermitAnyHost,
-	}
-	// Build a per-router WebSocket upgrader so two routers (e.g., in tests)
-	// can carry different allow-lists without overwriting each other's policy.
-	ws := handlers.NewUpgrader(corsCfg)
-
-	// Apply global middleware.
-	r.Use(middleware.Logging)
-	r.Use(middleware.Recovery)
-	r.Use(middleware.CORS(corsCfg))
-	r.Use(version.Middleware)
-
-	// Static file serving from embedded filesystem
-	staticFS, _ := fs.Sub(static.Files, ".")
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-
-	// VS Code handler (code-server proxy)
-	if deps.VSCodeHandler != nil {
-		r.PathPrefix("/vscode/").Handler(deps.VSCodeHandler)
-		r.PathPrefix("/vscode").Handler(deps.VSCodeHandler)
-	}
-
-	// UI Page handlers
-	pageHandler := handlers.NewPageHandler(deps.ServiceManager, deps.WorktreeManager, deps.WorkflowRunner, deps.EventBus, deps.TerminalManager, deps.LogManager, deps.TraceManager, deps.CrashManager, deps.ClaudeManager, deps.CodexManager, deps.CaseManager, deps.Shortcuts, deps.Notifications, deps.Links, deps.Version)
-	registerPageRoutes(r, pageHandler)
-
-	// API v1 routes
-	api := r.PathPrefix("/api/v1").Subrouter()
-
-	// Service handlers
-	serviceHandler := handlers.NewServiceHandler(deps.ServiceManager)
-	api.HandleFunc("/services", serviceHandler.List).Methods("GET")
-	api.HandleFunc("/services/start-all", serviceHandler.StartAll).Methods("POST")
-	api.HandleFunc("/services/stop-all", serviceHandler.StopAll).Methods("POST")
-	api.HandleFunc("/services/{name}", serviceHandler.Get).Methods("GET")
-	api.HandleFunc("/services/{name}/start", serviceHandler.Start).Methods("POST")
-	api.HandleFunc("/services/{name}/stop", serviceHandler.Stop).Methods("POST")
-	api.HandleFunc("/services/{name}/restart", serviceHandler.Restart).Methods("POST")
-	api.HandleFunc("/services/{name}/logs", serviceHandler.Logs).Methods("GET")
-	api.HandleFunc("/services/{name}/logs", serviceHandler.ClearLogs).Methods("DELETE")
-	api.HandleFunc("/services/{name}/logs/stream", serviceHandler.StreamLogs).Methods("GET")
-
-	// Worktree handlers
-	worktreeHandler := handlers.NewWorktreeHandler(deps.WorktreeManager)
-	api.HandleFunc("/worktrees", worktreeHandler.List).Methods("GET")
-	api.HandleFunc("/worktrees", worktreeHandler.Create).Methods("POST")
-	api.HandleFunc("/worktrees/info", worktreeHandler.Info).Methods("GET")
-	api.HandleFunc("/worktrees/{name}", worktreeHandler.Get).Methods("GET")
-	api.HandleFunc("/worktrees/{name}", worktreeHandler.Remove).Methods("DELETE")
-	api.HandleFunc("/worktrees/{name}/activate", worktreeHandler.Activate).Methods("POST")
-
-	// Workflow handlers
-	workflowHandler := handlers.NewWorkflowHandler(deps.WorkflowRunner, deps.WorktreeManager)
-	workflowHandler.SetUpgrader(ws)
-	api.HandleFunc("/workflows", workflowHandler.List).Methods("GET")
-	api.HandleFunc("/workflows/{id}", workflowHandler.Get).Methods("GET")
-	api.HandleFunc("/workflows/{id}/run", workflowHandler.Run).Methods("POST")
-	api.HandleFunc("/workflows/{id}/status", workflowHandler.Status).Methods("GET")
-	api.HandleFunc("/workflows/{runID}/stream", workflowHandler.Stream).Methods("GET")
-
-	// Event handlers
-	eventHandler := handlers.NewEventHandler(deps.EventBus)
-	eventHandler.SetUpgrader(ws)
-	api.HandleFunc("/events", eventHandler.History).Methods("GET")
-	api.HandleFunc("/events/ws", eventHandler.WebSocket).Methods("GET")
-
-	// Notify handler (for AI assistants and external tools)
-	notifyHandler := handlers.NewNotifyHandler(deps.EventBus)
-	api.HandleFunc("/notify", notifyHandler.Notify).Methods("POST")
-
-	// Session Inbox (popup window listing all claude+codex sessions, with
-	// real-time state, and routing navigate commands to the main window).
-	if deps.InboxAggregator != nil {
-		inboxHandler := handlers.NewInboxHandler(deps.InboxAggregator, deps.EventBus)
-		inboxHandler.SetUpgrader(ws)
-		api.HandleFunc("/inbox/sessions", inboxHandler.Sessions).Methods("GET")
-		api.HandleFunc("/inbox/ws", inboxHandler.WebSocket).Methods("GET")
-	}
-
-	// Pair handlers (paired review loops; see PAIRING_SPEC.md)
-	if deps.PairRegistry != nil {
-		pairHandler := handlers.NewPairHandler(deps.PairRegistry, deps.EventBus)
-		pairHandler.SetUpgrader(ws)
-		registerPairRoutes(api, pairHandler)
-	}
-
-	// Log viewer handlers
-	if deps.LogManager != nil {
-		logHandler := handlers.NewLogHandler(deps.LogManager)
-		logHandler.SetUpgrader(ws)
-		api.HandleFunc("/logs", logHandler.List).Methods("GET")
-		api.HandleFunc("/logs/{name}", logHandler.Get).Methods("GET")
-		api.HandleFunc("/logs/{name}/entries", logHandler.GetEntries).Methods("GET")
-		api.HandleFunc("/logs/{name}/history", logHandler.GetHistory).Methods("GET")
-		api.HandleFunc("/logs/{name}/files", logHandler.ListRotatedFiles).Methods("GET")
-		api.HandleFunc("/logs/{name}/stream", logHandler.Stream).Methods("GET")
-		api.HandleFunc("/logs/{name}/stream/sse", logHandler.StreamSSE).Methods("GET")
-	}
-
-	// Trace handlers
-	if deps.TraceManager != nil {
-		traceHandler := handlers.NewTraceHandler(deps.TraceManager)
-		api.HandleFunc("/trace", traceHandler.Execute).Methods("POST")
-		api.HandleFunc("/trace/cancel/{name:.+}", traceHandler.CancelTrace).Methods("POST")
-		api.HandleFunc("/trace/groups", traceHandler.ListGroups).Methods("GET")
-		api.HandleFunc("/trace/reports", traceHandler.ListReports).Methods("GET")
-		api.HandleFunc("/trace/reports/{name:.+}", traceHandler.GetReport).Methods("GET")
-		api.HandleFunc("/trace/reports/{name:.+}", traceHandler.DeleteReport).Methods("DELETE")
-	}
-
-	// Crash handlers
-	if deps.CrashManager != nil {
-		crashHandler := handlers.NewCrashesHandler(deps.CrashManager)
-		api.HandleFunc("/crashes", crashHandler.List).Methods("GET")
-		api.HandleFunc("/crashes", crashHandler.Clear).Methods("DELETE")
-		api.HandleFunc("/crashes/newest", crashHandler.Newest).Methods("GET")
-		api.HandleFunc("/crashes/{id}", crashHandler.Get).Methods("GET")
-		api.HandleFunc("/crashes/{id}", crashHandler.Delete).Methods("DELETE")
-	}
-
-	// Command palette
-	commandsHandler := handlers.NewCommandsHandler(deps.WorktreeManager, deps.ServiceManager, deps.WorkflowRunner, deps.CrashManager, deps.ClaudeManager, deps.CodexManager)
-	api.HandleFunc("/commands", commandsHandler.List).Methods("GET")
-
-	return r
+	terminalHandler := handlers.NewTerminalHandler(deps.TerminalManager, deps.WorktreeManager)
+	return NewRouterWithTerminalHandler(deps, terminalHandler)
 }
 
 // registerPairRoutes mounts the paired-review-loop endpoints under api.
@@ -278,10 +154,12 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	ws := handlers.NewUpgrader(corsCfg)
 	terminalHandler.SetUpgrader(ws)
 
-	// Apply global middleware.
+	// Apply global middleware. The body limit comfortably covers the largest
+	// legitimate request (evidence uploads); everything else is small JSON.
 	r.Use(middleware.Logging)
 	r.Use(middleware.Recovery)
 	r.Use(middleware.CORS(corsCfg))
+	r.Use(middleware.BodyLimit(64 << 20)) // 64MB
 	r.Use(version.Middleware)
 
 	// Static file serving from embedded filesystem
@@ -496,10 +374,29 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	commandsHandler := handlers.NewCommandsHandler(deps.WorktreeManager, deps.ServiceManager, deps.WorkflowRunner, deps.CrashManager, deps.ClaudeManager, deps.CodexManager)
 	api.HandleFunc("/commands", commandsHandler.List).Methods("GET")
 
-	// Debug/profiling endpoints
-	r.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+	// Debug/profiling endpoints. pprof discloses heap/goroutine/cmdline data
+	// and offers a cheap CPU DoS, so it is restricted to loopback clients
+	// even when the server itself is bound to a non-loopback address.
+	r.PathPrefix("/debug/pprof/").Handler(loopbackOnly(http.DefaultServeMux))
 
 	return r
+}
+
+// loopbackOnly wraps h, rejecting requests whose peer address is not a
+// loopback IP.
+func loopbackOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr
+		}
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			http.Error(w, "only available from loopback", http.StatusForbidden)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // Server represents the API server.
@@ -536,9 +433,16 @@ func (s *Server) Router() *mux.Router {
 // If cert/key files don't exist, they are auto-generated.
 func (s *Server) ListenAndServe() error {
 	addr := s.cfg.Host + ":" + strconv.Itoa(s.cfg.Port)
+	// No blanket ReadTimeout/WriteTimeout: the server hosts long-lived SSE
+	// streams and WebSockets (which manage their own deadlines after
+	// hijack), and a global write timeout would sever them. Header read and
+	// keep-alive idle are bounded instead, plus a header size cap.
 	s.server = &http.Server{
-		Addr:    addr,
-		Handler: s.router,
+		Addr:              addr,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	// Check if TLS is configured

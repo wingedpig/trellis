@@ -382,8 +382,22 @@ func (m *Manager) List() ([]CrashSummary, error) {
 	return summaries, nil
 }
 
+// validCrashID guards a crash id used verbatim as a filename. The id reaches
+// the manager from the {id} route var; reject anything that isn't a single,
+// non-traversing path component so it can't escape ReportsDir.
+func validCrashID(id string) error {
+	if id == "" || id == "." || id == ".." ||
+		strings.ContainsAny(id, `/\`) || filepath.Base(id) != id {
+		return fmt.Errorf("invalid crash id: %q", id)
+	}
+	return nil
+}
+
 // Get retrieves a specific crash by ID.
 func (m *Manager) Get(id string) (*Crash, error) {
+	if err := validCrashID(id); err != nil {
+		return nil, err
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -405,6 +419,9 @@ func (m *Manager) Newest() (*Crash, error) {
 
 // Delete removes a crash by ID.
 func (m *Manager) Delete(id string) error {
+	if err := validCrashID(id); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

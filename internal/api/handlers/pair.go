@@ -151,9 +151,9 @@ func (h *PairHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	if rt == nil {
 		return
 	}
+	// Stop is synchronous (bounded ack), so the returned state reflects
+	// the transition.
 	rt.Stop(pair.StopReasonManual)
-	// Brief wait so the returned state reflects the transition.
-	time.Sleep(50 * time.Millisecond)
 	WriteJSON(w, http.StatusOK, rt.Pair())
 }
 
@@ -213,9 +213,9 @@ func (h *PairHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		changed = append(changed, "confirm_before_relay")
 	}
 
+	// UpdateConfig is synchronous (bounded ack), so the returned record
+	// reflects the change.
 	rt.UpdateConfig(merged, changed)
-	// Tiny grace period so the returned record reflects the change.
-	time.Sleep(20 * time.Millisecond)
 	WriteJSON(w, http.StatusOK, rt.Pair())
 }
 
@@ -242,8 +242,8 @@ func (h *PairHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "action must be send/skip/stop", http.StatusBadRequest)
 		return
 	}
+	// ConfirmRelay is synchronous (bounded ack).
 	rt.ConfirmRelay(req.Action, req.EditedText)
-	time.Sleep(50 * time.Millisecond)
 	WriteJSON(w, http.StatusOK, rt.Pair())
 }
 

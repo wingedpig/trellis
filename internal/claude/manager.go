@@ -23,6 +23,22 @@ import (
 	"github.com/wingedpig/trellis/internal/events"
 )
 
+// debugEvents gates raw NDJSON event logging in readLoop. Raw events can
+// carry tool output (including secrets) and bloat the log, so they are only
+// logged when explicitly opted in via TRELLIS_DEBUG_EVENTS=1.
+var debugEvents = os.Getenv("TRELLIS_DEBUG_EVENTS") != ""
+
+// maxEventLogBytes caps how much of a raw event line is logged.
+const maxEventLogBytes = 2048
+
+// truncateForLog shortens a raw event line for logging.
+func truncateForLog(b []byte, n int) string {
+	if len(b) <= n {
+		return string(b)
+	}
+	return fmt.Sprintf("%s...(+%d bytes)", b[:n], len(b)-n)
+}
+
 // ContentBlock mirrors Claude's content block types.
 type ContentBlock struct {
 	Type      string          `json:"type"`
@@ -108,6 +124,7 @@ type SessionInfo struct {
 type Session struct {
 	mu            sync.Mutex
 	stdinMu       sync.Mutex // Protects stdin writes
+	startMu       sync.Mutex // Serializes ensureProcess so concurrent callers can't double-spawn
 	id            string     // UUID for this session
 	displayName   string     // User-visible label
 	worktreeName  string     // Which worktree this belongs to
@@ -934,6 +951,14 @@ func (s *Session) fanOut(event StreamEvent) {
 
 // ensureProcess starts the long-running claude process if not already running.
 func (s *Session) ensureProcess(ctx context.Context) error {
+	// Serialize startup. Two concurrent callers (two WS connects, or a connect
+	// racing a Send) must not both pass the !started check below and each call
+	// cmd.Start(); the second would overwrite s.cmd/s.cancel and orphan the
+	// first process (never killed, never reaped). startMu is distinct from s.mu
+	// and is never held by readLoop, so this cannot deadlock.
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+
 	s.mu.Lock()
 	if s.started {
 		s.mu.Unlock()
@@ -1016,7 +1041,9 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 			continue
 		}
 
-		log.Printf("claude [%s]: event: %s", s.id, line)
+		if debugEvents {
+			log.Printf("claude [%s]: event: %s", s.id, truncateForLog(line, maxEventLogBytes))
+		}
 
 		// Handle resume failures: if Claude can't find the conversation,
 		// rebuild the CLI session from existing messages so the next

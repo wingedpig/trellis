@@ -5,3 +5,7 @@ public
 
 # generated API docs
 site/static/api/index.html
+
+# built binaries (produced by `make build`)
+/trellis
+/trellis-ctl

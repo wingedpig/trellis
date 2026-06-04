@@ -116,11 +116,21 @@ func (b *LogBuffer) Subscribe() chan LogLine {
 }
 
 // Unsubscribe removes a subscription channel.
+//
+// It is idempotent and safe to call after CloseAllSubscribers: the channel is
+// closed only if this call is the one that removed it from the subscriber map.
+// Otherwise a worktree switch (which calls CloseAllSubscribers) racing a log
+// stream's deferred Unsubscribe would close the same channel twice and panic.
 func (b *LogBuffer) Unsubscribe(ch chan LogLine) {
 	b.subMu.Lock()
-	delete(b.subscribers, ch)
+	_, ok := b.subscribers[ch]
+	if ok {
+		delete(b.subscribers, ch)
+	}
 	b.subMu.Unlock()
-	close(ch)
+	if ok {
+		close(ch)
+	}
 }
 
 // CloseAllSubscribers closes all subscriber channels and resets the subscriber map.

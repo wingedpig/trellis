@@ -16,6 +16,12 @@ import (
 )
 
 // BinaryWatcher watches binary files for changes and emits events.
+//
+// fsnotify watches are placed on each file's parent directory rather than the
+// file itself: `go build` replaces binaries via write-to-temp + rename, which
+// leaves a direct file watch pointing at the old inode after the first
+// rebuild. Directory watches survive renames; events are filtered back to the
+// registered file paths by name.
 type BinaryWatcher struct {
 	mu            sync.RWMutex
 	bus           events.EventBus
@@ -23,7 +29,8 @@ type BinaryWatcher struct {
 	debouncer     *Debouncer
 	watches       map[string][]string  // service name -> watched paths
 	pathToService map[string]string    // path -> service name (reverse lookup)
-	paths         map[string]int       // path -> watch count (for ref counting)
+	paths         map[string]int       // file path -> watch count (for ref counting)
+	dirs          map[string]int       // parent dir -> fsnotify watch count
 	lastRestart   map[string]time.Time // service name -> last restart time (cooldown)
 	closed        bool
 	closeCh       chan struct{}
@@ -44,6 +51,7 @@ func NewBinaryWatcher(bus events.EventBus, debounce time.Duration) (*BinaryWatch
 		watches:       make(map[string][]string),
 		pathToService: make(map[string]string),
 		paths:         make(map[string]int),
+		dirs:          make(map[string]int),
 		lastRestart:   make(map[string]time.Time),
 		closeCh:       make(chan struct{}),
 	}
@@ -158,13 +166,18 @@ func (w *BinaryWatcher) Close() error {
 func (w *BinaryWatcher) addWatch(path string) error {
 	w.paths[path]++
 	if w.paths[path] == 1 {
-		// First watch on this path
-		if err := w.watcher.Add(path); err != nil {
-			w.paths[path]--
-			if w.paths[path] == 0 {
+		// First watch on this path — watch the parent directory so atomic
+		// renames (build tools writing temp + rename) keep working after the
+		// first rebuild. This also means a not-yet-built binary in an
+		// existing directory can be watched.
+		dir := filepath.Dir(path)
+		w.dirs[dir]++
+		if w.dirs[dir] == 1 {
+			if err := w.watcher.Add(dir); err != nil {
+				delete(w.dirs, dir)
 				delete(w.paths, path)
+				return err
 			}
-			return err
 		}
 	}
 	return nil
@@ -173,8 +186,13 @@ func (w *BinaryWatcher) addWatch(path string) error {
 func (w *BinaryWatcher) removeWatch(path string) {
 	w.paths[path]--
 	if w.paths[path] <= 0 {
-		w.watcher.Remove(path)
 		delete(w.paths, path)
+		dir := filepath.Dir(path)
+		w.dirs[dir]--
+		if w.dirs[dir] <= 0 {
+			w.watcher.Remove(dir)
+			delete(w.dirs, dir)
+		}
 	}
 }
 
@@ -219,7 +237,9 @@ func (w *BinaryWatcher) handleEvent(event fsnotify.Event) {
 	}
 }
 
-const restartCooldown = 5 * time.Second
+// restartCooldown is how long after a restart further change events for the
+// same service are ignored. Var (not const) so tests can shrink it.
+var restartCooldown = 5 * time.Second
 
 func (w *BinaryWatcher) triggerChange(serviceName string, changedPath string) {
 	w.debouncer.Debounce(serviceName, func() {

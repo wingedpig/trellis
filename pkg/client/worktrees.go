@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // WorktreeClient provides access to git worktree operations.
@@ -47,7 +48,7 @@ func (w *WorktreeClient) List(ctx context.Context) ([]Worktree, error) {
 // The name is typically the last component of the worktree path
 // (e.g., "feature-branch" for a worktree at /path/to/feature-branch).
 func (w *WorktreeClient) Get(ctx context.Context, name string) (*Worktree, error) {
-	data, err := w.c.get(ctx, "/api/v1/worktrees/"+name)
+	data, err := w.c.get(ctx, "/api/v1/worktrees/"+url.PathEscape(name))
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +70,7 @@ func (w *WorktreeClient) Get(ctx context.Context, name string) (*Worktree, error
 //
 // Returns information about the activation including how long it took.
 func (w *WorktreeClient) Activate(ctx context.Context, name string) (*ActivateResult, error) {
-	data, err := w.c.post(ctx, "/api/v1/worktrees/"+name+"/activate")
+	data, err := w.c.post(ctx, "/api/v1/worktrees/"+url.PathEscape(name)+"/activate")
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,7 @@ type RemoveOptions struct {
 // If opts.DeleteBranch is true, the associated git branch is also deleted.
 // The currently active worktree cannot be removed.
 func (w *WorktreeClient) Remove(ctx context.Context, name string, opts *RemoveOptions) error {
-	path := "/api/v1/worktrees/" + name
+	path := "/api/v1/worktrees/" + url.PathEscape(name)
 	if opts != nil && opts.DeleteBranch {
 		path += "?delete_branch=1"
 	}

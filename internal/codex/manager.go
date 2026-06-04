@@ -86,7 +86,8 @@ type TokenUsage struct {
 
 // Session holds per-session Codex state with a long-running app-server.
 type Session struct {
-	mu sync.Mutex
+	mu      sync.Mutex
+	startMu sync.Mutex // Serializes EnsureProcess so concurrent callers can't double-spawn
 
 	id           string
 	displayName  string
@@ -472,6 +473,13 @@ func (s *Session) persistAllMessages() {
 // EnsureProcess starts the codex app-server if not already running and
 // initializes a thread (creating a new one or resuming the persisted one).
 func (s *Session) EnsureProcess(ctx context.Context) error {
+	// Serialize startup so two concurrent callers (two WS connects, or a connect
+	// racing a Send) can't both pass the !started check and each spawn a codex
+	// app-server, orphaning the first. startMu is distinct from s.mu and is never
+	// held by the rpc read loop, so this cannot deadlock.
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+
 	s.mu.Lock()
 	if s.started {
 		s.mu.Unlock()
@@ -701,10 +709,14 @@ func (s *Session) Cancel() {
 	turnID := s.currentTurnID
 	s.mu.Unlock()
 	if rpc != nil && turnID != "" {
-		_, _ = rpc.Call(context.Background(), "turn/interrupt", turnInterruptParams{
+		// Bounded context: a wedged app-server must not hang the caller's
+		// HTTP handler — we proceed to shutdownProcess regardless.
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		_, _ = rpc.Call(ctx, "turn/interrupt", turnInterruptParams{
 			ThreadID: threadID,
 			TurnID:   turnID,
 		})
+		cancel()
 	}
 	s.shutdownProcess()
 }

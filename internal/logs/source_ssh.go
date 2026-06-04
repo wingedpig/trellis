@@ -103,23 +103,10 @@ func (s *SSHSource) tailRemote(ctx context.Context, lineCh chan<- string, errCh 
 		}
 	}()
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	s.forwardLines(ctx, stdout, lineCh, errCh)
 
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return
-		case lineCh <- scanner.Text():
-			s.incrementLines()
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		s.setError(err)
-		errCh <- fmt.Errorf("reading: %w", err)
-	}
-
+	// Always reap the process — on ctx cancel CommandContext has already
+	// killed it, and skipping Wait would leak a zombie plus the pipe FDs.
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() == nil {
 			s.setError(err)

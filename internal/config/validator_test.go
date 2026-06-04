@@ -33,6 +33,82 @@ func TestValidator_Validate_ValidConfig(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestValidator_Validate_ServerTLSPair(t *testing.T) {
+	validator := NewValidator()
+
+	base := func() *Config {
+		return &Config{
+			Version: "1.0",
+			Project: ProjectConfig{Name: "test"},
+		}
+	}
+
+	// Cert without key
+	cfg := base()
+	cfg.Server.TLSCert = "/tmp/cert.pem"
+	err := validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tls_cert and tls_key")
+
+	// Key without cert
+	cfg = base()
+	cfg.Server.TLSKey = "/tmp/key.pem"
+	err = validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tls_cert and tls_key")
+
+	// Both set is fine
+	cfg = base()
+	cfg.Server.TLSCert = "/tmp/cert.pem"
+	cfg.Server.TLSKey = "/tmp/key.pem"
+	assert.NoError(t, validator.Validate(cfg))
+}
+
+func TestValidator_Validate_PortConflicts(t *testing.T) {
+	validator := NewValidator()
+
+	base := func() *Config {
+		return &Config{
+			Version: "1.0",
+			Project: ProjectConfig{Name: "test"},
+			Server:  ServerConfig{Host: "127.0.0.1", Port: 8080},
+		}
+	}
+
+	// Proxy listener on the same port as the server (wildcard host) conflicts
+	cfg := base()
+	cfg.Proxy = []ProxyListenerConfig{
+		{Listen: ":8080", Routes: []ProxyRouteConfig{{Upstream: "http://127.0.0.1:9000"}}},
+	}
+	err := validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conflicts with server.port")
+
+	// Two proxy listeners on the same port conflict
+	cfg = base()
+	cfg.Proxy = []ProxyListenerConfig{
+		{Listen: ":9443", Routes: []ProxyRouteConfig{{Upstream: "http://127.0.0.1:9000"}}},
+		{Listen: ":9443", Routes: []ProxyRouteConfig{{Upstream: "http://127.0.0.1:9001"}}},
+	}
+	err = validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "proxy[0].listen")
+
+	// Same port on different specific hosts is allowed
+	cfg = base()
+	cfg.Proxy = []ProxyListenerConfig{
+		{Listen: "192.168.1.5:8080", Routes: []ProxyRouteConfig{{Upstream: "http://127.0.0.1:9000"}}},
+	}
+	assert.NoError(t, validator.Validate(cfg))
+
+	// Templated listen addresses are skipped
+	cfg = base()
+	cfg.Proxy = []ProxyListenerConfig{
+		{Listen: "{{.Worktree.Name}}:8080", Routes: []ProxyRouteConfig{{Upstream: "http://127.0.0.1:9000"}}},
+	}
+	assert.NoError(t, validator.Validate(cfg))
+}
+
 func TestValidator_Validate_RequiredFields(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -55,9 +55,14 @@
             var keysEl = document.createElement('span');
             keysEl.className = 'shortcut-action-keys';
             if (item.keys) {
-                keysEl.innerHTML = String(item.keys).split(' + ').map(function(k) {
-                    return '<kbd>' + k + '</kbd>';
-                }).join(' + ');
+                // Build with DOM nodes, not innerHTML — custom shortcut keys
+                // come from config and must not be injectable as raw HTML.
+                String(item.keys).split(' + ').forEach(function(k, idx) {
+                    if (idx > 0) keysEl.appendChild(document.createTextNode(' + '));
+                    var kbd = document.createElement('kbd');
+                    kbd.textContent = k;
+                    keysEl.appendChild(kbd);
+                });
             }
             btn.appendChild(labelEl);
             btn.appendChild(keysEl);

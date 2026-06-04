@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // ServiceClient provides access to service management operations.
@@ -48,7 +49,7 @@ func (s *ServiceClient) List(ctx context.Context) ([]Service, error) {
 //
 // Returns an error if the service does not exist.
 func (s *ServiceClient) Get(ctx context.Context, name string) (*Service, error) {
-	data, err := s.c.get(ctx, "/api/v1/services/"+name)
+	data, err := s.c.get(ctx, "/api/v1/services/"+url.PathEscape(name))
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +67,7 @@ func (s *ServiceClient) Get(ctx context.Context, name string) (*Service, error) 
 // Returns the service with its updated state. If the service is already
 // running, this is a no-op and returns the current state.
 func (s *ServiceClient) Start(ctx context.Context, name string) (*Service, error) {
-	data, err := s.c.post(ctx, "/api/v1/services/"+name+"/start")
+	data, err := s.c.post(ctx, "/api/v1/services/"+url.PathEscape(name)+"/start")
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (s *ServiceClient) Start(ctx context.Context, name string) (*Service, error
 // The service process receives a SIGTERM signal and is given time to shut down
 // gracefully. Returns the service with its updated state.
 func (s *ServiceClient) Stop(ctx context.Context, name string) (*Service, error) {
-	data, err := s.c.post(ctx, "/api/v1/services/"+name+"/stop")
+	data, err := s.c.post(ctx, "/api/v1/services/"+url.PathEscape(name)+"/stop")
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +103,7 @@ func (s *ServiceClient) Stop(ctx context.Context, name string) (*Service, error)
 // If the service is running, it is stopped first, then started. If the service
 // is already stopped, it is simply started. Returns the service with its updated state.
 func (s *ServiceClient) Restart(ctx context.Context, name string) (*Service, error) {
-	data, err := s.c.post(ctx, "/api/v1/services/"+name+"/restart")
+	data, err := s.c.post(ctx, "/api/v1/services/"+url.PathEscape(name)+"/restart")
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (s *ServiceClient) Restart(ctx context.Context, name string) (*Service, err
 //
 // For structured log access, consider using the log viewer APIs instead.
 func (s *ServiceClient) Logs(ctx context.Context, name string, lines int) ([]byte, error) {
-	path := fmt.Sprintf("/api/v1/services/%s/logs?lines=%d", name, lines)
+	path := fmt.Sprintf("/api/v1/services/%s/logs?lines=%d", url.PathEscape(name), lines)
 	return s.c.get(ctx, path)
 }
 
@@ -130,6 +131,6 @@ func (s *ServiceClient) Logs(ctx context.Context, name string, lines int) ([]byt
 //
 // This removes all buffered log lines. It does not affect log files on disk.
 func (s *ServiceClient) ClearLogs(ctx context.Context, name string) error {
-	_, err := s.c.delete(ctx, "/api/v1/services/"+name+"/logs")
+	_, err := s.c.delete(ctx, "/api/v1/services/"+url.PathEscape(name)+"/logs")
 	return err
 }

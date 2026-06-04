@@ -22,6 +22,27 @@ import (
 	"strings"
 )
 
+// limitedBuffer collects writes up to max bytes and silently discards the
+// rest, reporting full success so the subprocess never sees a write error.
+type limitedBuffer struct {
+	buf bytes.Buffer
+	max int
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if remaining := b.max - b.buf.Len(); remaining > 0 {
+		if len(p) > remaining {
+			b.buf.Write(p[:remaining])
+		} else {
+			b.buf.Write(p)
+		}
+	}
+	return len(p), nil
+}
+
+func (b *limitedBuffer) Bytes() []byte  { return b.buf.Bytes() }
+func (b *limitedBuffer) String() string { return b.buf.String() }
+
 // envelope matches the JSON shape emitted by `claude -p --output-format json`.
 // We only need a few fields; unknown fields are ignored by the decoder.
 type envelope struct {
@@ -46,9 +67,12 @@ func runClaude(ctx context.Context, prompt string, cwd string) (result, model st
 		cmd.Dir = cwd
 	}
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Size-limited buffers so a runaway subprocess can't exhaust memory.
+	// Legitimate output is a small JSON envelope.
+	stdout := &limitedBuffer{max: 8 << 20} // 8MB
+	stderr := &limitedBuffer{max: 1 << 20} // 1MB
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	if err := cmd.Run(); err != nil {
 		return "", "", fmt.Errorf("claude -p: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))

@@ -4,9 +4,10 @@
 package claude
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -72,30 +73,28 @@ func loadMessages(filePath string) ([]Message, error) {
 		break
 	}
 
-	// JSONL format: one JSON object per line
-	var msgs []Message
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("open messages file: %w", err)
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024) // Up to 10MB per line
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+	// JSONL format: one JSON object per line (data is already in memory).
+	var lines [][]byte
+	for _, l := range bytes.Split(data, []byte("\n")) {
+		if l = bytes.TrimSpace(l); len(l) > 0 {
+			lines = append(lines, l)
 		}
+	}
+
+	var msgs []Message
+	for i, line := range lines {
 		var msg Message
 		if err := json.Unmarshal(line, &msg); err != nil {
-			// Tolerate a partial last line from a crash
-			break
+			if i == len(lines)-1 {
+				// Tolerate a partial final line from a crash mid-append.
+				break
+			}
+			// A corrupt interior line shouldn't silently truncate the rest
+			// of the conversation — skip just that line.
+			log.Printf("claude: skipping corrupt message line %d in %s: %v", i+1, filePath, err)
+			continue
 		}
 		msgs = append(msgs, msg)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan messages file: %w", err)
 	}
 	return msgs, nil
 }

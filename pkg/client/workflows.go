@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // WorkflowClient provides access to workflow execution.
@@ -39,7 +40,7 @@ func (w *WorkflowClient) List(ctx context.Context) ([]Workflow, error) {
 
 // Get returns a specific workflow definition by ID.
 func (w *WorkflowClient) Get(ctx context.Context, id string) (*Workflow, error) {
-	data, err := w.c.get(ctx, "/api/v1/workflows/"+id)
+	data, err := w.c.get(ctx, "/api/v1/workflows/"+url.PathEscape(id))
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +76,7 @@ type RunOptions struct {
 //	    status, err = client.Workflows.Status(ctx, status.ID)
 //	}
 func (w *WorkflowClient) Run(ctx context.Context, id string, opts *RunOptions) (*WorkflowStatus, error) {
-	path := "/api/v1/workflows/" + id + "/run"
+	path := "/api/v1/workflows/" + url.PathEscape(id) + "/run"
 	if opts != nil && opts.Worktree != "" {
 		path += "?worktree=" + opts.Worktree
 	}
@@ -107,7 +108,7 @@ func (w *WorkflowClient) Run(ctx context.Context, id string, opts *RunOptions) (
 // Use this to poll for workflow completion after calling [WorkflowClient.Run].
 // The workflow is complete when State is "complete" or "failed".
 func (w *WorkflowClient) Status(ctx context.Context, id string) (*WorkflowStatus, error) {
-	data, err := w.c.get(ctx, "/api/v1/workflows/"+id+"/status")
+	data, err := w.c.get(ctx, "/api/v1/workflows/"+url.PathEscape(id)+"/status")
 	if err != nil {
 		return nil, err
 	}

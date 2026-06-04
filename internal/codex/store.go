@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -83,15 +84,24 @@ func loadMessages(filePath string) ([]Message, error) {
 
 	br := bufio.NewReaderSize(f, 1024*1024)
 	var msgs []Message
+	lineNo := 0
 	for {
 		line, err := readLineRPC(br)
+		lineNo++
 		if len(line) > 0 {
 			var msg Message
 			if uerr := json.Unmarshal(line, &msg); uerr != nil {
-				// Tolerate a partial last line from a mid-write crash.
-				break
+				// Only a genuine final line (EOF, no trailing newline) is
+				// silently tolerated — that's a partial write from a crash
+				// mid-append. A corrupt interior line is skipped instead,
+				// so it doesn't truncate the rest of the conversation.
+				if err == io.EOF {
+					return msgs, nil
+				}
+				log.Printf("codex: skipping corrupt message line %d in %s: %v", lineNo, filePath, uerr)
+			} else {
+				msgs = append(msgs, msg)
 			}
-			msgs = append(msgs, msg)
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -100,7 +110,6 @@ func loadMessages(filePath string) ([]Message, error) {
 			return msgs, fmt.Errorf("read messages file: %w", err)
 		}
 	}
-	return msgs, nil
 }
 
 // appendMessage appends a single message as a JSON line.

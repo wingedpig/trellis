@@ -696,6 +696,10 @@ func (m *ServiceManager) GetService(name string) (ServiceInfo, bool) {
 	return info, true
 }
 
+// restartCountResetUptime is how long a process must stay up for its exit to
+// be treated as a fresh failure rather than part of an ongoing crash loop.
+const restartCountResetUptime = time.Minute
+
 // handleExit handles process exit with the config snapshot captured at start time.
 // This avoids races with UpdateConfigs which can swap the process/config.
 func (m *ServiceManager) handleExit(name string, exitCode int, proc *Process, policy string, maxRestarts int, restartDelay time.Duration) {
@@ -704,6 +708,14 @@ func (m *ServiceManager) handleExit(name string, exitCode int, proc *Process, po
 	if !ok {
 		m.mu.Unlock()
 		return
+	}
+
+	// Sliding-window crash-loop detection: a process that stayed up for a
+	// while before exiting is not crash-looping, so don't let restarts
+	// accumulated over the service's whole lifetime permanently exhaust
+	// maxRestarts.
+	if st := proc.Status(); !st.StartedAt.IsZero() && st.StoppedAt.Sub(st.StartedAt) >= restartCountResetUptime {
+		svc.restartCount = 0
 	}
 
 	shouldRestart := false

@@ -4,6 +4,7 @@
 package logs
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -199,6 +200,44 @@ func (b *sourceBase) Stop() error {
 	}
 	b.wg.Wait()
 	return nil
+}
+
+// forwardLines reads newline-delimited lines from r and forwards them to
+// lineCh until EOF, a read error, or context cancellation. Unlike
+// bufio.Scanner (whose fixed cap aborts the whole stream with ErrTooLong on
+// one oversized line), oversized lines are truncated and the stream
+// continues — mirroring FileSource.tailFile. Callers must still reap their
+// subprocess (cmd.Wait) after this returns.
+func (b *sourceBase) forwardLines(ctx context.Context, r io.Reader, lineCh chan<- string, errCh chan<- error) {
+	reader := bufio.NewReaderSize(r, 64*1024)
+	const maxLineSize = 1024 * 1024 // 1MB max line size
+
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			// Remove trailing newline
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			// Truncate very long lines
+			if len(line) > maxLineSize {
+				line = line[:maxLineSize] + "... [truncated]"
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case lineCh <- line:
+				b.incrementLines()
+			}
+		}
+		if err != nil {
+			if err != io.EOF && ctx.Err() == nil {
+				b.setError(err)
+				errCh <- fmt.Errorf("reading: %w", err)
+			}
+			return
+		}
+	}
 }
 
 // filterRelevantFiles filters rotated files based on time bounds.

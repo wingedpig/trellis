@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -398,6 +399,18 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 		cmd := exec.CommandContext(execCtx, cmdArgs[0], cmdArgs[1:]...)
 		if workDir != "" {
 			cmd.Dir = workDir
+		}
+
+		// Run in its own process group so cancel/timeout kills descendants
+		// (make/go test/script children) too, not just the direct child.
+		// Mirrors the service process path.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			if err == syscall.ESRCH {
+				return os.ErrProcessDone
+			}
+			return err
 		}
 
 		// Apply environment variables from options

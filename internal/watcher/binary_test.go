@@ -65,13 +65,19 @@ func TestBinaryWatcher_WatchNonexistent(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Close()
 
-	// Watch nonexistent file - no error, but service not tracked since no valid paths
-	err = w.Watch("test-service", []string{"/tmp/nonexistent-binary-12345"})
+	// Watching a file in a nonexistent directory fails - service not tracked
+	err = w.Watch("test-service", []string{"/nonexistent-dir-12345/binary"})
 	require.NoError(t, err)
 
-	// Service should not be tracked since no valid paths were added
 	watching := w.Watching()
 	assert.NotContains(t, watching, "test-service")
+
+	// A not-yet-built binary in an existing directory IS watchable, since
+	// the fsnotify watch is on the parent directory
+	tmpDir := t.TempDir()
+	err = w.Watch("pending-service", []string{filepath.Join(tmpDir, "not-built-yet")})
+	require.NoError(t, err)
+	assert.Contains(t, w.Watching(), "pending-service")
 }
 
 func TestBinaryWatcher_WatchDuplicate(t *testing.T) {
@@ -338,6 +344,66 @@ func TestBinaryWatcher_AtomicRename_Integration(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	assert.True(t, eventReceived.Load(), "should detect atomic rename")
+}
+
+// TestBinaryWatcher_TwoAtomicRenames_Integration guards against the watch
+// going stale after the first rename: a watch on the file itself follows the
+// old inode, so only the first rebuild fires. Watching the parent directory
+// must survive any number of rebuilds.
+func TestBinaryWatcher_TwoAtomicRenames_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Shrink the restart cooldown so the second rebuild isn't swallowed
+	oldCooldown := restartCooldown
+	restartCooldown = 100 * time.Millisecond
+	defer func() { restartCooldown = oldCooldown }()
+
+	bus := newTestBus()
+	defer bus.Close()
+
+	eventCh := make(chan struct{}, 4)
+	bus.Subscribe("binary.changed", func(ctx context.Context, e events.Event) error {
+		select {
+		case eventCh <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+
+	w, err := NewBinaryWatcher(bus, 50*time.Millisecond)
+	require.NoError(t, err)
+	defer w.Close()
+
+	tmpDir := t.TempDir()
+	binaryFile := filepath.Join(tmpDir, "binary")
+	tempFile := filepath.Join(tmpDir, "binary.tmp")
+
+	os.WriteFile(binaryFile, []byte("v1"), 0755)
+	w.Watch("test-service", []string{binaryFile})
+	time.Sleep(100 * time.Millisecond)
+
+	// First rebuild (write temp + rename over)
+	os.WriteFile(tempFile, []byte("v2"), 0755)
+	os.Rename(tempFile, binaryFile)
+
+	select {
+	case <-eventCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for first rename event")
+	}
+
+	// Let the cooldown lapse, then rebuild again
+	time.Sleep(200 * time.Millisecond)
+	os.WriteFile(tempFile, []byte("v3"), 0755)
+	os.Rename(tempFile, binaryFile)
+
+	select {
+	case <-eventCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch went stale after first atomic rename: no event for second rename")
+	}
 }
 
 func TestBinaryWatcher_RapidChanges_Integration(t *testing.T) {

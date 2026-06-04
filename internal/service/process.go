@@ -142,11 +142,19 @@ func (p *Process) Start(ctx context.Context) error {
 	p.waitDone = make(chan struct{})
 
 	// Capture output in background
-	go p.captureOutput(stdout)
-	go p.captureOutput(stderr)
+	var readersDone sync.WaitGroup
+	readersDone.Add(2)
+	go func() {
+		defer readersDone.Done()
+		p.captureOutput(stdout)
+	}()
+	go func() {
+		defer readersDone.Done()
+		p.captureOutput(stderr)
+	}()
 
 	// Wait for process in background
-	go p.waitForExit()
+	go p.waitForExit(&readersDone)
 
 	return nil
 }
@@ -333,8 +341,11 @@ func (p *Process) captureOutput(r io.Reader) {
 	}
 }
 
-func (p *Process) waitForExit() {
+func (p *Process) waitForExit(readersDone *sync.WaitGroup) {
 	cmd := p.cmd
+	// Drain stdout/stderr before Wait: Wait closes the pipes, which would
+	// race the readers and drop final output lines (e.g. panic traces).
+	readersDone.Wait()
 	err := cmd.Wait()
 
 	p.mu.Lock()

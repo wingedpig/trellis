@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -108,26 +109,12 @@ func (s *DockerSource) streamLogs(ctx context.Context, lineCh chan<- string, err
 		}
 	}()
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	// Docker logs with --timestamps format: "2024-01-15T10:30:00.000000000Z message"
+	// We pass raw lines through and let the parser handle them.
+	s.forwardLines(ctx, stdout, lineCh, errCh)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Docker logs with --timestamps format: "2024-01-15T10:30:00.000000000Z message"
-		// We'll pass the raw line and let the parser handle it
-		select {
-		case <-ctx.Done():
-			return
-		case lineCh <- line:
-			s.incrementLines()
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		s.setError(err)
-		errCh <- fmt.Errorf("reading docker logs: %w", err)
-	}
-
+	// Always reap the process — on ctx cancel CommandContext has already
+	// killed it, and skipping Wait would leak a zombie plus the pipe FDs.
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() == nil {
 			s.setError(err)
@@ -164,20 +151,31 @@ func (s *DockerSource) ReadRange(ctx context.Context, start, end time.Time, line
 		return fmt.Errorf("starting docker logs: %w", err)
 	}
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	reader := bufio.NewReaderSize(stdout, 64*1024)
+	const maxLineSize = 1024 * 1024 // 1MB max line size
 
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			cmd.Process.Kill()
-			return ctx.Err()
-		case lineCh <- scanner.Text():
+	for {
+		line, readErr := reader.ReadString('\n')
+		if len(line) > 0 {
+			line = strings.TrimSuffix(line, "\n")
+			if len(line) > maxLineSize {
+				line = line[:maxLineSize] + "... [truncated]"
+			}
+			select {
+			case <-ctx.Done():
+				cmd.Process.Kill()
+				cmd.Wait()
+				return ctx.Err()
+			case lineCh <- line:
+			}
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("reading: %w", err)
+		if readErr != nil {
+			if readErr != io.EOF {
+				cmd.Wait()
+				return fmt.Errorf("reading: %w", readErr)
+			}
+			break
+		}
 	}
 
 	return cmd.Wait()

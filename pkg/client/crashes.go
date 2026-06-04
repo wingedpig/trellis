@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -82,7 +83,7 @@ func (c *CrashClient) List(ctx context.Context) ([]CrashSummary, error) {
 
 // Get retrieves a specific crash by ID.
 func (c *CrashClient) Get(ctx context.Context, id string) (*Crash, error) {
-	data, err := c.c.get(ctx, "/api/v1/crashes/"+id)
+	data, err := c.c.get(ctx, "/api/v1/crashes/"+url.PathEscape(id))
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +118,7 @@ func (c *CrashClient) Newest(ctx context.Context) (*Crash, error) {
 
 // Delete removes a crash by ID.
 func (c *CrashClient) Delete(ctx context.Context, id string) error {
-	_, err := c.c.delete(ctx, "/api/v1/crashes/"+id)
+	_, err := c.c.delete(ctx, "/api/v1/crashes/"+url.PathEscape(id))
 	return err
 }
 
