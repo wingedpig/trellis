@@ -30,6 +30,7 @@ import (
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
 	"github.com/wingedpig/trellis/internal/trace"
+	"github.com/wingedpig/trellis/internal/usage"
 	"github.com/wingedpig/trellis/internal/workflow"
 	"github.com/wingedpig/trellis/internal/worktree"
 	"github.com/wingedpig/trellis/static"
@@ -66,6 +67,7 @@ type Dependencies struct {
 	CrashManager    *crashes.Manager             // Crash history manager
 	ClaudeManager   *claude.Manager              // Claude Code session manager
 	CodexManager    *codex.Manager               // OpenAI Codex session manager
+	UsageManager    *usage.Manager               // Claude Code token usage/cost reports
 	CaseManager     *cases.Manager               // Case objects manager
 	InboxAggregator *inbox.Aggregator            // Cross-agent session inbox
 	PairRegistry    *pair.Registry               // Paired review loops
@@ -139,6 +141,8 @@ func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
 	r.HandleFunc("/codex/{worktree}", pageHandler.CodexRedirect).Methods("GET")
 	// Floating session inbox (chromeless popup window)
 	r.HandleFunc("/inbox", pageHandler.InboxPage).Methods("GET")
+	// Claude Code usage/cost page
+	r.HandleFunc("/usage", pageHandler.Usage).Methods("GET")
 }
 
 // NewRouterWithTerminalHandler creates a router with a pre-created terminal handler.
@@ -369,6 +373,13 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/crashes/newest", crashHandler.Newest).Methods("GET")
 		api.HandleFunc("/crashes/{id}", crashHandler.Get).Methods("GET")
 		api.HandleFunc("/crashes/{id}", crashHandler.Delete).Methods("DELETE")
+	}
+
+	// Claude Code usage/cost reports
+	if deps.UsageManager != nil {
+		usageHandler := handlers.NewUsageHandler(deps.UsageManager, deps.WorktreeManager, projectName)
+		api.HandleFunc("/usage/summary", usageHandler.Summary).Methods("GET")
+		api.HandleFunc("/usage/today", usageHandler.Today).Methods("GET")
 	}
 
 	// Command palette

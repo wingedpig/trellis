@@ -42,3 +42,7 @@ A chromeless popup that lists every live Claude and Codex session across worktre
 ## [Trace](/docs/pages/trace/)
 
 Execute distributed traces across multiple log sources to correlate events by trace ID or request ID.
+
+## [Usage](/docs/pages/usage/)
+
+Token usage and cost for Claude Code and Codex, computed from the agents' local transcript files — daily totals, per-worktree attribution, and the most expensive sessions. A header badge shows today's spend on every page.

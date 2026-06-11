@@ -18,10 +18,12 @@ type SessionRecord struct {
 	ID           string     `json:"id"`
 	WorktreeName string     `json:"worktree_name"`
 	DisplayName  string     `json:"display_name"`
-	SessionID    string     `json:"session_id"`  // Claude CLI session_id for --session-id resume
+	SessionID    string     `json:"session_id"` // Claude CLI session_id for --session-id resume
 	WorkDir      string     `json:"work_dir"`
 	CreatedAt    time.Time  `json:"created_at"`
 	TrashedAt    *time.Time `json:"trashed_at,omitempty"`
+	CostUSD      float64    `json:"cost_usd,omitempty"` // accumulated API cost across the session's turns
+	Model        string     `json:"model,omitempty"`    // most recent model id seen
 }
 
 // loadRecords reads session records from disk.

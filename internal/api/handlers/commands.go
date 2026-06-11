@@ -233,6 +233,8 @@ func (h *CommandsHandler) List(w http.ResponseWriter, r *http.Request) {
 			Action: CommandAction{Type: "client", Name: "shortcuts"}},
 		Command{ID: "g.copy-url", Title: "View: Copy current URL",
 			Action: CommandAction{Type: "client", Name: "copyUrl"}},
+		Command{ID: "g.usage", Title: "View: Token usage & costs",
+			Action: CommandAction{Type: "navigate", URL: "/usage"}},
 	)
 
 	sort.Slice(cmds, func(i, j int) bool { return cmds[i].Title < cmds[j].Title })

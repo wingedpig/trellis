@@ -14,6 +14,7 @@ These shortcuts work from any page in Trellis:
 | Shortcut | Action |
 |----------|--------|
 | `Cmd/Ctrl + P` | Open navigation picker |
+| `Shift + Cmd/Ctrl + P` | Open command palette (actions) |
 | `Cmd/Ctrl + /` | Open workflow picker (local terminals only) |
 | `Cmd/Ctrl + Backspace` | Open history picker (recently visited screens) |
 | `Cmd/Ctrl + H` | Open commands & shortcuts menu |
@@ -37,7 +38,7 @@ The navigation picker provides quick access to all destinations:
 
 | Prefix | Type | Example |
 |--------|------|---------|
-| `/` | Pages | `/ Status`, `/ Worktrees`, `/ Trace`, `/ Events` |
+| `/` | Pages | `/ Status`, `/ Worktrees`, `/ Trace`, `/ Events`, `/ Usage` |
 | `@` | Local terminals | `@main - dev`, `@feature-auth - claude` |
 | `!` | Remote terminals | `!admin(1)` |
 | `#` | Services | `#api`, `#worker` |
@@ -45,6 +46,20 @@ The navigation picker provides quick access to all destinations:
 | `>` | External links | `> Grafana`, `> Docs` |
 
 Type to filter/search destinations. Press Enter to select, Escape to cancel.
+
+## Command Palette (Shift+Cmd+P)
+
+While the navigation picker is for *destinations*, the command palette is for *actions* (VS Code style). Titles are in `Category: verb` form, so typing a category prefix narrows the list:
+
+- **Worktree:** Create new…, Activate `<name>`, Remove `<name>`
+- **Service:** Start/Stop/Restart `<name>`, Start all, Stop all, Clear logs
+- **Workflow:** Run `<name>` (scoped to the current worktree)
+- **Claude:** / **Codex:** New session in `<worktree>`
+- **Crash:** Clear all
+- **View:** Copy current URL, Token usage & costs
+- **Help:** Show keyboard shortcuts
+
+Destructive commands ask for confirmation. Type to filter, Enter to run, Escape to cancel.
 
 ## History Picker (Cmd+Backspace)
 

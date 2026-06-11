@@ -64,6 +64,8 @@ tags:
     description: OpenAI Codex session management, commits, and wrap-up
   - name: Inbox
     description: Aggregated cross-agent session inbox (for the floating popup window)
+  - name: Usage
+    description: Token usage and cost reports for Claude Code and Codex, computed from local transcript files
   - name: VSCode
     description: VS Code integration
 
@@ -1189,6 +1191,60 @@ paths:
                         type: string
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # ==================== USAGE ====================
+  /usage/summary:
+    get:
+      tags: [Usage]
+      summary: Aggregate token usage and cost report
+      description: >
+        Token usage and cost over the trailing number of days, computed from
+        Claude Code transcript files and Codex rollout files on this machine.
+        Daily and overall totals cover all projects; the worktree and session
+        sections are scoped to this project's worktrees. Costs are API list
+        prices.
+      operationId: getUsageSummary
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+          description: Trailing window in days
+      responses:
+        '200':
+          description: Usage report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UsageReport'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /usage/today:
+    get:
+      tags: [Usage]
+      summary: Today's usage totals
+      description: >
+        Today's combined Claude Code + Codex totals across all projects on
+        this machine. Used by the header cost badge.
+      operationId: getUsageToday
+      responses:
+        '200':
+          description: Today's totals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UsageTotals'
 
   # ==================== TERMINAL ====================
   /terminal/sessions:
@@ -2712,6 +2768,113 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    UsageTotals:
+      type: object
+      description: Token and cost totals across a set of API calls
+      properties:
+        input_tokens:
+          type: integer
+          description: Uncached input tokens
+        output_tokens:
+          type: integer
+        cache_read_tokens:
+          type: integer
+          description: Cached/cache-read input tokens
+        cache_write_tokens:
+          type: integer
+          description: Cache-creation input tokens (Claude only)
+        cost_usd:
+          type: number
+          description: Cost at API list prices
+        calls:
+          type: integer
+          description: Number of model API calls
+
+    UsageDaily:
+      allOf:
+        - $ref: '#/components/schemas/UsageTotals'
+        - type: object
+          properties:
+            date:
+              type: string
+              description: Calendar day (local time), YYYY-MM-DD
+            models:
+              type: array
+              items:
+                type: string
+
+    UsageWorktree:
+      allOf:
+        - $ref: '#/components/schemas/UsageTotals'
+        - type: object
+          properties:
+            worktree:
+              type: string
+              description: Worktree display name
+            path:
+              type: string
+              description: Absolute worktree path
+
+    UsageSession:
+      allOf:
+        - $ref: '#/components/schemas/UsageTotals'
+        - type: object
+          properties:
+            session_id:
+              type: string
+              description: Agent CLI session id
+            agent:
+              type: string
+              enum: [claude, codex]
+            worktree:
+              type: string
+            last_activity:
+              type: string
+              format: date-time
+            models:
+              type: array
+              items:
+                type: string
+
+    UsageReport:
+      type: object
+      properties:
+        days:
+          type: integer
+          description: Trailing window in days
+        generated_at:
+          type: string
+          format: date-time
+        today:
+          $ref: '#/components/schemas/UsageTotals'
+        total:
+          $ref: '#/components/schemas/UsageTotals'
+        today_by_agent:
+          type: object
+          description: Today's totals keyed by agent ("claude", "codex")
+          additionalProperties:
+            $ref: '#/components/schemas/UsageTotals'
+        total_by_agent:
+          type: object
+          description: Period totals keyed by agent
+          additionalProperties:
+            $ref: '#/components/schemas/UsageTotals'
+        daily:
+          type: array
+          description: Per-day totals, newest first (all projects)
+          items:
+            $ref: '#/components/schemas/UsageDaily'
+        worktrees:
+          type: array
+          description: Per-worktree totals, highest cost first (this project)
+          items:
+            $ref: '#/components/schemas/UsageWorktree'
+        sessions:
+          type: array
+          description: Top sessions by cost, capped at 50 (this project)
+          items:
+            $ref: '#/components/schemas/UsageSession'
+
     ResponseMeta:
       type: object
       properties:

@@ -127,7 +127,8 @@ window.TrellisNav = (function() {
         { value: '/status', text: '/Status', icon: 'server' },
         { value: '/trace', text: '/Trace', icon: 'magnifying-glass-location' },
         { value: '/crashes', text: '/Crashes', icon: 'skull-crossbones' },
-        { value: '/events', text: '/Events', icon: 'clock-rotate-left' }
+        { value: '/events', text: '/Events', icon: 'clock-rotate-left' },
+        { value: '/usage', text: '/Usage', icon: 'coins' }
     ];
 
     // Convert a terminal URL path to a human-readable display name.
@@ -972,6 +973,10 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
                     <i class="fa-solid fa-code-branch text-accent"></i> {%s p.WorktreeName() %} ({%s p.BranchName() %})
                 </span>
                 {% endif %}
+                <a class="navbar-text text-decoration-none" id="usageTodayBadge" href="/usage"
+                   title="Claude Code + Codex usage today (all projects) — click for details" style="display:none;">
+                    <i class="fa-solid fa-coins text-accent"></i> <span id="usageTodayAmount"></span>
+                </a>
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
                 </button>
@@ -1000,6 +1005,32 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
 <script src="/static/js/shortcut_help.js"></script>
 {%= NavScript(p.SessionID(), p.ShortcutsJSON(), "page") %}
 <script src="/static/js/inbox_main_ws.js"></script>
+<script>
+// Today's Claude Code cost badge in the navbar. Hidden until there is
+// measurable spend; refreshed every 5 minutes.
+(function() {
+    function refreshUsageBadge() {
+        fetch('/api/v1/usage/today')
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function(data) {
+                var t = data.data || data;
+                var cost = t.cost_usd || 0;
+                var badge = document.getElementById('usageTodayBadge');
+                var amount = document.getElementById('usageTodayAmount');
+                if (!badge || !amount) return;
+                if (cost >= 0.005) {
+                    amount.textContent = '$' + cost.toFixed(2) + ' today';
+                    badge.style.display = '';
+                } else {
+                    badge.style.display = 'none';
+                }
+            })
+            .catch(function() {});
+    }
+    refreshUsageBadge();
+    setInterval(refreshUsageBadge, 5 * 60 * 1000);
+})();
+</script>
 <main>
 <div class="page-container container-fluid mt-4">
 {% endfunc %}

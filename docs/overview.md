@@ -39,6 +39,10 @@ Each worktree can have multiple Claude Code chat sessions. You can interact with
 
 A small chromeless popup, openable from the inbox icon in any Trellis header, lists every live Claude and Codex session across worktrees with a real-time "running / needs you" badge. Click a row and the foreground Trellis window jumps to that session — no scrolling through worktree lists to find the agent that's waiting on you.
 
+### Usage & Cost Tracking
+
+Trellis reads the transcript files Claude Code and Codex write locally and turns them into a usage report: cost and tokens per day, per worktree, and per session, priced at API list rates. A badge in every page header shows today's spend, the Claude chat footer shows the running cost of the current session, and the [Usage page](/docs/pages/usage/) has the full breakdown.
+
 ### Cases
 
 A case is the durable record of a worktree's effort — one unit of work (bug, feature, investigation, task) that accumulates notes, links, transcripts, evidence, traces, and a commit timeline over its lifetime. Cases are created lazily on the first commit, and at most one is open per worktree.

@@ -105,6 +105,9 @@ type WorktreeHomePage struct {
                     {% if !sess.LastUserInput.IsZero() %}
                     <span class="text-muted ms-2 small">{%s FormatRelativeTime(sess.LastUserInput) %}</span>
                     {% endif %}
+                    {% if sess.CostUSD >= 0.005 %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis ms-2" title="Session API cost">${%f.2 sess.CostUSD %}</span>
+                    {% endif %}
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameClaudeSession('{%s JSAttr(sess.ID) %}', '{%s JSAttr(sess.DisplayName) %}')">
                     <i class="fa-solid fa-pencil"></i>

@@ -170,7 +170,8 @@ window.TrellisNav = (function() {
         { value: '/status', text: '/Status', icon: 'server' },
         { value: '/trace', text: '/Trace', icon: 'magnifying-glass-location' },
         { value: '/crashes', text: '/Crashes', icon: 'skull-crossbones' },
-        { value: '/events', text: '/Events', icon: 'clock-rotate-left' }
+        { value: '/events', text: '/Events', icon: 'clock-rotate-left' },
+        { value: '/usage', text: '/Usage', icon: 'coins' }
     ];
 
     // Convert a terminal URL path to a human-readable display name.
@@ -932,38 +933,38 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 }
 
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 }
 
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 	return qs422016
-//line views/header.qtpl:891
+//line views/header.qtpl:892
 }
 
-//line views/header.qtpl:893
+//line views/header.qtpl:894
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:893
+//line views/header.qtpl:894
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -971,9 +972,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:899
+//line views/header.qtpl:900
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:899
+//line views/header.qtpl:900
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -1046,26 +1047,30 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 
             <div class="d-flex align-items-center gap-3 ms-auto">
                 `)
-//line views/header.qtpl:970
+//line views/header.qtpl:971
 	if p.Worktree != nil {
-//line views/header.qtpl:970
+//line views/header.qtpl:971
 		qw422016.N().S(`
                 <span class="navbar-text">
                     <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:972
+//line views/header.qtpl:973
 		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:972
+//line views/header.qtpl:973
 		qw422016.N().S(` (`)
-//line views/header.qtpl:972
+//line views/header.qtpl:973
 		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:972
+//line views/header.qtpl:973
 		qw422016.N().S(`)
                 </span>
                 `)
-//line views/header.qtpl:974
+//line views/header.qtpl:975
 	}
-//line views/header.qtpl:974
+//line views/header.qtpl:975
 	qw422016.N().S(`
+                <a class="navbar-text text-decoration-none" id="usageTodayBadge" href="/usage"
+                   title="Claude Code + Codex usage today (all projects) — click for details" style="display:none;">
+                    <i class="fa-solid fa-coins text-accent"></i> <span id="usageTodayAmount"></span>
+                </a>
                 <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
                     <i class="fa-solid fa-keyboard"></i>
                 </button>
@@ -1093,46 +1098,72 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 <script src="/static/js/command_palette.js"></script>
 <script src="/static/js/shortcut_help.js"></script>
 `)
-//line views/header.qtpl:1001
+//line views/header.qtpl:1006
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:1001
+//line views/header.qtpl:1006
 	qw422016.N().S(`
 <script src="/static/js/inbox_main_ws.js"></script>
+<script>
+// Today's Claude Code cost badge in the navbar. Hidden until there is
+// measurable spend; refreshed every 5 minutes.
+(function() {
+    function refreshUsageBadge() {
+        fetch('/api/v1/usage/today')
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function(data) {
+                var t = data.data || data;
+                var cost = t.cost_usd || 0;
+                var badge = document.getElementById('usageTodayBadge');
+                var amount = document.getElementById('usageTodayAmount');
+                if (!badge || !amount) return;
+                if (cost >= 0.005) {
+                    amount.textContent = '$' + cost.toFixed(2) + ' today';
+                    badge.style.display = '';
+                } else {
+                    badge.style.display = 'none';
+                }
+            })
+            .catch(function() {});
+    }
+    refreshUsageBadge();
+    setInterval(refreshUsageBadge, 5 * 60 * 1000);
+})();
+</script>
 <main>
 <div class="page-container container-fluid mt-4">
 `)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 }
 
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 }
 
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 func (p *BasePage) Header() string {
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 	return qs422016
-//line views/header.qtpl:1005
+//line views/header.qtpl:1036
 }
 
-//line views/header.qtpl:1007
+//line views/header.qtpl:1038
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:1007
+//line views/header.qtpl:1038
 	qw422016.N().S(`
 </div>
 </main>
@@ -1140,31 +1171,31 @@ func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 }
 
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 }
 
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 	return qs422016
-//line views/header.qtpl:1013
+//line views/header.qtpl:1044
 }

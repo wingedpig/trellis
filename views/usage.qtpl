@@ -1,0 +1,328 @@
+// Copyright © 2026 Groups.io, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+{% code
+type UsagePage struct {
+    BasePage
+}
+%}
+
+{% func (p *UsagePage) Render() %}
+{%= p.Header() %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="fa-solid fa-coins"></i> Claude Usage</h2>
+    <div class="d-flex align-items-center gap-2">
+        <select id="usageDays" class="form-select form-select-sm" style="width:auto;" onchange="loadUsage()">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadUsage()" title="Refresh">
+            <i class="fa-solid fa-refresh"></i>
+        </button>
+    </div>
+</div>
+
+<div id="usageError" class="alert alert-danger" style="display:none;"></div>
+
+<div class="row mb-4" id="usageCards" style="display:none;">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small">Today</div>
+                <div class="fs-4" id="usageTodayCost"></div>
+                <div class="text-muted small" id="usageTodayTokens"></div>
+                <div class="text-muted small" id="usageTodaySplit"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small" id="usageTotalLabel">Last 30 days</div>
+                <div class="fs-4" id="usageTotalCost"></div>
+                <div class="text-muted small" id="usageTotalTokens"></div>
+                <div class="text-muted small" id="usageTotalSplit"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small">Daily average</div>
+                <div class="fs-4" id="usageAvgCost"></div>
+                <div class="text-muted small">over days with usage</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted small">API calls</div>
+                <div class="fs-4" id="usageTotalCalls"></div>
+                <div class="text-muted small" id="usageGeneratedAt"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fa-solid fa-calendar-days"></i> Daily Usage
+        <span class="text-muted small ms-2">all Claude Code &amp; Codex usage on this machine</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Models</th>
+                        <th class="text-end">Input</th>
+                        <th class="text-end">Output</th>
+                        <th class="text-end">Cache Read</th>
+                        <th class="text-end">Cache Write</th>
+                        <th class="text-end">Cost</th>
+                    </tr>
+                </thead>
+                <tbody id="usageDailyBody">
+                    <tr><td colspan="7" class="text-muted p-3">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fa-solid fa-code-branch"></i> By Worktree
+        <span class="text-muted small ms-2">this project</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Worktree</th>
+                        <th class="text-end">API Calls</th>
+                        <th class="text-end">Input</th>
+                        <th class="text-end">Output</th>
+                        <th class="text-end">Cache Read</th>
+                        <th class="text-end">Cache Write</th>
+                        <th class="text-end">Cost</th>
+                    </tr>
+                </thead>
+                <tbody id="usageWorktreeBody">
+                    <tr><td colspan="7" class="text-muted p-3">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fa-solid fa-message"></i> Top Sessions by Cost
+        <span class="text-muted small ms-2">this project</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Session</th>
+                        <th>Agent</th>
+                        <th>Worktree</th>
+                        <th>Models</th>
+                        <th>Last Activity</th>
+                        <th class="text-end">Input</th>
+                        <th class="text-end">Output</th>
+                        <th class="text-end">Cost</th>
+                    </tr>
+                </thead>
+                <tbody id="usageSessionBody">
+                    <tr><td colspan="8" class="text-muted p-3">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small">
+    Computed from Claude Code's local transcript files and Codex's rollout files.
+    Costs are what the usage would cost at API list prices (informational if you
+    are on a subscription plan). Claude Code prunes transcripts after ~30 days by
+    default; raise <code>cleanupPeriodDays</code> in Claude Code settings to keep
+    more history.
+</p>
+
+<script>
+(function() {
+'use strict';
+
+function esc(s) {
+    var div = document.createElement('div');
+    div.textContent = s == null ? '' : String(s);
+    return div.innerHTML;
+}
+
+function fmtUSD(c) {
+    if (!c) return '$0.00';
+    if (c > 0 && c < 0.01) return '<$0.01';
+    return '$' + c.toFixed(2);
+}
+
+function fmtTokens(n) {
+    if (!n) return '0';
+    if (n >= 1000000000) return (n / 1000000000).toFixed(1) + 'B';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+}
+
+// Strip the redundant "claude-" prefix to keep model chips compact.
+function fmtModels(models) {
+    return (models || []).map(function(m) {
+        return '<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">' +
+            esc(m.replace(/^claude-/, '')) + '</span>';
+    }).join('');
+}
+
+function fmtDate(iso) {
+    var d = new Date(iso);
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function rowEmpty(cols, text) {
+    return '<tr><td colspan="' + cols + '" class="text-muted p-3">' + esc(text) + '</td></tr>';
+}
+
+function agentBadge(agent) {
+    var cls = agent === 'codex' ? 'bg-info-subtle text-info-emphasis' : 'bg-primary-subtle text-primary-emphasis';
+    return '<span class="badge ' + cls + '">' + esc(agent || 'claude') + '</span>';
+}
+
+// "Claude $1.23 · Codex $0.45" — empty string when only one agent has usage.
+function agentSplit(byAgent) {
+    if (!byAgent) return '';
+    var parts = [];
+    ['claude', 'codex'].forEach(function(a) {
+        var t = byAgent[a];
+        if (t && t.cost_usd > 0) {
+            parts.push(a.charAt(0).toUpperCase() + a.slice(1) + ' ' + fmtUSD(t.cost_usd));
+        }
+    });
+    return parts.length > 1 ? parts.join(' · ') : '';
+}
+
+function localLoadUsage() {
+    var days = document.getElementById('usageDays').value;
+    fetch('/api/v1/usage/summary?days=' + encodeURIComponent(days))
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            var rep = data.data || data;
+            renderReport(rep);
+        })
+        .catch(function(err) {
+            var el = document.getElementById('usageError');
+            el.textContent = 'Failed to load usage data: ' + err;
+            el.style.display = 'block';
+        });
+}
+
+function renderReport(rep) {
+    document.getElementById('usageError').style.display = 'none';
+    document.getElementById('usageCards').style.display = '';
+
+    var today = rep.today || {};
+    var total = rep.total || {};
+    document.getElementById('usageTodayCost').textContent = fmtUSD(today.cost_usd || 0);
+    document.getElementById('usageTodayTokens').textContent =
+        fmtTokens(today.input_tokens || 0) + ' in / ' + fmtTokens(today.output_tokens || 0) + ' out';
+    document.getElementById('usageTodaySplit').textContent = agentSplit(rep.today_by_agent);
+    document.getElementById('usageTotalLabel').textContent = 'Last ' + rep.days + ' days';
+    document.getElementById('usageTotalCost').textContent = fmtUSD(total.cost_usd || 0);
+    document.getElementById('usageTotalTokens').textContent =
+        fmtTokens(total.input_tokens || 0) + ' in / ' + fmtTokens(total.output_tokens || 0) + ' out';
+    document.getElementById('usageTotalSplit').textContent = agentSplit(rep.total_by_agent);
+    var daily = rep.daily || [];
+    var activeDays = daily.length;
+    document.getElementById('usageAvgCost').textContent =
+        activeDays ? fmtUSD((total.cost_usd || 0) / activeDays) : '$0.00';
+    document.getElementById('usageTotalCalls').textContent = (total.calls || 0).toLocaleString();
+    document.getElementById('usageGeneratedAt').textContent = 'as of ' + fmtDate(rep.generated_at);
+
+    var body = document.getElementById('usageDailyBody');
+    if (!daily.length) {
+        body.innerHTML = rowEmpty(7, 'No usage recorded in this period.');
+    } else {
+        body.innerHTML = daily.map(function(d) {
+            return '<tr>' +
+                '<td>' + esc(d.date) + '</td>' +
+                '<td>' + fmtModels(d.models) + '</td>' +
+                '<td class="text-end">' + fmtTokens(d.input_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(d.output_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(d.cache_read_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(d.cache_write_tokens) + '</td>' +
+                '<td class="text-end">' + fmtUSD(d.cost_usd) + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    body = document.getElementById('usageWorktreeBody');
+    var wts = rep.worktrees || [];
+    if (!wts.length) {
+        body.innerHTML = rowEmpty(7, 'No usage attributed to this project’s worktrees in this period.');
+    } else {
+        body.innerHTML = wts.map(function(wt) {
+            return '<tr>' +
+                '<td><a href="/worktree/' + encodeURIComponent(wt.worktree) + '">' + esc(wt.worktree) + '</a></td>' +
+                '<td class="text-end">' + (wt.calls || 0).toLocaleString() + '</td>' +
+                '<td class="text-end">' + fmtTokens(wt.input_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(wt.output_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(wt.cache_read_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(wt.cache_write_tokens) + '</td>' +
+                '<td class="text-end">' + fmtUSD(wt.cost_usd) + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    body = document.getElementById('usageSessionBody');
+    var sessions = rep.sessions || [];
+    if (!sessions.length) {
+        body.innerHTML = rowEmpty(8, 'No sessions found for this project in this period.');
+    } else {
+        body.innerHTML = sessions.map(function(s) {
+            return '<tr>' +
+                '<td><code class="small">' + esc((s.session_id || '').substring(0, 8)) + '</code></td>' +
+                '<td>' + agentBadge(s.agent) + '</td>' +
+                '<td>' + esc(s.worktree) + '</td>' +
+                '<td>' + fmtModels(s.models) + '</td>' +
+                '<td>' + fmtDate(s.last_activity) + '</td>' +
+                '<td class="text-end">' + fmtTokens(s.input_tokens) + '</td>' +
+                '<td class="text-end">' + fmtTokens(s.output_tokens) + '</td>' +
+                '<td class="text-end">' + fmtUSD(s.cost_usd) + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+}
+
+window.loadUsage = localLoadUsage;
+localLoadUsage();
+
+var container = document.currentScript && document.currentScript.closest('.page-container');
+if (container) {
+    container.addEventListener('trellis:page-entered', function() {
+        window.loadUsage = localLoadUsage;
+        localLoadUsage();
+    });
+}
+})();
+</script>
+
+{%= p.Footer() %}
+{% endfunc %}

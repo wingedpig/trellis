@@ -531,6 +531,25 @@ func (h *PageHandler) Status(w http.ResponseWriter, r *http.Request) {
 	page.WriteRender(w)
 }
 
+// Usage renders the Claude Code usage/cost page. Data is fetched
+// client-side from /api/v1/usage/summary.
+func (h *PageHandler) Usage(w http.ResponseWriter, r *http.Request) {
+	var active *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		active = h.worktrees.Active()
+	}
+
+	page := &views.UsagePage{
+		BasePage: views.BasePage{
+			Title:    "Claude Usage",
+			Worktree: active,
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
 // Home renders the home page (worktrees page with project info).
 func (h *PageHandler) Home(w http.ResponseWriter, r *http.Request) {
 	h.renderWorktreesPage(w, r)

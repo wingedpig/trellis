@@ -118,6 +118,8 @@ type SessionInfo struct {
 	LastUserInput time.Time  `json:"last_user_input,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	TrashedAt     *time.Time `json:"trashed_at,omitempty"`
+	CostUSD       float64    `json:"cost_usd,omitempty"`
+	Model         string     `json:"model,omitempty"`
 }
 
 // Session holds per-session Claude state with a long-running claude process.
@@ -150,6 +152,11 @@ type Session struct {
 	inputTokensBase          int
 	cacheCreationInputTokens int
 	cacheReadInputTokens     int
+	// Cost and model tracking. The CLI reports total_cost_usd cumulatively
+	// per process, so costUSD accumulates deltas across process restarts.
+	costUSD         float64
+	lastProcessCost float64 // last total_cost_usd seen from the current process
+	model           string  // most recent model id seen on this session
 	// Cached from system init event
 	slashCommands []string
 	skills        []string
@@ -191,6 +198,8 @@ func (s *Session) Info() SessionInfo {
 		DisplayName:  s.displayName,
 		CreatedAt:    s.createdAt,
 		TrashedAt:    s.trashedAt,
+		CostUSD:      s.costUSD,
+		Model:        s.model,
 	}
 	// Find the last user message timestamp
 	for i := len(s.messages) - 1; i >= 0; i-- {
@@ -266,6 +275,8 @@ func (m *Manager) loadFromDisk() {
 			workDir:      rec.WorkDir,
 			createdAt:    rec.CreatedAt,
 			trashedAt:    rec.TrashedAt,
+			costUSD:      rec.CostUSD,
+			model:        rec.Model,
 			subscribers:  make(map[chan StreamEvent]struct{}),
 			manager:      m,
 		}
@@ -314,6 +325,8 @@ func (m *Manager) persist() {
 			WorkDir:      s.workDir,
 			CreatedAt:    s.createdAt,
 			TrashedAt:    s.trashedAt,
+			CostUSD:      s.costUSD,
+			Model:        s.model,
 		})
 		s.mu.Unlock()
 	}
@@ -813,6 +826,20 @@ func (s *Session) TokenBreakdown() (base, cacheCreate, cacheRead int) {
 	return s.inputTokensBase, s.cacheCreationInputTokens, s.cacheReadInputTokens
 }
 
+// CostUSD returns the accumulated API cost for this session in USD.
+func (s *Session) CostUSD() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.costUSD
+}
+
+// Model returns the most recent model id seen for this session.
+func (s *Session) Model() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.model
+}
+
 // PendingControlRequest returns the pending control_request event, if any.
 // Used to re-display permission prompts to reconnecting clients.
 func (s *Session) PendingControlRequest() *StreamEvent {
@@ -1011,6 +1038,8 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	s.stdin = stdinPipe
 	s.cancel = cancel
 	s.started = true
+	// A fresh process reports total_cost_usd from zero again.
+	s.lastProcessCost = 0
 	s.mu.Unlock()
 
 	go s.readLoop(stdoutPipe, cmd, gen)
@@ -1128,6 +1157,7 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		if event.Type == "assistant" && event.Message != nil {
 			var msg struct {
 				Content []ContentBlock `json:"content"`
+				Model   string         `json:"model"`
 				Usage   struct {
 					InputTokens              int `json:"input_tokens"`
 					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
@@ -1137,6 +1167,9 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 			}
 			if json.Unmarshal(event.Message, &msg) == nil {
 				s.mu.Lock()
+				if msg.Model != "" {
+					s.model = msg.Model
+				}
 				total := msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens + msg.Usage.CacheReadInputTokens
 				if total > 0 {
 					s.inputTokens = total
@@ -1171,11 +1204,24 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 				s.messages = append(s.messages, msg)
 				s.persistMessage(msg)
 			}
+			if event.Cost > 0 {
+				if event.Cost >= s.lastProcessCost {
+					s.costUSD += event.Cost - s.lastProcessCost
+				} else {
+					// The CLI restarted its accounting; count the full amount.
+					s.costUSD += event.Cost
+				}
+				s.lastProcessCost = event.Cost
+			}
 			s.generating = false
 			s.currentBlocks = nil
 			s.pendingControlRequest = nil
 			s.publishStateLocked()
+			persist := s.persistFn
 			s.mu.Unlock()
+			if persist != nil {
+				persist()
+			}
 		}
 
 		// Persist in-progress assistant blocks on control_request so they
@@ -1303,6 +1349,7 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 		// Sum input_tokens + cache tokens for total context usage
 		if inner.Message != nil {
 			var msg struct {
+				Model string `json:"model"`
 				Usage struct {
 					InputTokens              int `json:"input_tokens"`
 					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
@@ -1311,12 +1358,17 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 			}
 			if json.Unmarshal(inner.Message, &msg) == nil {
 				total := msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens + msg.Usage.CacheReadInputTokens
-				if total > 0 {
+				if total > 0 || msg.Model != "" {
 					s.mu.Lock()
-					s.inputTokens = total
-					s.inputTokensBase = msg.Usage.InputTokens
-					s.cacheCreationInputTokens = msg.Usage.CacheCreationInputTokens
-					s.cacheReadInputTokens = msg.Usage.CacheReadInputTokens
+					if msg.Model != "" {
+						s.model = msg.Model
+					}
+					if total > 0 {
+						s.inputTokens = total
+						s.inputTokensBase = msg.Usage.InputTokens
+						s.cacheCreationInputTokens = msg.Usage.CacheCreationInputTokens
+						s.cacheReadInputTokens = msg.Usage.CacheReadInputTokens
+					}
 					s.mu.Unlock()
 				}
 			}

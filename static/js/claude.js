@@ -21,8 +21,31 @@
     let streamingPlanMode = false; // True when streaming a plan mode tool block
     let slashCommands = [];       // Available slash commands from system init
     let inputTokens = 0;          // Most recent input token count for context usage
-    const contextWindow = 200000; // Claude context window size
+    let contextWindow = 200000;   // Context window size, updated per model
+    let sessionModel = '';        // Most recent model id for this session
+    let sessionCostUSD = 0;       // Accumulated session cost from the server
     let tokenBreakdown = { base: 0, cacheCreate: 0, cacheRead: 0, total: 0 };
+
+    // Context window per model: Fable/Mythos and Opus 4.6+ / Sonnet 4.6+
+    // run with a 1M window; everything else (Haiku, older models) is 200K.
+    function contextWindowFor(model) {
+        var m = (model || '').toLowerCase();
+        if (!m) return 200000;
+        if (m.indexOf('fable') !== -1 || m.indexOf('mythos') !== -1) return 1000000;
+        var match = m.match(/(opus|sonnet)-(\d+)(?:-(\d+))?/);
+        if (match) {
+            var major = parseInt(match[2], 10);
+            var minor = parseInt(match[3] || '0', 10);
+            if (major > 4 || (major === 4 && minor >= 6)) return 1000000;
+        }
+        return 200000;
+    }
+
+    function setSessionModel(model) {
+        if (!model) return;
+        sessionModel = model;
+        contextWindow = contextWindowFor(model);
+    }
 
     function isPlanModeTool(name) {
         return name === 'EnterPlanMode' || name === 'ExitPlanMode';
@@ -360,6 +383,10 @@
                 } else {
                     requestAnimationFrame(function() { inputEl.focus(); });
                 }
+                setSessionModel(msg.model);
+                if (msg.cost_usd) {
+                    sessionCostUSD = msg.cost_usd;
+                }
                 if (msg.input_tokens) {
                     inputTokens = msg.input_tokens;
                     if (msg.input_tokens_base || msg.cache_creation_input_tokens || msg.cache_read_input_tokens) {
@@ -370,8 +397,8 @@
                             total: msg.input_tokens
                         };
                     }
-                    updateContextUsage();
                 }
+                updateContextUsage();
                 if (msg.slash_commands || msg.skills) {
                     slashCommands = (msg.slash_commands || []).concat(msg.skills || []);
                     slashCommands = slashCommands.filter(function(v, i, a) { return a.indexOf(v) === i; });
@@ -382,6 +409,11 @@
                 handleStreamEvent(msg.event);
                 break;
             case 'done':
+                setSessionModel(msg.model);
+                if (msg.cost_usd) {
+                    sessionCostUSD = msg.cost_usd;
+                }
+                updateContextUsage();
                 finishAssistantTurn();
                 setGenerating(false);
                 break;
@@ -400,9 +432,12 @@
 
         switch (event.type) {
             case 'assistant':
-                // Always extract token usage from assistant events
-                if (event.message && event.message.usage) {
-                    updateTokenBreakdown(event.message.usage);
+                // Always extract token usage and model from assistant events
+                if (event.message) {
+                    setSessionModel(event.message.model);
+                    if (event.message.usage) {
+                        updateTokenBreakdown(event.message.usage);
+                    }
                 }
                 // Skip content rendering if stream_event is handling it (avoids double rendering)
                 if (usingStreamEvents) break;
@@ -515,8 +550,11 @@
         usingStreamEvents = true;
         switch (inner.type) {
             case 'message_start':
-                if (inner.message && inner.message.usage) {
-                    updateTokenBreakdown(inner.message.usage);
+                if (inner.message) {
+                    setSessionModel(inner.message.model);
+                    if (inner.message.usage) {
+                        updateTokenBreakdown(inner.message.usage);
+                    }
                 }
                 break;
             case 'content_block_start':
@@ -2589,18 +2627,30 @@
         }
     }
 
+    function formatUSD(cost) {
+        if (cost > 0 && cost < 0.01) return '<$0.01';
+        return '$' + cost.toFixed(2);
+    }
+
     function buildTokenPopoverContent() {
         var pct = Math.round(tokenBreakdown.total / contextWindow * 100);
         var barClass = 'claude-token-bar-fill';
         if (pct >= 70) barClass += ' danger';
         else if (pct >= 50) barClass += ' warn';
-        return '<div class="claude-token-breakdown">' +
+        var rows = '<div class="claude-token-breakdown">' +
             '<div class="claude-token-row"><span>Input</span><span>' + tokenBreakdown.base.toLocaleString() + '</span></div>' +
             '<div class="claude-token-row"><span>Cache read</span><span>' + tokenBreakdown.cacheRead.toLocaleString() + '</span></div>' +
             '<div class="claude-token-row"><span>Cache write</span><span>' + tokenBreakdown.cacheCreate.toLocaleString() + '</span></div>' +
-            '<div class="claude-token-row claude-token-row-total"><span>Total</span><span>' + tokenBreakdown.total.toLocaleString() + '</span></div>' +
-            '<div class="claude-token-bar-track"><div class="' + barClass + '" style="width:' + Math.min(pct, 100) + '%"></div></div>' +
+            '<div class="claude-token-row claude-token-row-total"><span>Total</span><span>' + tokenBreakdown.total.toLocaleString() + '</span></div>';
+        if (sessionModel) {
+            rows += '<div class="claude-token-row"><span>Model</span><span>' + escapeHtml(sessionModel) + '</span></div>';
+        }
+        if (sessionCostUSD > 0) {
+            rows += '<div class="claude-token-row"><span>Session cost</span><span>' + formatUSD(sessionCostUSD) + '</span></div>';
+        }
+        rows += '<div class="claude-token-bar-track"><div class="' + barClass + '" style="width:' + Math.min(pct, 100) + '%"></div></div>' +
             '</div>';
+        return rows;
     }
 
     function updateTokenPopover(el) {
@@ -2628,14 +2678,23 @@
     function updateContextUsage() {
         var el = document.getElementById('claude-context-usage');
         if (!el) return;
-        if (!inputTokens) {
+        if (!inputTokens && !sessionCostUSD) {
             el.textContent = '';
+            el.className = 'claude-context-usage';
+            return;
+        }
+        var costPrefix = sessionCostUSD > 0 ? formatUSD(sessionCostUSD) + ' · ' : '';
+        if (!inputTokens) {
+            el.textContent = costPrefix.replace(' · ', '');
             el.className = 'claude-context-usage';
             return;
         }
         var pct = Math.round(inputTokens / contextWindow * 100);
         var tokensK = Math.round(inputTokens / 1000);
-        el.textContent = tokensK + 'K / ' + (contextWindow / 1000) + 'K tokens (' + pct + '%)';
+        var windowLabel = contextWindow >= 1000000
+            ? (contextWindow / 1000000) + 'M'
+            : (contextWindow / 1000) + 'K';
+        el.textContent = costPrefix + tokensK + 'K / ' + windowLabel + ' tokens (' + pct + '%)';
         if (pct >= 70) {
             el.className = 'claude-context-usage danger';
         } else if (pct >= 50) {

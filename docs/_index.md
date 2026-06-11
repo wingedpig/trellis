@@ -15,6 +15,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 - **Service supervision** — Run your app's components locally with automatic restart when binaries change
 - **Terminal & tmux management** — Trellis creates and manages tmux sessions for you
 - **Claude Code integration** — AI-assisted development with per-worktree chat sessions and transcript management
+- **Usage & cost tracking** — Daily, per-worktree, and per-session token usage and cost for Claude Code and Codex
 - **Cases** — Track units of work (bugs, features, investigations) with notes, links, transcripts, and trace reports
 - **Remote access** — SSH terminals and log streaming from staging/production in the same UI
 - **Log search** — Tail, search, and correlate logs across local and remote systems
@@ -44,6 +45,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 - [Events Page](/docs/pages/events/) - View system event timeline
 - [Crashes Page](/docs/pages/crashes/) - Review crash reports
 - [Trace Page](/docs/pages/trace/) - Distributed tracing across log sources
+- [Usage Page](/docs/pages/usage/) - Token usage and cost for Claude Code and Codex
 
 ## Reference
 

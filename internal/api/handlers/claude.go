@@ -68,6 +68,8 @@ type serverMessage struct {
 	InputTokensBase          int                 `json:"input_tokens_base,omitempty"`
 	CacheCreationInputTokens int                 `json:"cache_creation_input_tokens,omitempty"`
 	CacheReadInputTokens     int                 `json:"cache_read_input_tokens,omitempty"`
+	CostUSD                  float64             `json:"cost_usd,omitempty"`
+	Model                    string              `json:"model,omitempty"`
 	SlashCommands            []string            `json:"slash_commands,omitempty"`
 	Skills                   []string            `json:"skills,omitempty"`
 }
@@ -141,6 +143,8 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 		InputTokensBase:          base,
 		CacheCreationInputTokens: cacheCreate,
 		CacheReadInputTokens:     cacheRead,
+		CostUSD:                  session.CostUSD(),
+		Model:                    session.Model(),
 		SlashCommands:            cmds,
 		Skills:                   skills,
 	})
@@ -155,9 +159,11 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 	go func() {
 		for event := range subCh {
 			writeJSON(serverMessage{Type: "stream", Event: &event})
-			// When a turn completes, notify the client
+			// When a turn completes, notify the client with the session's
+			// accumulated cost (authoritative across process restarts,
+			// unlike the per-process total_cost_usd on the event itself).
 			if event.Type == "result" {
-				writeJSON(serverMessage{Type: "done"})
+				writeJSON(serverMessage{Type: "done", CostUSD: session.CostUSD(), Model: session.Model()})
 			}
 		}
 	}()

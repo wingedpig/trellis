@@ -84,9 +84,11 @@ The Claude page provides a chat interface with:
 | Shift+Enter | Insert newline without sending |
 | Escape | Stop/cancel current response |
 
-### Context Usage
+### Context Usage and Session Cost
 
-The footer shows current context window usage, helping you track how much of Claude's context is being used by the conversation.
+The footer shows the session's accumulated API cost and current context window usage, e.g. `$1.23 · 45K / 1M tokens (4%)`. The context window size is model-aware — 1M tokens for Opus 4.6+/Fable/Sonnet 4.6+, 200K for Haiku and older models — and the readout turns amber at 50% and red at 70%. Hover it for a breakdown of input, cache-read, and cache-write tokens plus the model and session cost.
+
+Cost accumulates across the whole session, including process restarts and `--resume`, and persists with the session. It is computed by the Claude CLI itself (API list prices — informational if you're on a subscription plan). Each session's cost also appears as a badge in the worktree home page session list, and machine-wide totals live on the [Usage page](/docs/pages/usage/).
 
 ## Transcript Import/Export
 

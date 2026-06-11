@@ -33,6 +33,7 @@ import (
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
 	"github.com/wingedpig/trellis/internal/trace"
+	"github.com/wingedpig/trellis/internal/usage"
 	"github.com/wingedpig/trellis/internal/watcher"
 	"github.com/wingedpig/trellis/internal/workflow"
 	"github.com/wingedpig/trellis/internal/worktree"
@@ -807,6 +808,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			EventBus:        app.eventBus,
 			ClaudeManager:   app.claudeManager,
 			CodexManager:    app.codexManager,
+			UsageManager:    usage.NewManager(),
 			CaseManager:     app.caseManager,
 			InboxAggregator: app.inboxAggregator,
 			PairRegistry:    app.pairRegistry,
