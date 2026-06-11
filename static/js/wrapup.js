@@ -40,7 +40,6 @@ var _modalState = {
     generatedSummary: null,
     summaryInflight: false,
     components: [],
-    keywords: [],
 };
 
 function _agent() {
@@ -60,7 +59,6 @@ function showCommitModal(mode) {
     _modalState.generatedSummary = null;
     _modalState.summaryInflight = false;
     _modalState.components = [];
-    _modalState.keywords = [];
 
     var modal = document.getElementById('wrapUpModal');
     if (!modal) return;
@@ -307,7 +305,7 @@ function _wireNewCaseTitleBlur() {
 }
 
 // _generateSummary pre-generates the case summary so the user can review
-// and prune the generated components / keywords before confirming wrap-up.
+// and prune the generated components before confirming wrap-up.
 // The selected files are passed through so the model's diff input matches
 // what will actually be committed.
 function _generateSummary() {
@@ -329,7 +327,6 @@ function _generateSummary() {
     if (section) section.style.display = '';
     if (statusEl) statusEl.textContent = 'Generating…';
     _modalState.components = [];
-    _modalState.keywords = [];
     _renderChips();
 
     var body = { files: files };
@@ -374,7 +371,6 @@ function _generateSummary() {
         var s = result.data.data || result.data;
         _modalState.generatedSummary = s;
         _modalState.components = (s.components || []).slice();
-        _modalState.keywords = (s.keywords || []).slice();
         if (statusEl) statusEl.textContent = '';
         _renderChips();
     })
@@ -384,13 +380,11 @@ function _generateSummary() {
     });
 }
 
-// _renderChips paints the components and keywords lists from _modalState.
+// _renderChips paints the components list from _modalState.
 // Each chip's × removes it from the in-memory list.
 function _renderChips() {
     var compEl = document.getElementById('wrapUpComponentsList');
-    var kwEl = document.getElementById('wrapUpKeywordsList');
     if (compEl) compEl.innerHTML = _chipHTML('component', _modalState.components) || '<span class="text-muted small">(none)</span>';
-    if (kwEl)   kwEl.innerHTML   = _chipHTML('keyword',   _modalState.keywords)   || '<span class="text-muted small">(none)</span>';
 }
 
 function _chipHTML(kind, values) {
@@ -405,7 +399,7 @@ function _chipHTML(kind, values) {
 
 // Exposed globally so the chip buttons can find it.
 window.removeWrapUpChip = function(kind, index) {
-    var arr = (kind === 'component') ? _modalState.components : _modalState.keywords;
+    var arr = _modalState.components;
     if (index < 0 || index >= arr.length) return;
     arr.splice(index, 1);
     _renderChips();
@@ -612,7 +606,6 @@ function wrapUpConfirm() {
         if (_modalState.generatedSummary) {
             body.summary = Object.assign({}, _modalState.generatedSummary, {
                 components: _modalState.components.slice(),
-                keywords:   _modalState.keywords.slice(),
             });
         }
     }

@@ -287,6 +287,10 @@ func (m *mockWorkflowRunner) Status(runID string) (*workflow.WorkflowStatus, boo
 	return nil, false
 }
 
+func (m *mockWorkflowRunner) LatestRun(worktree string) (*workflow.WorkflowStatus, bool) {
+	return nil, false
+}
+
 func (m *mockWorkflowRunner) List() []workflow.WorkflowConfig {
 	result := make([]workflow.WorkflowConfig, 0, len(m.workflows))
 	for _, wf := range m.workflows {

@@ -91,15 +91,45 @@ func (r *RealRunner) cleanupExpiredRuns() {
 		case <-r.done:
 			return
 		case <-ticker.C:
-			r.mu.Lock()
-			now := time.Now()
-			for runID, state := range r.currentRuns {
-				if state.completed && now.After(state.expiresAt) {
-					delete(r.currentRuns, runID)
-					delete(r.cancelFuncs, runID)
-				}
+			r.expireRuns(time.Now())
+		}
+	}
+}
+
+// expireRuns deletes completed runs whose TTL has passed as of now, keeping
+// the most recent run per worktree so its results stay viewable after
+// navigating away, until a newer run replaces it.
+func (r *RealRunner) expireRuns(now time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	latest := make(map[string]string)
+	for runID, state := range r.currentRuns {
+		state.mu.RLock()
+		worktree := state.status.Worktree
+		startedAt := state.status.StartedAt
+		state.mu.RUnlock()
+		if cur, ok := latest[worktree]; ok {
+			r.currentRuns[cur].mu.RLock()
+			curStarted := r.currentRuns[cur].status.StartedAt
+			r.currentRuns[cur].mu.RUnlock()
+			if !startedAt.After(curStarted) {
+				continue
 			}
-			r.mu.Unlock()
+		}
+		latest[worktree] = runID
+	}
+	keep := make(map[string]struct{}, len(latest))
+	for _, runID := range latest {
+		keep[runID] = struct{}{}
+	}
+	for runID, state := range r.currentRuns {
+		if _, ok := keep[runID]; ok {
+			continue
+		}
+		if state.completed && now.After(state.expiresAt) {
+			delete(r.currentRuns, runID)
+			delete(r.cancelFuncs, runID)
 		}
 	}
 }
@@ -222,6 +252,7 @@ func (r *RealRunner) RunWithOptions(ctx context.Context, id string, opts RunOpti
 	status := &WorkflowStatus{
 		ID:        runID,
 		Name:      wf.Name,
+		Worktree:  opts.Worktree,
 		State:     StateRunning,
 		StartedAt: time.Now(),
 	}
@@ -652,6 +683,34 @@ func (r *RealRunner) Status(runID string) (*WorkflowStatus, bool) {
 	return &statusCopy, true
 }
 
+// LatestRun returns the most recently started run for a worktree.
+func (r *RealRunner) LatestRun(worktree string) (*WorkflowStatus, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var latest *runState
+	var latestStarted time.Time
+	for _, state := range r.currentRuns {
+		state.mu.RLock()
+		if state.status.Worktree == worktree && state.status.StartedAt.After(latestStarted) {
+			latest = state
+			latestStarted = state.status.StartedAt
+		}
+		state.mu.RUnlock()
+	}
+
+	if latest == nil {
+		return nil, false
+	}
+
+	latest.mu.RLock()
+	defer latest.mu.RUnlock()
+
+	// Return a copy
+	statusCopy := *latest.status
+	return &statusCopy, true
+}
+
 // Cancel cancels a running workflow.
 func (r *RealRunner) Cancel(runID string) error {
 	r.mu.RLock()
@@ -733,7 +792,17 @@ func (r *RealRunner) Subscribe(runID string, ch chan<- OutputUpdate) error {
 		default:
 		}
 	} else {
+		// Replay output accumulated so far, so a subscriber attaching
+		// mid-run (or after a navigation away and back) sees the full
+		// progress rather than only lines emitted after this point.
+		output := state.status.Output
 		state.mu.RUnlock()
+		if output != "" {
+			select {
+			case ch <- OutputUpdate{RunID: runID, Line: output}:
+			default:
+			}
+		}
 	}
 
 	return nil

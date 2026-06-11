@@ -118,7 +118,6 @@ func TestSummary_setAndUpdate(t *testing.T) {
 		RootCause:   "missing init",
 		Resolution:  "initialize earlier",
 		Components:  []string{"auth", "session"},
-		Keywords:    []string{"ENOENT", "TLS"},
 		GeneratedAt: time.Now(),
 		Model:       "claude-test",
 	}
@@ -129,8 +128,8 @@ func TestSummary_setAndUpdate(t *testing.T) {
 	if got.Summary == nil || got.Summary.Synopsis != "one line" {
 		t.Fatalf("SetSummary did not persist: %+v", got.Summary)
 	}
-	if len(got.Summary.Keywords) != 2 {
-		t.Errorf("keywords not preserved")
+	if len(got.Summary.Components) != 2 {
+		t.Errorf("components not preserved")
 	}
 
 	// Partial update.

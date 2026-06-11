@@ -61,7 +61,7 @@ func (p *ArchivedCasesPage) StreamRender(qw422016 *qt422016.Writer) {
 
     <form id="archivedSearchForm" class="row g-2 mb-3" onsubmit="runArchivedSearch(event)">
         <div class="col-md-5">
-            <input type="text" id="searchQ" class="form-control" placeholder="Search title, summary, keywords, components, commits, notes…">
+            <input type="text" id="searchQ" class="form-control" placeholder="Search title, summary, components, commits, notes…">
         </div>
         <div class="col-md-2">
             <select id="searchKind" class="form-select">
@@ -174,7 +174,6 @@ function renderArchivedResults(results) {
         if (r.summary) {
             var chips = [];
             (r.summary.components || []).forEach(function(c) { chips.push('<span class="badge bg-info me-1">' + escapeArchivedHtml(c) + '</span>'); });
-            (r.summary.keywords || []).forEach(function(k) { chips.push('<span class="badge bg-secondary me-1">' + escapeArchivedHtml(k) + '</span>'); });
             if (chips.length > 0) html += '<div class="mt-1">' + chips.join('') + '</div>';
         }
         html += '</div>';
@@ -197,36 +196,36 @@ function escapeArchivedAttr(s) {
 </script>
 
 `)
-//line views/archived_cases.qtpl:157
+//line views/archived_cases.qtpl:156
 	p.StreamFooter(qw422016)
-//line views/archived_cases.qtpl:157
+//line views/archived_cases.qtpl:156
 	qw422016.N().S(`
 `)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 }
 
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 func (p *ArchivedCasesPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	p.StreamRender(qw422016)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	qt422016.ReleaseWriter(qw422016)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 }
 
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 func (p *ArchivedCasesPage) Render() string {
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	p.WriteRender(qb422016)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	qs422016 := string(qb422016.B)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 	return qs422016
-//line views/archived_cases.qtpl:158
+//line views/archived_cases.qtpl:157
 }

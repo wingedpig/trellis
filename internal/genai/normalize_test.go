@@ -73,58 +73,11 @@ func TestNormalizeComponents(t *testing.T) {
 	}
 }
 
-func TestNormalizeKeywords(t *testing.T) {
-	tests := []struct {
-		name string
-		in   []string
-		want []string
-	}{
-		{
-			name: "case-preserving — function names keep their camelCase",
-			in:   []string{"commitToCase", "ENOENT", "diffForFiles"},
-			want: []string{"commitToCase", "ENOENT", "diffForFiles"},
-		},
-		{
-			name: "drops phrases (entries with internal whitespace)",
-			in:   []string{"commit message", "redocly", "hjson-go"},
-			want: []string{"redocly", "hjson-go"},
-		},
-		{
-			name: "trim outer whitespace, dedup case-insensitive",
-			in:   []string{"  TLS  ", "tls", "MTLS"},
-			want: []string{"TLS", "MTLS"},
-		},
-		{
-			name: "drops empty",
-			in:   []string{"", "  ", "ok"},
-			want: []string{"ok"},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := NormalizeKeywords(tc.in)
-			if len(got) == 0 && len(tc.want) == 0 {
-				return
-			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("NormalizeKeywords(%v) = %v, want %v", tc.in, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestNormalize_idempotent(t *testing.T) {
 	comps := []string{"Case detail page", "internal/cases", "internal_cases"}
 	once := NormalizeComponents(comps)
 	twice := NormalizeComponents(once)
 	if !reflect.DeepEqual(once, twice) {
 		t.Errorf("not idempotent: once=%v twice=%v", once, twice)
-	}
-
-	kws := []string{"commitToCase", "  ENOENT  ", "case json"}
-	o := NormalizeKeywords(kws)
-	tt := NormalizeKeywords(o)
-	if !reflect.DeepEqual(o, tt) {
-		t.Errorf("not idempotent: once=%v twice=%v", o, tt)
 	}
 }

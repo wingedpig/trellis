@@ -1112,6 +1112,9 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		switch event.Type {
 		case "system", "assistant", "result", "control_request", "stream_event", "user":
 			// Known types
+		case "rate_limit_event":
+			// Emitted as rate limits are approached/hit; intentionally not
+			// surfaced in the UI (see claude.js handleStreamEvent).
 		default:
 			log.Printf("claude: unknown event type %q: %s", event.Type, line)
 		}

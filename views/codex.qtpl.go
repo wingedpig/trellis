@@ -324,13 +324,9 @@ if (container) {
                         <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
                         <span class="small text-muted" id="wrapUpTagsStatus"></span>
                     </div>
-                    <div class="mb-2">
+                    <div>
                         <div class="text-muted small">Components</div>
                         <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Keywords</div>
-                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
                     </div>
                 </div>
 
@@ -394,36 +390,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:358
+//line views/codex.qtpl:354
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:358
+//line views/codex.qtpl:354
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 }
 
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 }
 
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 	return qs422016
-//line views/codex.qtpl:359
+//line views/codex.qtpl:355
 }

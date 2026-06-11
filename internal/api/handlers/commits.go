@@ -38,9 +38,9 @@ type commitRequest struct {
 	Traces          []string            `json:"traces"`
 	RelatedSessions []relatedSessionRef `json:"related_sessions,omitempty"`
 	// Summary is the user-edited summary from the wrap-up modal. When
-	// non-nil it is used verbatim (components/keywords are still
-	// normalized) and server-side generation is skipped. When nil, the
-	// server generates the summary as before.
+	// non-nil it is used verbatim (components are still normalized) and
+	// server-side generation is skipped. When nil, the server generates
+	// the summary as before.
 	Summary *cases.CaseSummary `json:"summary,omitempty"`
 }
 
@@ -317,7 +317,7 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 
 	// Step 5: write the case summary (wrap-up only). Two paths:
 	//   - The client sent a user-curated summary in req.Summary — use it
-	//     verbatim, normalizing components/keywords for chip consistency.
+	//     verbatim, normalizing components for chip consistency.
 	//   - Otherwise, generate one synchronously with a timeout so it lands
 	//     in the same commit as the archived case.
 	// The diff is scoped to exactly the files the user picked — we don't
@@ -328,7 +328,6 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		if req.Summary != nil && strings.TrimSpace(req.Summary.Synopsis) != "" {
 			s := *req.Summary
 			s.Components = genai.NormalizeComponents(s.Components)
-			s.Keywords = genai.NormalizeKeywords(s.Keywords)
 			if s.GeneratedAt.IsZero() {
 				s.GeneratedAt = time.Now()
 			}
@@ -536,7 +535,6 @@ func generateCaseSummary(parent context.Context, deps commitDeps, worktreePath s
 		RootCause:   gen.RootCause,
 		Resolution:  gen.Resolution,
 		Components:  gen.Components,
-		Keywords:    gen.Keywords,
 		GeneratedAt: gen.GeneratedAt,
 		Model:       gen.Model,
 	}, nil
@@ -598,7 +596,6 @@ func regenerateSummaryForCase(parent context.Context, deps commitDeps, worktreeP
 		RootCause:   gen.RootCause,
 		Resolution:  gen.Resolution,
 		Components:  gen.Components,
-		Keywords:    gen.Keywords,
 		GeneratedAt: gen.GeneratedAt,
 		Model:       gen.Model,
 	}, nil
@@ -621,7 +618,7 @@ func traceSummariesForCase(deps commitDeps, worktreePath, caseID string) []strin
 
 // generateSummaryHTTP previews the case summary the wrap-up would generate.
 // Used by the wrap-up modal so the user can review and prune the components
-// and keywords before committing. The result is NOT persisted — the client
+// before committing. The result is NOT persisted — the client
 // is expected to send the (possibly edited) summary back with the wrap-up
 // request, which writes it to case.json.
 //

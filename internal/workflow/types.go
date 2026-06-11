@@ -53,6 +53,7 @@ func (w *WorkflowConfig) GetCommands() [][]string {
 type WorkflowStatus struct {
 	ID          string
 	Name        string
+	Worktree    string // Worktree the run was started for (empty if none specified)
 	State       WorkflowState
 	StartedAt   time.Time
 	FinishedAt  time.Time
@@ -105,6 +106,8 @@ type Runner interface {
 	RunWithOptions(ctx context.Context, id string, opts RunOptions) (*WorkflowStatus, error)
 	// Status returns the current status of a workflow run.
 	Status(runID string) (*WorkflowStatus, bool)
+	// LatestRun returns the most recently started run for a worktree.
+	LatestRun(worktree string) (*WorkflowStatus, bool)
 	// List returns all configured workflows.
 	List() []WorkflowConfig
 	// Get returns a workflow by ID.
@@ -129,6 +132,9 @@ type RunOptions struct {
 	SkipConfirm bool
 	// WorkingDir overrides the working directory.
 	WorkingDir string
+	// Worktree is the name of the worktree the run is for, used to look
+	// up the run later via LatestRun.
+	Worktree string
 	// Env adds environment variables.
 	Env map[string]string
 	// Inputs provides user-supplied input values for template expansion.

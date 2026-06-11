@@ -455,9 +455,6 @@ func (m *Manager) UpdateSummary(worktreePath, caseID string, upd SummaryUpdate) 
 		if upd.Components != nil {
 			c.Summary.Components = upd.Components
 		}
-		if upd.Keywords != nil {
-			c.Summary.Keywords = upd.Keywords
-		}
 		return saveCase(path, c)
 	}
 	return fmt.Errorf("case not found: %s", caseID)

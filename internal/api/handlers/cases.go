@@ -758,7 +758,7 @@ func splitTerms(q string) []string {
 }
 
 // scoreCase produces a relevance score and a short snippet for display.
-// Keyword/component matches rank highest, title next, notes / commit
+// Component matches rank highest, title next, notes / commit
 // descriptions lowest. With an empty term list every case scores 0 and the
 // caller treats that as "include unconditionally" (browse mode, not search
 // mode).
@@ -785,11 +785,8 @@ func scoreCase(c *cases.CaseJSON, terms []string, qLower string, mgr *cases.Mana
 		}
 	}
 
-	// Highest-weight: explicit keyword/component fields.
+	// Highest-weight: explicit component fields.
 	if c.Summary != nil {
-		for _, k := range c.Summary.Keywords {
-			hit(10, k, "keyword")
-		}
 		for _, comp := range c.Summary.Components {
 			hit(8, comp, "component")
 		}
@@ -880,9 +877,6 @@ func (h *CaseHandler) UpdateSummary(w http.ResponseWriter, r *http.Request) {
 	// summaries, so the chip set stays consistent regardless of source.
 	if upd.Components != nil {
 		upd.Components = genai.NormalizeComponents(upd.Components)
-	}
-	if upd.Keywords != nil {
-		upd.Keywords = genai.NormalizeKeywords(upd.Keywords)
 	}
 	if err := h.caseMgr.UpdateSummary(wt.Path, caseID, upd); err != nil {
 		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())

@@ -51,7 +51,6 @@ type CaseSummary struct {
 	RootCause   string    `json:"root_cause"`
 	Resolution  string    `json:"resolution"`
 	Components  []string  `json:"components,omitempty"`
-	Keywords    []string  `json:"keywords,omitempty"`
 	GeneratedAt time.Time `json:"generated_at"`
 	Model       string    `json:"model,omitempty"`
 }
@@ -154,5 +153,4 @@ type SummaryUpdate struct {
 	RootCause  *string  `json:"root_cause,omitempty"`
 	Resolution *string  `json:"resolution,omitempty"`
 	Components []string `json:"components,omitempty"`
-	Keywords   []string `json:"keywords,omitempty"`
 }

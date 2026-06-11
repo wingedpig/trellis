@@ -3656,6 +3656,22 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         } else {
             titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Workflow Output';
             outputEl.textContent = 'No workflow output yet. Run a workflow to see results here.';
+            // In-memory output is lost when navigating to another page and
+            // back, so ask the server for the latest run for this worktree
+            // and reattach to it.
+            fetch('/api/v1/workflows/runs/latest?worktree=' + encodeURIComponent(worktree))
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.data || !data.data.ID) return;
+                    const status = data.data;
+                    if (status.State === 'running') {
+                        titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Running: ' + status.Name;
+                        streamWorkflowOutput(status.ID, status.Name, outputEl);
+                    } else {
+                        displayWorkflowResult(status.Name, status);
+                    }
+                })
+                .catch(() => {});
         }
 
         const outputKey = 'output:' + worktree;
@@ -5785,36 +5801,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script src="/static/js/inbox_main_ws.js"></script>
 `)
-//line views/terminal.qtpl:5222
+//line views/terminal.qtpl:5238
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5222
+//line views/terminal.qtpl:5238
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 }
 
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 }
 
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 	return qs422016
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5239
 }

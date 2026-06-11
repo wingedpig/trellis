@@ -388,13 +388,9 @@ if (container) {
                         <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
                         <span class="small text-muted" id="wrapUpTagsStatus"></span>
                     </div>
-                    <div class="mb-2">
+                    <div>
                         <div class="text-muted small">Components</div>
                         <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Keywords</div>
-                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
                     </div>
                 </div>
 
@@ -434,36 +430,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:386
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:390
+//line views/claude.qtpl:386
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 }
 
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 }
 
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 	return qs422016
-//line views/claude.qtpl:391
+//line views/claude.qtpl:387
 }

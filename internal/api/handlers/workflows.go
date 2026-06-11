@@ -90,6 +90,7 @@ func (h *WorkflowHandler) Run(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts.WorkingDir = wt.Path
+		opts.Worktree = worktreeName
 	}
 
 	// Use background context - workflows (especially service start/stop) should outlive the HTTP request
@@ -121,6 +122,19 @@ func (h *WorkflowHandler) Status(w http.ResponseWriter, r *http.Request) {
 			"ID":    id,
 			"State": "idle",
 		})
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, status)
+}
+
+// LatestRun returns the most recently started run for a worktree.
+func (h *WorkflowHandler) LatestRun(w http.ResponseWriter, r *http.Request) {
+	worktree := r.URL.Query().Get("worktree")
+
+	status, ok := h.runner.LatestRun(worktree)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "no runs found for worktree")
 		return
 	}
 

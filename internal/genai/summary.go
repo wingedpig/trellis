@@ -31,7 +31,6 @@ type SummaryOutput struct {
 	RootCause  string   `json:"root_cause"`
 	Resolution string   `json:"resolution"`
 	Components []string `json:"components"`
-	Keywords   []string `json:"keywords"`
 }
 
 // GeneratedSummary is the full result including bookkeeping fields the caller
@@ -44,14 +43,13 @@ type GeneratedSummary struct {
 
 const summaryPromptTemplate = `You are summarizing a completed development "case" — a unit of work that has been wrapped up. The summary will be stored alongside the case for later retrieval ("find the case where we fixed X") and should be optimized for full-text search.
 
-Return your response as a single JSON object on its own with exactly these fields. Components and keywords MUST be arrays of strings.
+Return your response as a single JSON object on its own with exactly these fields. Components MUST be an array of strings.
 {
   "synopsis":    "<one human-readable line, ideally under 120 chars>",
   "symptoms":    "<the observable problem, error messages, or user-facing behavior — empty string if not applicable, e.g. a feature with no precipitating bug>",
   "root_cause":  "<what was actually wrong, if there was a wrong — empty string for feature work or investigations with no resolution>",
   "resolution":  "<what changed — the approach, not the full diff>",
-  "components":  ["<short machine-friendly identifiers for the parts of the codebase touched>"],
-  "keywords":    ["<short machine-friendly search terms>"]
+  "components":  ["<short machine-friendly identifiers for the parts of the codebase touched>"]
 }
 
 Rules for "components":
@@ -59,11 +57,6 @@ Rules for "components":
   - NEVER an English phrase ("the case detail page", "wrap up workflow"). Convert prose to kebab-case identifiers.
   - Draw from real file paths, package names, or subsystem labels evident in the inputs — don't invent.
   - 1-6 entries. Omit anything ambiguous rather than padding.
-
-Rules for "keywords":
-  - Short identifiers too — error codes ("ENOENT", "EOF"), function names ("commitToCase"), library names ("redocly", "hjson-go"), file extensions, protocol names. Lowercase unless the canonical form is mixed-case.
-  - No phrases, no sentences. If you'd write a space, it probably belongs in resolution/symptoms instead.
-  - 0-10 entries.
 
 Important: this case's KIND is %q and STATUS is %q. Calibrate accordingly — do NOT assume a feature is a "resolved bug" or that a wontfix has a "resolution". Empty strings are fine when a field doesn't apply.
 
@@ -100,7 +93,6 @@ func GenerateCaseSummary(ctx context.Context, in SummaryInput) (*GeneratedSummar
 		return nil, fmt.Errorf("generated summary has empty synopsis")
 	}
 	out.Components = NormalizeComponents(out.Components)
-	out.Keywords = NormalizeKeywords(out.Keywords)
 	return &GeneratedSummary{
 		SummaryOutput: out,
 		GeneratedAt:   time.Now(),
@@ -131,33 +123,6 @@ func NormalizeComponents(in []string) []string {
 			continue
 		}
 		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-	return out
-}
-
-// NormalizeKeywords is gentler than NormalizeComponents: keywords are often
-// function or symbol names where case carries meaning ("commitToCase",
-// "ENOENT"), so we preserve original casing. We still trim, drop empty,
-// drop entries with internal whitespace (those are phrases, not keywords),
-// and dedupe case-insensitively.
-func NormalizeKeywords(in []string) []string {
-	seen := make(map[string]struct{}, len(in))
-	out := make([]string, 0, len(in))
-	for _, raw := range in {
-		v := strings.TrimSpace(raw)
-		if v == "" {
-			continue
-		}
-		// Reject entries with internal whitespace — those are phrases.
-		if strings.ContainsAny(v, " \t\n") {
-			continue
-		}
-		key := strings.ToLower(v)
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
 		out = append(out, v)
 	}
 	return out

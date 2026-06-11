@@ -205,6 +205,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	workflowHandler := handlers.NewWorkflowHandler(deps.WorkflowRunner, deps.WorktreeManager)
 	workflowHandler.SetUpgrader(ws)
 	api.HandleFunc("/workflows", workflowHandler.List).Methods("GET")
+	api.HandleFunc("/workflows/runs/latest", workflowHandler.LatestRun).Methods("GET")
 	api.HandleFunc("/workflows/{id}", workflowHandler.Get).Methods("GET")
 	api.HandleFunc("/workflows/{id}/run", workflowHandler.Run).Methods("POST")
 	api.HandleFunc("/workflows/{id}/status", workflowHandler.Status).Methods("GET")

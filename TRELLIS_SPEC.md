@@ -1013,7 +1013,6 @@ At wrap-up time Trellis runs a one-shot `claude -p` invocation (see §9.5.4) and
   "root_cause":   "what was actually wrong (empty for features / wontfix)",
   "resolution":   "what changed (approach, not the diff)",
   "components":   ["service / package / subsystem names"],
-  "keywords":     ["error codes, function names, library names"],
   "generated_at": "2026-05-14T10:30:00Z",
   "model":        "claude-..."
 }
@@ -1138,14 +1137,14 @@ Query parameters:
 
 | Param | Description |
 |-------|-------------|
-| `q` | Free-text query. Matched against title, summary fields (keywords / components weighted highest), commit descriptions, and `notes.md`. |
+| `q` | Free-text query. Matched against title, summary fields (components weighted highest), commit descriptions, and `notes.md`. |
 | `kind` | One of `bug`, `feature`, `investigation`, `task`. |
 | `from`, `to` | Inclusive `created_at` bounds. Accepts `YYYY-MM-DD` or RFC 3339. |
 | `has_traces` | `1` to require at least one linked trace. |
 | `include_transcripts` | `1` to also scan attached transcript previews (slower; high volume, low signal-to-noise). |
 | `sort` | `date` (default), `kind`, `duration`, or `worktree`. |
 
-Returns a list of `{...CaseInfo, score, snippet, summary}` entries. Keyword matches rank above title matches, which rank above notes / commit-description matches.
+Returns a list of `{...CaseInfo, score, snippet, summary}` entries. Component matches rank above title matches, which rank above notes / commit-description matches.
 
 **Create a case:**
 
@@ -1187,16 +1186,16 @@ Response:
 - "New Case" button — only shown when no open case exists, since only one open case is allowed.
 
 **Archived cases page** (`/worktree/{name}/archived-cases`):
-- Full-text search across title, summary fields, keywords, components, commit descriptions, and `notes.md`.
+- Full-text search across title, summary fields, components, commit descriptions, and `notes.md`.
 - Filters: kind, date range (`created_at`), has-linked-traces toggle.
 - Optional "Also search transcripts" toggle (slow path).
 - Sort: date (default), kind, duration, worktree of origin.
-- Results show synopsis, component / keyword chips, and the first matching snippet.
+- Results show synopsis, component chips, and the first matching snippet.
 
 **Case detail page** (`/case/{worktree}/{id}`):
 - Inline-editable title with the immutable case ID displayed next to it as a monospace tag.
 - Action bar: Back, Wrap Up (non-archived only), Archive/Reopen, Delete.
-- **Summary section** (when populated): synopsis, symptoms, root cause, resolution, components, keywords. Inline-editable per field; **Regenerate Summary** button confirms before overwriting.
+- **Summary section** (when populated): synopsis, symptoms, root cause, resolution, components. Inline-editable per field; **Regenerate Summary** button confirms before overwriting.
 - **Commits section** (when populated): reverse-chronological list of intermediate `CommitEntry` rows. Each row shows short SHA, date, first line of the commit message, and the per-commit description. The wrap-up commit is NOT shown here.
 - Links section.
 - Notes section rendered as Markdown.

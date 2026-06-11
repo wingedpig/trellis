@@ -5,6 +5,7 @@ package workflow
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -921,5 +922,128 @@ func TestExpandConfirmMessage(t *testing.T) {
 			result := expandConfirmMessage(tt.message, tt.inputs)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestRunner_LatestRun(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	workflows := []WorkflowConfig{
+		{ID: "test", Name: "Test", Command: []string{"echo", "hello"}},
+	}
+
+	runner := NewRunner(workflows, bus, nil, "")
+
+	// No runs yet
+	_, ok := runner.LatestRun("wt1")
+	assert.False(t, ok)
+
+	// Run in wt1 and wait for completion
+	first, err := runner.RunWithOptions(context.Background(), "test", RunOptions{Worktree: "wt1"})
+	require.NoError(t, err)
+	waitForCompletion(t, runner, first.ID, 5*time.Second)
+
+	// A second run in wt1 and one in wt2
+	second, err := runner.RunWithOptions(context.Background(), "test", RunOptions{Worktree: "wt1"})
+	require.NoError(t, err)
+	waitForCompletion(t, runner, second.ID, 5*time.Second)
+
+	other, err := runner.RunWithOptions(context.Background(), "test", RunOptions{Worktree: "wt2"})
+	require.NoError(t, err)
+	waitForCompletion(t, runner, other.ID, 5*time.Second)
+
+	// Latest run for wt1 is the second run
+	status, ok := runner.LatestRun("wt1")
+	require.True(t, ok)
+	assert.Equal(t, second.ID, status.ID)
+	assert.Equal(t, "wt1", status.Worktree)
+
+	// Latest run for wt2 is its own run
+	status, ok = runner.LatestRun("wt2")
+	require.True(t, ok)
+	assert.Equal(t, other.ID, status.ID)
+
+	// Unknown worktree has no runs
+	_, ok = runner.LatestRun("wt3")
+	assert.False(t, ok)
+}
+
+func TestRunner_ExpireRuns_KeepsLatestPerWorktree(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	workflows := []WorkflowConfig{
+		{ID: "test", Name: "Test", Command: []string{"echo", "hello"}},
+	}
+
+	runner := NewRunner(workflows, bus, nil, "")
+
+	first, err := runner.RunWithOptions(context.Background(), "test", RunOptions{Worktree: "wt1"})
+	require.NoError(t, err)
+	waitForCompletion(t, runner, first.ID, 5*time.Second)
+
+	second, err := runner.RunWithOptions(context.Background(), "test", RunOptions{Worktree: "wt1"})
+	require.NoError(t, err)
+	waitForCompletion(t, runner, second.ID, 5*time.Second)
+
+	// Expire well past the completed-run TTL
+	runner.(*RealRunner).expireRuns(time.Now().Add(completedRunTTL + time.Minute))
+
+	// The older run is gone, the latest run for the worktree survives
+	_, ok := runner.Status(first.ID)
+	assert.False(t, ok)
+
+	status, ok := runner.Status(second.ID)
+	require.True(t, ok)
+	assert.Equal(t, second.ID, status.ID)
+
+	status, ok = runner.LatestRun("wt1")
+	require.True(t, ok)
+	assert.Equal(t, second.ID, status.ID)
+}
+
+// TestRunner_Subscribe_ReplaysOutput tests that subscribing to an in-progress
+// run replays the output accumulated so far.
+func TestRunner_Subscribe_ReplaysOutput(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	workflows := []WorkflowConfig{
+		{ID: "slow", Name: "Slow", Command: []string{"sh", "-c", "echo first; sleep 2"}},
+	}
+
+	runner := NewRunner(workflows, bus, nil, "")
+
+	initialStatus, err := runner.Run(context.Background(), "slow")
+	require.NoError(t, err)
+	runID := initialStatus.ID
+
+	// Wait until the first line has been captured
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		status, ok := runner.Status(runID)
+		require.True(t, ok)
+		if strings.Contains(status.Output, "first") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("workflow output never contained expected line")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Subscribe mid-run; the accumulated output should be replayed
+	ch := make(chan OutputUpdate, 100)
+	err = runner.Subscribe(runID, ch)
+	require.NoError(t, err)
+	defer runner.Unsubscribe(runID, ch)
+
+	select {
+	case update := <-ch:
+		assert.False(t, update.Done)
+		assert.Contains(t, update.Line, "first")
+	case <-time.After(time.Second):
+		t.Fatal("did not receive replayed output")
 	}
 }

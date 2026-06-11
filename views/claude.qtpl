@@ -342,13 +342,9 @@ if (container) {
                         <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
                         <span class="small text-muted" id="wrapUpTagsStatus"></span>
                     </div>
-                    <div class="mb-2">
+                    <div>
                         <div class="text-muted small">Components</div>
                         <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Keywords</div>
-                        <div id="wrapUpKeywordsList" class="wrap-up-chip-list"></div>
                     </div>
                 </div>
 

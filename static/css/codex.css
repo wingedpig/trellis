@@ -842,7 +842,7 @@ pre:hover .codex-code-copy {
     font-size: 0.85em;
 }
 
-/* Removable chips for generated components and keywords in the wrap-up modal. */
+/* Removable chips for generated components in the wrap-up modal. */
 .wrap-up-chip-list {
     display: flex;
     flex-wrap: wrap;
@@ -862,7 +862,6 @@ pre:hover .codex-code-copy {
     border: 1px solid var(--bs-border-color, #dee2e6);
 }
 .wrap-up-chip.component { background-color: rgba(13, 202, 240, 0.18); }
-.wrap-up-chip.keyword   { background-color: rgba(108, 117, 125, 0.18); }
 .wrap-up-chip-remove {
     cursor: pointer;
     background: transparent;

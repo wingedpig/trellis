@@ -3171,6 +3171,22 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         } else {
             titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Workflow Output';
             outputEl.textContent = 'No workflow output yet. Run a workflow to see results here.';
+            // In-memory output is lost when navigating to another page and
+            // back, so ask the server for the latest run for this worktree
+            // and reattach to it.
+            fetch('/api/v1/workflows/runs/latest?worktree=' + encodeURIComponent(worktree))
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.data || !data.data.ID) return;
+                    const status = data.data;
+                    if (status.State === 'running') {
+                        titleEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Running: ' + status.Name;
+                        streamWorkflowOutput(status.ID, status.Name, outputEl);
+                    } else {
+                        displayWorkflowResult(status.Name, status);
+                    }
+                })
+                .catch(() => {});
         }
 
         const outputKey = 'output:' + worktree;

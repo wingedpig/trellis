@@ -30,12 +30,12 @@ The worktree home page (`/worktree/{name}`) shows the worktree's single open cas
 
 A per-worktree browser for finished work, designed to be a usable memory system for half-remembered cases.
 
-- **Full-text search** across title, summary fields (synopsis, symptoms, root cause, resolution), keywords, components, commit descriptions, and `notes.md`. Keyword and component matches rank highest.
+- **Full-text search** across title, summary fields (synopsis, symptoms, root cause, resolution), components, commit descriptions, and `notes.md`. Component matches rank highest.
 - **Filters:** kind (bug/feature/investigation/task), date range, "has linked traces" toggle.
 - **Optional transcript scan** — A separate checkbox extends the search into attached transcript previews. Slow path; off by default.
 - **Sort:** date (default), kind, duration, worktree of origin.
 
-Results show the synopsis, component/keyword chips from the generated summary, and the first matching snippet for context.
+Results show the synopsis, component chips from the generated summary, and the first matching snippet for context.
 
 ## Case detail page
 
@@ -58,7 +58,6 @@ When a case has been wrapped up, the page shows the structured summary written b
 | Root cause | What was actually wrong (empty for features / wontfix). |
 | Resolution | What changed — approach, not the diff. |
 | Components | Service / package / subsystem names touched. |
-| Keywords | Explicit search terms: error codes, function names, libraries. |
 
 Each field is individually editable. The **Regenerate Summary** button re-runs generation, confirming first if the existing summary may have been hand-edited.
 
