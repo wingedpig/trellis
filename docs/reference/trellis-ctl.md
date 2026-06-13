@@ -161,7 +161,27 @@ trellis-ctl workflow run <workflow-id> --input1=value1 --input2=value2
 # Check status of a running workflow (uses run ID, not workflow ID)
 # The run ID is returned by "workflow run" when using -json
 trellis-ctl workflow status <run-id>
+
+# Cancel a running workflow. Accepts a run ID, or a workflow ID to cancel
+# that workflow's most recent in-flight run.
+trellis-ctl workflow cancel <id>
 ```
+
+**Structured results:** When a workflow has an `output_parser` configured (e.g. `go_compiler`, `go_test_json`), completed runs include a `Summary` rollup in the `-json` status output — error/warning counts, test pass/fail/skip counts, and the names of failing tests:
+
+```json
+"Summary": {
+  "Errors": 0,
+  "Warnings": 0,
+  "TestsPassed": 41,
+  "TestsFailed": 2,
+  "TestsSkipped": 1,
+  "FailedTests": ["github.com/acme/pkg.TestFoo", "github.com/acme/pkg.TestBar"],
+  "FirstError": ""
+}
+```
+
+`Summary` is `null` for workflows without an output parser. The human-readable `workflow run` output prints the same rollup as a `Summary:` line plus a `FAIL` line per failing test.
 
 **Example: Discovering and running a workflow with inputs**
 
@@ -341,22 +361,12 @@ trellis-ctl logs backend -since 1h -json > logs.json
 
 ## Claude Code Integration
 
-Create `.claude/skills/trellis/SKILL.md` to teach Claude about trellis-ctl:
+Trellis installs its skill file automatically: on startup it writes `.claude/skills/trellis/SKILL.md` into the repo and every worktree (and into new worktrees as they're created), so Claude Code discovers trellis-ctl without any setup. Installed copies carry a `managed-by: trellis` marker and are refreshed when the bundled skill changes after an upgrade; remove the marker line to take ownership of a copy, or disable installation entirely:
 
-```markdown
----
-name: trellis
-description: Control the Trellis development environment
----
-
-Use `trellis-ctl` to interact with Trellis. It auto-discovers the API URL
-from `trellis.hjson` (walking up from the current directory) and respects
-`TRELLIS_API` when set in Trellis-managed terminals.
-
-## Commands
-- `trellis-ctl status` - Check service status
-- `trellis-ctl logs <service>` - View logs
-- `trellis-ctl restart <service>` - Restart after fixes
-- `trellis-ctl workflow run build` - Run builds
-- `trellis-ctl crash newest` - View crash details
+```hjson
+agent: {
+  install_skill: false
+}
 ```
+
+The skill teaches Claude to check service status, read and filter logs, run validation workflows (and read their structured `Summary` results), inspect crashes, and run distributed traces. See [Installation](/docs/install/#ai-assistant-integration) for manual setup (including Codex's `AGENTS.md`).

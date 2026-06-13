@@ -12,6 +12,7 @@ type CaseDetailPage struct {
     WorktreeName string
     Case         *cases.CaseJSON
     Notes        string
+    Plan         string
     Traces       []cases.CaseTraceSummary
     IsArchived   bool
     WrapUpCommit *WrapUpCommitInfo
@@ -310,6 +311,35 @@ type WrapUpCommitInfo struct {
     </div>
     {% endif %}
 
+    {% if !p.IsArchived || p.Plan != "" %}
+    <div class="case-section mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fa-solid fa-clipboard-check"></i> Plan</h4>
+            {% if !p.IsArchived %}
+            <div id="plan-view-actions">
+                <button class="btn btn-outline-secondary btn-sm" onclick="editPlan()">
+                    <i class="fa-solid fa-pen"></i> Edit
+                </button>
+            </div>
+            {% endif %}
+            <div id="plan-edit-actions" style="display:none">
+                <button class="btn btn-primary btn-sm" onclick="savePlan()">
+                    <i class="fa-solid fa-check"></i> Save
+                </button>
+                <button class="btn btn-outline-secondary btn-sm ms-1" onclick="cancelEditPlan()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+        <div id="plan-view" class="mt-2">
+            <div id="case-plan" class="case-notes-content"></div>
+        </div>
+        <div id="plan-edit" class="mt-2" style="display:none">
+            <textarea id="plan-textarea" class="case-notes-textarea"></textarea>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="case-section mb-4">
         <div class="d-flex justify-content-between align-items-center">
             <h4 class="mb-0"><i class="fa-solid fa-note-sticky"></i> Notes</h4>
@@ -343,6 +373,7 @@ type WrapUpCommitInfo struct {
 var WORKTREE_NAME = '{%s JSAttr(p.WorktreeName) %}';
 var CASE_ID = '{%s JSAttr(p.Case.ID) %}';
 var CASE_NOTES_RAW = {%s= notesJSONSafe(p.Notes) %};
+var CASE_PLAN_RAW = {%s= notesJSONSafe(p.Plan) %};
 var CASE_LINKS = {%s= linksJSONSafe(p.Case.Links) %};
 
 // SPA: when this container is restored from the LRU cache, the inline script
@@ -359,18 +390,21 @@ var CASE_LINKS = {%s= linksJSONSafe(p.Case.Links) %};
         worktree: WORKTREE_NAME,
         caseId: CASE_ID,
         notes: CASE_NOTES_RAW,
+        plan: CASE_PLAN_RAW,
         links: CASE_LINKS,
     };
     function captureLocal() {
         snap.worktree = WORKTREE_NAME;
         snap.caseId = CASE_ID;
         snap.notes = CASE_NOTES_RAW;
+        snap.plan = CASE_PLAN_RAW;
         snap.links = CASE_LINKS;
     }
     function restoreLocal() {
         WORKTREE_NAME = snap.worktree;
         CASE_ID = snap.caseId;
         CASE_NOTES_RAW = snap.notes;
+        CASE_PLAN_RAW = snap.plan;
         CASE_LINKS = snap.links;
     }
     var container = document.currentScript && document.currentScript.closest('.page-container');
@@ -382,6 +416,7 @@ var CASE_LINKS = {%s= linksJSONSafe(p.Case.Links) %};
 
 function initCaseDetailPage() {
     renderNotes();
+    renderPlan();
     renderLinks();
 }
 if (document.readyState === 'loading') {
@@ -403,6 +438,58 @@ function renderNotes() {
     } else {
         el.innerHTML = '<span class="text-muted">No notes yet.</span>';
     }
+}
+
+function renderPlan() {
+    var el = document.getElementById('case-plan');
+    if (!el) return;
+    if (CASE_PLAN_RAW && typeof marked !== 'undefined') {
+        // Plans are agent-generated Markdown; sanitize like notes.
+        var planHTML = marked.parse(CASE_PLAN_RAW);
+        el.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(planHTML) : '';
+        el.style.display = '';
+    } else {
+        el.innerHTML = '<span class="text-muted">No plan yet. Plans captured from Claude plan mode are attached when a session is saved to this case.</span>';
+    }
+}
+
+function editPlan() {
+    document.getElementById('plan-view').style.display = 'none';
+    document.getElementById('plan-view-actions').style.display = 'none';
+    document.getElementById('plan-edit').style.display = '';
+    document.getElementById('plan-edit-actions').style.display = '';
+    document.getElementById('plan-textarea').value = CASE_PLAN_RAW || '';
+    document.getElementById('plan-textarea').focus();
+}
+
+function cancelEditPlan() {
+    document.getElementById('plan-edit').style.display = 'none';
+    document.getElementById('plan-edit-actions').style.display = 'none';
+    document.getElementById('plan-view').style.display = '';
+    document.getElementById('plan-view-actions').style.display = '';
+}
+
+function savePlan() {
+    var text = document.getElementById('plan-textarea').value;
+    var btn = document.querySelector('#plan-edit-actions .btn-primary');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    fetch('/api/v1/cases/' + encodeURIComponent(WORKTREE_NAME) + '/' + encodeURIComponent(CASE_ID), {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({plan: text})
+    })
+    .then(function(resp) {
+        if (!resp.ok) throw new Error('Save failed');
+        CASE_PLAN_RAW = text;
+        renderPlan();
+        cancelEditPlan();
+    })
+    .catch(function(err) { alert('Save failed: ' + err); })
+    .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Save';
+    });
 }
 
 function editNotes() {

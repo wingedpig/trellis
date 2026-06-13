@@ -174,6 +174,10 @@ type Session struct {
 	// Callback to persist after session ID is captured from init
 	persistFn    func()
 	messagesFile string // path for per-session message persistence
+	// Plan artifacts captured from ExitPlanMode (and user edits), persisted
+	// to plansFile as a JSON array of versions.
+	plans     []PlanVersion
+	plansFile string
 	// Back-reference for publishing inbox state-change events. May be nil
 	// in tests that construct Session directly.
 	manager *Manager
@@ -219,6 +223,7 @@ type Manager struct {
 	stateDir       string                // directory for persistence
 	sessionsFile   string                // full path to sessions.json
 	messagesDir    string                // directory for per-session message files
+	plansDir       string                // directory for per-session plan files
 	bus            events.EventBus       // optional; for publishing inbox state changes
 }
 
@@ -243,6 +248,7 @@ func NewManager(stateDir string) *Manager {
 	if stateDir != "" {
 		m.sessionsFile = filepath.Join(stateDir, "sessions.json")
 		m.messagesDir = filepath.Join(stateDir, "messages")
+		m.plansDir = filepath.Join(stateDir, "plans")
 		m.loadFromDisk()
 	}
 	return m
@@ -262,6 +268,9 @@ func (m *Manager) loadFromDisk() {
 			if m.messagesDir != "" {
 				os.Remove(filepath.Join(m.messagesDir, rec.ID+".jsonl"))
 				os.Remove(filepath.Join(m.messagesDir, rec.ID+".json"))
+			}
+			if m.plansDir != "" {
+				os.Remove(filepath.Join(m.plansDir, rec.ID+".json"))
 			}
 			purged++
 			continue
@@ -294,6 +303,14 @@ func (m *Manager) loadFromDisk() {
 				log.Printf("claude: failed to load messages for session %s: %v", rec.ID, err)
 			} else if len(msgs) > 0 {
 				s.messages = msgs
+			}
+		}
+		if m.plansDir != "" {
+			s.plansFile = filepath.Join(m.plansDir, rec.ID+".json")
+			if plans, err := loadPlans(s.plansFile); err != nil {
+				log.Printf("claude: failed to load plans for session %s: %v", rec.ID, err)
+			} else {
+				s.plans = plans
 			}
 		}
 		m.sessions[rec.ID] = s
@@ -395,6 +412,9 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	if m.messagesDir != "" {
 		s.messagesFile = filepath.Join(m.messagesDir, id+".jsonl")
 	}
+	if m.plansDir != "" {
+		s.plansFile = filepath.Join(m.plansDir, id+".json")
+	}
 	m.sessions[id] = s
 	m.worktreeIndex[worktreeName] = append(m.worktreeIndex[worktreeName], id)
 
@@ -490,11 +510,15 @@ func (m *Manager) DeleteSession(sessionID string) {
 	}
 	s.closeAllSubscribers()
 	msgFile := s.messagesFile
+	plansFile := s.plansFile
 	s.mu.Unlock()
 
-	// Remove messages file
+	// Remove messages and plans files
 	if msgFile != "" {
 		os.Remove(msgFile)
+	}
+	if plansFile != "" {
+		os.Remove(plansFile)
 	}
 
 	m.persist()
@@ -1178,6 +1202,7 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 					s.cacheReadInputTokens = msg.Usage.CacheReadInputTokens
 				}
 				// Only accumulate content blocks when not using stream events
+				var planBlocks []ContentBlock
 				if !s.hasStreamEvents && len(msg.Content) > 0 {
 					workDir := s.workDir
 					s.mu.Unlock()
@@ -1187,8 +1212,16 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 					}
 					s.mu.Lock()
 					s.currentBlocks = append(s.currentBlocks, msg.Content...)
+					for _, b := range msg.Content {
+						if b.Type == "tool_use" && b.Name == "ExitPlanMode" {
+							planBlocks = append(planBlocks, b)
+						}
+					}
 				}
 				s.mu.Unlock()
+				for _, b := range planBlocks {
+					s.maybeCapturePlan(b)
+				}
 			}
 		}
 
@@ -1450,6 +1483,9 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 			s.mu.Lock()
 			s.currentBlocks = append(s.currentBlocks, block)
 			s.mu.Unlock()
+
+			// Persist the plan artifact when a plan-mode turn completes
+			s.maybeCapturePlan(block)
 
 			// Fan out diff enrichment for live WebSocket clients
 			if block.DiffHTML != "" {

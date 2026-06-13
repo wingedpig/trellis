@@ -837,6 +837,7 @@ func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	notes, _ := h.caseManager.GetNotes(worktreePath, caseID)
+	plan, _ := h.caseManager.GetPlan(worktreePath, caseID)
 	traces, _ := h.caseManager.ListTraces(worktreePath, caseID)
 
 	// Backfill transcript previews for older cases saved without them
@@ -897,6 +898,7 @@ func (h *PageHandler) CaseDetail(w http.ResponseWriter, r *http.Request) {
 		WorktreeName: worktreeName,
 		Case:         c,
 		Notes:        notes,
+		Plan:         plan,
 		Traces:       traces,
 		IsArchived:   isArchived,
 		WrapUpCommit: wrapUp,

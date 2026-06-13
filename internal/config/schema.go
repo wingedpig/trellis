@@ -30,11 +30,26 @@ type Config struct {
 	Crashes           CrashesConfig         `json:"crashes"`
 	Proxy             []ProxyListenerConfig `json:"proxy"`
 	Cases             CasesConfig           `json:"cases"`
+	Agent             AgentConfig           `json:"agent"`
 }
 
 // CasesConfig configures case objects storage.
 type CasesConfig struct {
 	Dir string `json:"dir"` // Relative to worktree root (default: "trellis/cases")
+}
+
+// AgentConfig configures coding-agent integration (Claude Code, Codex).
+type AgentConfig struct {
+	// InstallSkill controls whether trellis installs its skill file at
+	// .claude/skills/trellis/SKILL.md in the repo and each worktree so
+	// agents discover trellis-ctl. Defaults to true.
+	InstallSkill *bool `json:"install_skill"`
+}
+
+// InstallSkillEnabled reports whether skill installation is enabled
+// (the default when install_skill is unset).
+func (a AgentConfig) InstallSkillEnabled() bool {
+	return a.InstallSkill == nil || *a.InstallSkill
 }
 
 // LoggingDefaultsConfig provides default parser, derive, and layout settings

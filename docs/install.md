@@ -78,7 +78,15 @@ Trellis includes a skill file that teaches AI coding assistants (Claude Code, Co
 
 ### Claude Code
 
-Copy the skill file to your project's Claude skills directory:
+Trellis installs the skill automatically: on startup it writes `.claude/skills/trellis/SKILL.md` into the repo and every worktree (and into new worktrees as they're created), refreshing it when the bundled version changes after an upgrade. Installed copies carry a `managed-by: trellis` marker; remove the marker line to take ownership of a copy and stop updates, or disable installation entirely in `trellis.hjson`:
+
+```hjson
+agent: {
+  install_skill: false
+}
+```
+
+To install manually instead (e.g. with auto-install disabled), copy the skill file to your project's Claude skills directory:
 
 ```bash
 mkdir -p .claude/skills/trellis

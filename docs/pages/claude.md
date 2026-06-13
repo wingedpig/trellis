@@ -72,6 +72,7 @@ The Claude page provides a chat interface with:
 - **Send button** — Submit your message
 - **Cancel button** — Stop Claude's current response (appears while generating)
 - **Reset button** — Start a new conversation within the same session
+- **Plan button** — View and edit the session's captured plan (appears once a plan exists, see [Plan Artifacts](#plan-artifacts))
 - **Save to Case button** — Save the session transcript to a case
 - **Commit button** — Make an intermediate commit against the worktree's open case (see [Commit](#commit-intermediate))
 - **Wrap Up button** — Archive the case and commit in one step (see [Wrap Up](#wrap-up))
@@ -105,6 +106,15 @@ Click the briefcase button in the Claude chat interface to save the current tran
 3. The transcript is saved to the case's `transcripts/` directory
 
 Saved transcripts can be continued from the case detail page using the **Continue** button, which imports the transcript into a new Claude session.
+
+## Plan Artifacts
+
+When Claude works in plan mode and calls `ExitPlanMode`, Trellis captures the plan as a durable, versioned artifact attached to the session — the plan text comes from the tool call itself, or from the markdown plan file Claude wrote just before presenting it.
+
+- **Viewing** — A clipboard button appears in the chat toolbar once the session has a plan. It opens a modal showing the latest version rendered as Markdown, with a version badge.
+- **Editing** — Click **Edit** in the modal to revise the plan. Edits don't overwrite history; each save appends a new version (marked as user-edited).
+- **Storage** — Plan history persists per session in `.trellis/claude/plans/<session-id>.json` and survives restarts. The API exposes it at `GET/PUT /api/v1/claude/sessions/{session}/plan`.
+- **Cases** — When a session with a plan is saved to a case (via Save to Case, Commit, or Wrap Up), the latest plan is copied into the case as `plan.md`. An existing case plan is never overwritten, so case-level edits stick. See [Cases](/docs/pages/cases/).
 
 ## Commit (intermediate)
 
@@ -150,7 +160,7 @@ After completion, you're redirected to the worktree home page.
 
 ## Codex parity
 
-Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`). The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
+Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), except [Plan Artifacts](#plan-artifacts), which rely on Claude Code's plan mode. The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
 
 ## Related
 

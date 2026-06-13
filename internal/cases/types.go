@@ -143,6 +143,7 @@ type CaseUpdate struct {
 	Status *string    `json:"status,omitempty"`
 	Links  []CaseLink `json:"links,omitempty"`
 	Notes  *string    `json:"notes,omitempty"` // If set, overwrites notes.md
+	Plan   *string    `json:"plan,omitempty"`  // If set, overwrites plan.md
 }
 
 // SummaryUpdate holds per-field summary edits. Nil values are not applied;

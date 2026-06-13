@@ -170,14 +170,11 @@ The **Commit** button on the Claude / Codex session page makes intermediate comm
 
 ### AI Assistant Skill File
 
-Install the skill file for Claude Code or Codex:
+Trellis ships a skill file that teaches AI coding assistants how to drive `trellis-ctl` — service status, logs, validation workflows, crashes, and traces. For Claude Code it installs automatically: on startup Trellis writes `.claude/skills/trellis/SKILL.md` into the repo and every worktree, and keeps it current across upgrades (set `agent: { install_skill: false }` in `trellis.hjson` to opt out).
+
+For Codex, copy the skill content into your repo's `AGENTS.md`:
 
 ```bash
-# Claude Code
-mkdir -p .claude/skills/trellis
-cp /path/to/trellis/SKILL.md .claude/skills/trellis/SKILL.md
-
-# Codex
 cp /path/to/trellis/SKILL.md AGENTS.md
 ```
 

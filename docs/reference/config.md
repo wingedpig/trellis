@@ -721,6 +721,18 @@ cases: {
 |-------|---------|-------------|
 | `dir` | `"trellis/cases"` | Directory for case storage, relative to worktree root. Archived cases are stored in a sibling `-archived` directory (e.g., `trellis/cases-archived/`). |
 
+### agent
+
+```hjson
+agent: {
+  install_skill: true         // Install the trellis skill file for coding agents
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `install_skill` | `true` | Whether Trellis installs its skill file at `.claude/skills/trellis/SKILL.md` in the repo and each worktree (on startup and on worktree creation), teaching coding agents to use `trellis-ctl`. Installed copies carry a `managed-by: trellis` marker and are refreshed when the bundled skill changes; copies without the marker (user-edited) are never touched. |
+
 ### logging_defaults
 
 ```hjson

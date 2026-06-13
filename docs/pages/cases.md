@@ -76,6 +76,10 @@ The wrap-up commit is intentionally not in this list — it is locatable from gi
 
 External references (URLs). Add inline with title + URL; remove with the × button.
 
+### Plan
+
+Markdown content from `plan.md`, rendered in the browser. Edit in-place with the pencil button. The plan is seeded automatically from the session's captured [plan artifact](/docs/pages/claude/#plan-artifacts) when a Claude session is saved to the case; once present it is owned by the case and never overwritten by later transcript saves. Shown read-only on archived cases that have one.
+
 ### Notes
 
 Markdown content from `notes.md`, rendered in the browser. Edit in-place with the pencil button.
@@ -152,6 +156,7 @@ trellis/cases/
   20260514__ach-payments-stripe/
     case.json              # Manifest including commits[] and summary{}
     notes.md               # Human narrative
+    plan.md                # Plan artifact (seeded from the session's captured plan)
     evidence/              # Attached files
     transcripts/           # Saved Claude transcripts
     codex_transcripts/     # Saved Codex transcripts

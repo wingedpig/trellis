@@ -934,6 +934,7 @@ Each case is a directory containing:
 
 - **`case.json`** — Machine-readable manifest with metadata, links, evidence references, transcript references, the per-commit timeline, and the generated summary.
 - **`notes.md`** — Human-written narrative (rendered as Markdown in the UI).
+- **`plan.md`** — Plan artifact, seeded from the session's captured plan (Claude's `ExitPlanMode` output) when a transcript is attached; editable on the case and never overwritten by later transcript saves.
 - **`evidence/`** — Snapshot files (logs, screenshots, data exports).
 - **`transcripts/`** — Exported Claude Code transcripts.
 - **`codex_transcripts/`** — Exported Codex transcripts.
@@ -2882,6 +2883,7 @@ POST   /api/v1/worktrees/:name/activate    # Switch to worktree
 GET    /api/v1/workflows                   # List workflows
 POST   /api/v1/workflows/:id/run           # Run workflow (?worktree=<name> optional)
 GET    /api/v1/workflows/:runID/status     # Workflow run status
+POST   /api/v1/workflows/:id/cancel        # Cancel run (accepts run ID or workflow ID)
 GET    /api/v1/workflows/:runID/stream     # WebSocket: stream workflow output
 ```
 
@@ -2973,6 +2975,8 @@ DELETE /api/v1/claude/sessions/{session}             # Trash a session (soft del
 GET    /api/v1/claude/{worktree}/sessions/trash      # List trashed sessions
 POST   /api/v1/claude/sessions/{session}/restore     # Restore a trashed session
 DELETE /api/v1/claude/sessions/{session}/permanent   # Permanently delete a session
+GET    /api/v1/claude/sessions/{session}/plan        # Plan artifact version history
+PUT    /api/v1/claude/sessions/{session}/plan        # Append a user-edited plan version
 ```
 
 #### Cases
@@ -3559,6 +3563,11 @@ The client connects to `/api/v1/workflows/:runID/stream` to receive real-time ou
 | `Output` | Raw text output |
 | `OutputHTML` | HTML-formatted output with clickable file links |
 | `ParsedLines` | Structured parsing results |
+| `Summary` | Rollup of `ParsedLines`: error/warning counts, test pass/fail/skip counts, failed test names, first error message. `null` when no output parser is configured. |
+
+**Cancellation:**
+
+`POST /api/v1/workflows/:id/cancel` cancels a running workflow. `:id` may be a run ID, or a workflow ID to cancel that workflow's most recently started in-flight run. The response carries the current run status; cancellation is asynchronous, so the state may still read `running` immediately after.
 
 **Link generation:**
 
@@ -5248,7 +5257,9 @@ trellis-ctl status
 
 ### 19.7 Claude Code Skills
 
-A skill file can be placed at `.claude/skills/trellis.md` to teach Claude Code how to use `trellis-ctl`:
+Trellis ships a skill file (SKILL.md, embedded in the binary) that teaches Claude Code how to use `trellis-ctl`. It is installed automatically at `.claude/skills/trellis/SKILL.md` in the repo and every worktree — on startup and when new worktrees are created — and refreshed when the bundled version changes after an upgrade. Installed copies carry a `managed-by: trellis` marker; copies without the marker (user-edited) are never overwritten. Installation can be disabled with `agent: { install_skill: false }`.
+
+The skill covers:
 
 ```markdown
 ---
@@ -5264,7 +5275,10 @@ from `trellis.hjson` (walking up from the current directory) and respects
 - `trellis-ctl status` - Check service status
 - `trellis-ctl logs <service>` - View logs
 - `trellis-ctl restart <service>` - Restart after fixes
-- `trellis-ctl workflow run build` - Run builds
+- `trellis-ctl workflow run build` - Run builds (structured Summary with -json)
+- `trellis-ctl workflow cancel <id>` - Cancel a running workflow
+- `trellis-ctl crash newest` - View crash details
+- `trellis-ctl trace <id> <group>` - Run distributed trace searches
 ```
 
 ---
@@ -5434,6 +5448,8 @@ POST   /api/v1/claude/sessions/{session}/restore     # Restore a trashed session
 DELETE /api/v1/claude/sessions/{session}/permanent   # Permanently delete a session
 GET    /api/v1/claude/sessions/{session}/ws          # WebSocket connection for chat
 GET    /api/v1/claude/sessions/{session}/export      # Export transcript as JSON
+GET    /api/v1/claude/sessions/{session}/plan        # Plan artifact version history
+PUT    /api/v1/claude/sessions/{session}/plan        # Append a user-edited plan version
 POST   /api/v1/claude/{worktree}/sessions/import     # Import transcript JSON
 GET    /api/v1/claude/{worktree}/git-status          # Git status for the worktree
 GET    /api/v1/claude/{worktree}/session-case        # Check if session is linked to a case

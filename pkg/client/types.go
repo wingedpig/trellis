@@ -239,8 +239,33 @@ type WorkflowStatus struct {
 	// OutputHTML contains the output with ANSI codes converted to HTML.
 	OutputHTML string `json:"OutputHTML"`
 
+	// Summary aggregates parsed output into structured counts. It is nil
+	// for workflows without an output parser.
+	Summary *WorkflowSummary `json:"Summary"`
+
 	// Error contains the error message if the workflow failed.
 	Error string `json:"Error"`
+}
+
+// WorkflowSummary is a structured rollup of a workflow run's parsed output.
+type WorkflowSummary struct {
+	// Errors is the number of error lines (e.g. compiler errors).
+	Errors int `json:"Errors"`
+
+	// Warnings is the number of warning lines.
+	Warnings int `json:"Warnings"`
+
+	// TestsPassed, TestsFailed, and TestsSkipped count test results when
+	// the workflow uses a test output parser (e.g. go_test_json).
+	TestsPassed  int `json:"TestsPassed"`
+	TestsFailed  int `json:"TestsFailed"`
+	TestsSkipped int `json:"TestsSkipped"`
+
+	// FailedTests lists "package.TestName" for each failed test (capped).
+	FailedTests []string `json:"FailedTests"`
+
+	// FirstError is the message of the first error line, if any.
+	FirstError string `json:"FirstError"`
 }
 
 // WorkflowState constants define the possible states of a workflow execution.

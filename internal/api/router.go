@@ -213,6 +213,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	api.HandleFunc("/workflows/{id}", workflowHandler.Get).Methods("GET")
 	api.HandleFunc("/workflows/{id}/run", workflowHandler.Run).Methods("POST")
 	api.HandleFunc("/workflows/{id}/status", workflowHandler.Status).Methods("GET")
+	api.HandleFunc("/workflows/{id}/cancel", workflowHandler.CancelRun).Methods("POST")
 	api.HandleFunc("/workflows/{runID}/stream", workflowHandler.Stream).Methods("GET")
 
 	// Event handlers
@@ -301,6 +302,8 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/sessions/{session}/permanent", claudeHandler.PermanentDeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/claude/sessions/{session}/move", claudeHandler.MoveSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}/fork", claudeHandler.ForkSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/sessions/{session}/plan", claudeHandler.GetPlanAPI).Methods("GET")
+		api.HandleFunc("/claude/sessions/{session}/plan", claudeHandler.UpdatePlanAPI).Methods("PUT")
 		api.HandleFunc("/claude/{worktree}/sessions/import", claudeHandler.ImportSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/sessions/trash", claudeHandler.ListTrashedSessionsAPI).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/git-status", claudeHandler.GitStatus).Methods("GET")

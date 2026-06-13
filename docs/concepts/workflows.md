@@ -195,6 +195,10 @@ Example with `go_test_json`:
 }
 ```
 
+### Structured Summary
+
+When an output parser is configured, completed runs also carry a `Summary` rollup in the status API: error and warning counts, test pass/fail/skip counts, the names of failing tests, and the first error message. This gives programmatic consumers — `trellis-ctl -json`, the Go client, and AI agents validating their changes — pass/fail detail without re-parsing the raw output. `Summary` is `null` for workflows without a parser.
+
 ## Service Coordination
 
 Workflows can interact with services:
@@ -259,6 +263,10 @@ trellis-ctl workflow run deploy --environment=staging --dry_run=true
 
 # Check status of a running workflow (pass the run ID, not workflow ID)
 trellis-ctl workflow status <run-id>
+
+# Cancel a running workflow (pass a run ID, or a workflow ID to cancel
+# its most recent in-flight run)
+trellis-ctl workflow cancel <id>
 ```
 
 ## Examples

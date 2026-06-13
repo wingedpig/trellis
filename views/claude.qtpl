@@ -39,6 +39,9 @@ type ClaudePage struct {
             <button id="claude-reset-btn" class="btn btn-outline-secondary claude-btn" onclick="claudeReset()" title="New conversation">
                 <i class="fa-solid fa-rotate-right"></i>
             </button>
+            <button id="claude-plan-btn" class="btn btn-outline-secondary claude-btn" onclick="claudeShowPlan()" title="View plan" style="display:none;">
+                <i class="fa-solid fa-clipboard-check"></i>
+            </button>
             <button class="btn btn-outline-secondary claude-btn" onclick="showSaveToCaseModal()" title="Save to case">
                 <i class="fa-solid fa-briefcase"></i>
             </button>
@@ -155,6 +158,31 @@ if (container) {
 }
 })();
 </script>
+
+<!-- Plan Modal -->
+<div class="modal fade" id="claudePlanModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-clipboard-check"></i> Plan <span id="claudePlanVersion" class="badge bg-secondary ms-1"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="claudePlanView"></div>
+                <textarea id="claudePlanTextarea" class="form-control font-monospace" rows="16" style="display:none; font-size: 0.85rem;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="claudePlanEditBtn" onclick="claudePlanEdit()">
+                    <i class="fa-solid fa-pen"></i> Edit
+                </button>
+                <button type="button" class="btn btn-primary" id="claudePlanSaveBtn" onclick="claudePlanSave()" style="display:none;">
+                    <i class="fa-solid fa-check"></i> Save
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Fork Session Modal -->
 <div class="modal fade" id="claudeForkModal" tabindex="-1">

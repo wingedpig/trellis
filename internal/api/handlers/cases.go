@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,26 @@ import (
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
+
+// seedCasePlanFromClaudeSession copies the session's latest captured plan
+// (from ExitPlanMode) into the case as plan.md when the case has none.
+// Best-effort; an existing plan.md is never overwritten.
+func seedCasePlanFromClaudeSession(caseMgr *cases.Manager, claudeMgr *claude.Manager, worktreePath, caseID, sessionID string) {
+	if caseMgr == nil || claudeMgr == nil {
+		return
+	}
+	session := claudeMgr.GetSession(sessionID)
+	if session == nil {
+		return
+	}
+	pv, ok := session.LatestPlan()
+	if !ok {
+		return
+	}
+	if _, err := caseMgr.SeedPlan(worktreePath, caseID, pv.Content); err != nil {
+		log.Printf("cases: seed plan for case %s failed: %v", caseID, err)
+	}
+}
 
 // CaseHandler handles case API requests.
 type CaseHandler struct {
@@ -366,6 +387,8 @@ func (h *CaseHandler) SaveTranscript(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
 		return
 	}
+
+	seedCasePlanFromClaudeSession(h.caseMgr, h.claudeMgr, wt.Path, caseID, body.SessionID)
 
 	WriteJSON(w, http.StatusCreated, map[string]string{
 		"claude_ref_id": refID,

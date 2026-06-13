@@ -3,6 +3,8 @@ name: trellis
 description: Control the Trellis development environment - check service status, view logs, restart services, run workflows, and switch worktrees
 ---
 
+<!-- managed-by: trellis — installed automatically; trellis refreshes this file on startup. Remove this line to take ownership and stop updates. -->
+
 # Trellis Development Environment Control
 
 Use `trellis-ctl` to interact with the running Trellis instance. It auto-discovers the API URL by walking up from the current directory looking for `trellis.hjson`. If `server.public_url` is set, it's used verbatim; otherwise the URL is built from `server.host`, `server.port`, and `server.tls_cert`/`tls_key`. Set `server.public_url` when bind address ≠ connect address — for example, binding to a Tailscale IP with a cert issued for the Tailscale hostname. In Trellis-managed terminal sessions, `TRELLIS_API` is set automatically (using the same resolution) and takes precedence over the config file. You can also pass `-config <path>` or set `TRELLIS_CONFIG` to point at a specific config file.
@@ -101,7 +103,19 @@ trellis-ctl workflow describe <id>     # Show workflow inputs and validation rul
 trellis-ctl workflow run <id>          # Run a workflow (waits for completion)
 trellis-ctl workflow run <id> --arg=value  # Run with input arguments
 trellis-ctl workflow status <id>       # Check workflow status
+trellis-ctl workflow cancel <id>       # Cancel a running workflow (run ID or workflow ID)
 ```
+
+**Use workflows to validate your changes.** Prefer the project's configured workflows (build, test, lint) over running raw shell commands — Trellis parses their output into a structured `Summary` you can read directly. With `-json`, completed runs include:
+```json
+"Summary": {
+  "Errors": 0, "Warnings": 0,
+  "TestsPassed": 41, "TestsFailed": 2, "TestsSkipped": 1,
+  "FailedTests": ["github.com/acme/pkg.TestFoo", "github.com/acme/pkg.TestBar"],
+  "FirstError": ""
+}
+```
+`Summary` is null for workflows without an output parser. Check `Success` for the overall result and `Summary.FailedTests` to see exactly which tests to fix.
 
 **Discovering and running workflows with inputs:**
 ```bash
@@ -258,7 +272,7 @@ This requires no configuration — `svc:<name>` log viewers are created automati
 ## Common Workflows
 
 ### After Making Code Changes
-1. Build the code (your normal build process)
+1. Build and test via the project's workflows when available: `trellis-ctl -json workflow run build` — read `Success` and `Summary` (failed test names, first error) from the output
 2. Check if service auto-restarted: `trellis-ctl status`
 3. If crashed, check logs: `trellis-ctl logs <service> -n 100`
 

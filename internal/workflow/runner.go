@@ -579,6 +579,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 			if wf.OutputParser != "" {
 				parser := r.parsers.Get(wf.OutputParser)
 				status.ParsedLines = parser.Parse(status.Output)
+				status.Summary = Summarize(status.ParsedLines)
 			}
 			status.OutputHTML = FormatOutput(status.Output, status.ParsedLines, wf.OutputParser)
 			state.mu.Unlock()
@@ -609,6 +610,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 	if wf.OutputParser != "" {
 		parser := r.parsers.Get(wf.OutputParser)
 		status.ParsedLines = parser.Parse(status.Output)
+		status.Summary = Summarize(status.ParsedLines)
 	}
 
 	// Format output as HTML with links
@@ -711,18 +713,56 @@ func (r *RealRunner) LatestRun(worktree string) (*WorkflowStatus, bool) {
 	return &statusCopy, true
 }
 
-// Cancel cancels a running workflow.
-func (r *RealRunner) Cancel(runID string) error {
+// Cancel cancels a running workflow. id may be a run ID or a workflow ID;
+// a workflow ID cancels that workflow's most recently started run still in
+// flight.
+func (r *RealRunner) Cancel(id string) error {
 	r.mu.RLock()
-	cancel, ok := r.cancelFuncs[runID]
+	cancel, ok := r.cancelFuncs[id]
+	if !ok {
+		var latestStart time.Time
+		for runID, state := range r.currentRuns {
+			if !isRunOf(runID, id) {
+				continue
+			}
+			c, exists := r.cancelFuncs[runID]
+			if !exists {
+				continue
+			}
+			state.mu.RLock()
+			active := state.status.State == StateRunning || state.status.State == StatePending
+			started := state.status.StartedAt
+			state.mu.RUnlock()
+			if active && started.After(latestStart) {
+				cancel, ok = c, true
+				latestStart = started
+			}
+		}
+	}
 	r.mu.RUnlock()
 
 	if !ok {
-		return fmt.Errorf("workflow run %q not found", runID)
+		return fmt.Errorf("workflow run %q not found", id)
 	}
 
 	cancel()
 	return nil
+}
+
+// isRunOf reports whether runID identifies a run of workflow wfID. Run IDs
+// are "<workflow-id>-<unix-nanos>", so requiring an all-digit suffix keeps
+// workflow "build" from matching runs of "build-fast".
+func isRunOf(runID, wfID string) bool {
+	rest, ok := strings.CutPrefix(runID, wfID+"-")
+	if !ok || rest == "" {
+		return false
+	}
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *RealRunner) emitEvent(ctx context.Context, eventType string, payload map[string]interface{}) {

@@ -63,7 +63,59 @@ type WorkflowStatus struct {
 	Output      string
 	OutputHTML  string // HTML-formatted output with links and <br> tags
 	ParsedLines []ParsedLine
+	Summary     *WorkflowSummary // Rollup of ParsedLines; nil when no output parser is configured
 	Error       string
+}
+
+// WorkflowSummary is a structured rollup of ParsedLines so programmatic
+// consumers (agents polling the status API) get pass/fail detail without
+// re-parsing Output.
+type WorkflowSummary struct {
+	Errors       int
+	Warnings     int
+	TestsPassed  int
+	TestsFailed  int
+	TestsSkipped int
+	FailedTests  []string // "package.TestName" per test_fail line, capped at maxSummaryFailedTests
+	FirstError   string   // message of the first error line
+}
+
+// maxSummaryFailedTests caps FailedTests so a pathological run can't bloat
+// every status poll.
+const maxSummaryFailedTests = 50
+
+// Summarize rolls parsed lines up into counts. Returns nil when there are no
+// parsed lines, leaving Summary unset for parserless workflows.
+func Summarize(lines []ParsedLine) *WorkflowSummary {
+	if len(lines) == 0 {
+		return nil
+	}
+	s := &WorkflowSummary{}
+	for _, l := range lines {
+		switch l.Type {
+		case "error":
+			s.Errors++
+			if s.FirstError == "" {
+				s.FirstError = l.Message
+			}
+		case "warning":
+			s.Warnings++
+		case "test_pass":
+			s.TestsPassed++
+		case "test_fail":
+			s.TestsFailed++
+			if len(s.FailedTests) < maxSummaryFailedTests {
+				name := l.TestName
+				if l.Package != "" {
+					name = l.Package + "." + l.TestName
+				}
+				s.FailedTests = append(s.FailedTests, name)
+			}
+		case "test_skip":
+			s.TestsSkipped++
+		}
+	}
+	return s
 }
 
 // WorkflowState represents the state of a workflow execution.

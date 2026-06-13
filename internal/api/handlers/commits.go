@@ -435,6 +435,7 @@ func saveActiveTranscript(agent agentAdapter, deps commitDeps, worktreePath, cas
 			title = t.Source.DisplayName
 		}
 		_ = deps.caseMgr.SaveTranscript(worktreePath, caseID, refID, title, sessionID, t)
+		seedCasePlanFromClaudeSession(deps.caseMgr, deps.claudeMgr, worktreePath, caseID, sessionID)
 	case "codex":
 		if deps.codexMgr == nil {
 			return

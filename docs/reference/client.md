@@ -150,6 +150,17 @@ if status.Success {
     fmt.Println("Workflow completed successfully")
     fmt.Println(status.Output)
 }
+
+// Structured rollup of parsed output (nil without an output parser)
+if s := status.Summary; s != nil {
+    fmt.Printf("tests: %d passed, %d failed\n", s.TestsPassed, s.TestsFailed)
+    for _, name := range s.FailedTests {
+        fmt.Println("FAIL", name)
+    }
+}
+
+// Cancel a running workflow (run ID, or workflow ID for its latest run)
+status, _ = c.Workflows.Cancel(ctx, "build")
 ```
 
 ## Event Operations
@@ -257,7 +268,8 @@ Key types exported by the client library:
 | `ServiceStatus` | Runtime state (State, PID, ExitCode, etc.) |
 | `Worktree` | Git worktree info (Path, Branch, Commit, Dirty, etc.) |
 | `Workflow` | Workflow definition (ID, Name, Command, etc.) |
-| `WorkflowStatus` | Execution status (State, Success, Output, etc.) |
+| `WorkflowStatus` | Execution status (State, Success, Output, Summary, etc.) |
+| `WorkflowSummary` | Structured rollup of parsed output (error/test counts, failed test names) |
 | `Event` | Event log entry (Type, Timestamp, Payload) |
 | `LogViewer` | Log viewer definition (Name, Description) |
 | `LogEntry` | Parsed log entry (Timestamp, Level, Message, Fields) |

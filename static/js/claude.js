@@ -508,6 +508,13 @@
                     }
                 }
                 break;
+            case 'plan_captured':
+                // Trellis persisted a plan artifact for this session
+                if (event.message) {
+                    latestPlan = event.message;
+                    updatePlanButton();
+                }
+                break;
             case 'user':
                 // Echoed user messages contain tool_result blocks from tool execution
                 if (event.message && event.message.content) {
@@ -2590,10 +2597,87 @@
         showEmptyState();
     }
 
+    // --- Plan artifact ---
+    //
+    // Trellis captures the plan when Claude calls ExitPlanMode and persists
+    // it per session (versioned). The toolbar button appears once a plan
+    // exists; the modal shows the latest version and lets the user edit it
+    // (an edit appends a new version server-side).
+
+    var latestPlan = null;
+    var planSessionId = (typeof CLAUDE_SESSION !== 'undefined' && CLAUDE_SESSION) ? CLAUDE_SESSION : null;
+
+    function updatePlanButton() {
+        var btn = document.getElementById('claude-plan-btn');
+        if (btn) btn.style.display = latestPlan ? '' : 'none';
+    }
+
+    function fetchPlan() {
+        if (!planSessionId) return;
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(planSessionId) + '/plan')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(resp) {
+                var payload = resp && (resp.data || resp);
+                var plans = payload && payload.plans;
+                if (plans && plans.length > 0) {
+                    latestPlan = plans[plans.length - 1];
+                    updatePlanButton();
+                }
+            })
+            .catch(function() {});
+    }
+
+    function localClaudeShowPlan() {
+        if (!latestPlan) return;
+        var view = document.getElementById('claudePlanView');
+        var ta = document.getElementById('claudePlanTextarea');
+        view.innerHTML = mdSafe(latestPlan.content || '');
+        view.style.display = '';
+        ta.style.display = 'none';
+        document.getElementById('claudePlanEditBtn').style.display = '';
+        document.getElementById('claudePlanSaveBtn').style.display = 'none';
+        var badge = document.getElementById('claudePlanVersion');
+        if (badge) badge.textContent = 'v' + latestPlan.version + (latestPlan.source === 'user' ? ' (edited)' : '');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('claudePlanModal')).show();
+    }
+
+    function localClaudePlanEdit() {
+        var ta = document.getElementById('claudePlanTextarea');
+        ta.value = latestPlan ? (latestPlan.content || '') : '';
+        document.getElementById('claudePlanView').style.display = 'none';
+        ta.style.display = '';
+        document.getElementById('claudePlanEditBtn').style.display = 'none';
+        document.getElementById('claudePlanSaveBtn').style.display = '';
+        ta.focus();
+    }
+
+    function localClaudePlanSave() {
+        var ta = document.getElementById('claudePlanTextarea');
+        var content = ta.value;
+        if (!content.trim() || !planSessionId) return;
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(planSessionId) + '/plan', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content: content})
+        })
+        .then(function(r) {
+            if (!r.ok) throw new Error('save failed');
+            return r.json();
+        })
+        .then(function(resp) {
+            latestPlan = (resp && resp.data) || resp;
+            localClaudeShowPlan();
+        })
+        .catch(function(err) { alert('Failed to save plan: ' + err); });
+    }
+
     function bindClaudeGlobals() {
         window.claudeSend = localClaudeSend;
         window.claudeCancel = localClaudeCancel;
         window.claudeReset = localClaudeReset;
+        window.claudeShowPlan = localClaudeShowPlan;
+        window.claudePlanEdit = localClaudePlanEdit;
+        window.claudePlanSave = localClaudePlanSave;
     }
     bindClaudeGlobals();
     var __claudePageContainer = inputEl ? inputEl.closest('.page-container') : null;
@@ -2928,6 +3012,7 @@
     // Initialize
     showInitialLoading();
     connect();
+    fetchPlan();
     inputEl.focus();
 
 })();

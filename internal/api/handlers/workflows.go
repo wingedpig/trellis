@@ -128,6 +128,30 @@ func (h *WorkflowHandler) Status(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, status)
 }
 
+// CancelRun cancels a running workflow. Accepts a run ID or a workflow ID
+// (the latter cancels that workflow's most recent in-flight run).
+func (h *WorkflowHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	if err := h.runner.Cancel(id); err != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		return
+	}
+
+	// Return the current status so callers see the canceled state without
+	// a second round-trip. Cancellation is asynchronous, so the state may
+	// still read as running immediately after.
+	if status, ok := h.runner.Status(id); ok {
+		WriteJSON(w, http.StatusOK, status)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"ID":    id,
+		"State": "canceled",
+	})
+}
+
 // LatestRun returns the most recently started run for a worktree.
 func (h *WorkflowHandler) LatestRun(w http.ResponseWriter, r *http.Request) {
 	worktree := r.URL.Query().Get("worktree")

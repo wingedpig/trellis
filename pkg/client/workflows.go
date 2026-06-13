@@ -103,6 +103,25 @@ func (w *WorkflowClient) Run(ctx context.Context, id string, opts *RunOptions) (
 	return &status, nil
 }
 
+// Cancel cancels a running workflow.
+//
+// id may be a run ID (as returned in [WorkflowStatus.ID]) or a workflow ID,
+// which cancels that workflow's most recent in-flight run. Cancellation is
+// asynchronous; poll [WorkflowClient.Status] to observe the canceled state.
+func (w *WorkflowClient) Cancel(ctx context.Context, id string) (*WorkflowStatus, error) {
+	data, err := w.c.post(ctx, "/api/v1/workflows/"+url.PathEscape(id)+"/cancel")
+	if err != nil {
+		return nil, err
+	}
+
+	var status WorkflowStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil, fmt.Errorf("failed to parse workflow status: %w", err)
+	}
+
+	return &status, nil
+}
+
 // Status returns the current execution status of a workflow.
 //
 // Use this to poll for workflow completion after calling [WorkflowClient.Run].

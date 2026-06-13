@@ -132,6 +132,8 @@ With worktrees, you can:
 
 The [home page](/docs/pages/worktrees/) has a **Create New Worktree** form. Enter a branch name and Trellis will create both the git branch and worktree directory. Optionally check **Switch to new worktree** to activate it immediately.
 
+New worktrees also get the [agent skill file](/docs/reference/trellis-ctl/#claude-code-integration) installed at `.claude/skills/trellis/SKILL.md` automatically (unless disabled via `agent.install_skill`), so Claude Code sessions in the worktree can drive `trellis-ctl` right away.
+
 ### From the Command Line
 
 ```bash

@@ -368,6 +368,50 @@ func (h *ClaudeHandler) RenameSessionAPI(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetPlanAPI returns a session's plan history (captured from ExitPlanMode
+// plus any user edits), oldest version first.
+func (h *ClaudeHandler) GetPlanAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["session"]
+
+	session := h.manager.GetSession(sessionID)
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"plans": session.Plans(),
+	})
+}
+
+// UpdatePlanAPI appends a user-edited version to a session's plan history.
+func (h *ClaudeHandler) UpdatePlanAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["session"]
+
+	session := h.manager.GetSession(sessionID)
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrInternalError, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Content) == "" {
+		http.Error(w, "content required", http.StatusBadRequest)
+		return
+	}
+
+	pv := session.UpdatePlan(body.Content)
+	WriteJSON(w, http.StatusOK, pv)
+}
+
 // DeleteSessionAPI moves a Claude session to trash (soft delete).
 func (h *ClaudeHandler) DeleteSessionAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -826,6 +870,7 @@ func captureRelatedSession(rel relatedSessionRef, worktreePath, caseID string, c
 		}
 		refID := uuid.New().String()[:8]
 		_ = caseMgr.SaveTranscript(worktreePath, caseID, refID, title, rel.SessionID, t)
+		seedCasePlanFromClaudeSession(caseMgr, claudeMgr, worktreePath, caseID, rel.SessionID)
 		_ = claudeMgr.TrashSession(rel.SessionID)
 	case "codex":
 		if codexMgr == nil {

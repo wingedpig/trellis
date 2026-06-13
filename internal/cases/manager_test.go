@@ -255,3 +255,52 @@ func TestSchemaBackwardCompat_oldCaseJsonStillLoads(t *testing.T) {
 		t.Errorf("legacy Summary should be nil, got %+v", got.Summary)
 	}
 }
+
+func TestPlan_seedGetUpdate(t *testing.T) {
+	m, wt := newManagerWithTempDir(t)
+	c, err := m.Create(wt, "Planned feature", "feature", "wt1", "main", "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// No plan yet.
+	plan, err := m.GetPlan(wt, c.ID)
+	if err != nil || plan != "" {
+		t.Fatalf("GetPlan on fresh case: plan=%q err=%v", plan, err)
+	}
+
+	// Seed writes when absent.
+	written, err := m.SeedPlan(wt, c.ID, "# Plan v1")
+	if err != nil || !written {
+		t.Fatalf("SeedPlan: written=%v err=%v", written, err)
+	}
+	if plan, _ = m.GetPlan(wt, c.ID); plan != "# Plan v1" {
+		t.Fatalf("GetPlan after seed = %q", plan)
+	}
+
+	// Seed never overwrites an existing plan.
+	written, err = m.SeedPlan(wt, c.ID, "# Plan v2")
+	if err != nil || written {
+		t.Fatalf("SeedPlan overwrite: written=%v err=%v", written, err)
+	}
+	if plan, _ = m.GetPlan(wt, c.ID); plan != "# Plan v1" {
+		t.Fatalf("plan was overwritten: %q", plan)
+	}
+
+	// Update with an explicit plan overwrites.
+	edited := "# Plan v1 (edited)"
+	if err := m.Update(wt, c.ID, CaseUpdate{Plan: &edited}); err != nil {
+		t.Fatalf("Update plan: %v", err)
+	}
+	if plan, _ = m.GetPlan(wt, c.ID); plan != edited {
+		t.Fatalf("GetPlan after update = %q", plan)
+	}
+
+	// Plan survives archiving.
+	if err := m.Archive(wt, c.ID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if plan, _ = m.GetPlan(wt, c.ID); plan != edited {
+		t.Fatalf("GetPlan after archive = %q", plan)
+	}
+}

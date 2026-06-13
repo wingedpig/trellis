@@ -175,6 +175,49 @@ func (m *Manager) GetNotes(worktreePath, caseID string) (string, error) {
 	return string(data), nil
 }
 
+// GetPlan reads the plan.md file for a case. Returns "" when the case has
+// no plan artifact.
+func (m *Manager) GetPlan(worktreePath, caseID string) (string, error) {
+	if err := validID(caseID); err != nil {
+		return "", err
+	}
+	path := filepath.Join(m.casesDir(worktreePath), caseID, "plan.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Check archived
+		path = filepath.Join(m.archivedDir(worktreePath), caseID, "plan.md")
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return "", nil // No plan yet
+		}
+	}
+	return string(data), nil
+}
+
+// SeedPlan writes plan.md for a case if it doesn't exist yet. Used when a
+// session with a captured plan is attached to the case; an existing plan
+// (possibly user-edited) is never overwritten. Returns true when written.
+func (m *Manager) SeedPlan(worktreePath, caseID, content string) (bool, error) {
+	if err := validID(caseID); err != nil {
+		return false, err
+	}
+	if content == "" {
+		return false, nil
+	}
+	dir := filepath.Join(m.casesDir(worktreePath), caseID)
+	if _, err := os.Stat(filepath.Join(dir, "case.json")); err != nil {
+		return false, fmt.Errorf("case not found: %s", caseID)
+	}
+	path := filepath.Join(dir, "plan.md")
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return false, fmt.Errorf("write plan.md: %w", err)
+	}
+	return true, nil
+}
+
 // ErrOpenCaseExists is returned by Create when an open case already exists in
 // the worktree. The new lifecycle enforces at most one open case per worktree;
 // callers should either reuse the existing open case or wrap it up first.
@@ -311,6 +354,14 @@ func (m *Manager) Update(worktreePath, caseID string, updates CaseUpdate) error 
 		notesPath := filepath.Join(m.casesDir(worktreePath), caseID, "notes.md")
 		if err := os.WriteFile(notesPath, []byte(*updates.Notes), 0o644); err != nil {
 			return fmt.Errorf("write notes.md: %w", err)
+		}
+	}
+
+	// Update plan if provided
+	if updates.Plan != nil {
+		planPath := filepath.Join(m.casesDir(worktreePath), caseID, "plan.md")
+		if err := os.WriteFile(planPath, []byte(*updates.Plan), 0o644); err != nil {
+			return fmt.Errorf("write plan.md: %w", err)
 		}
 	}
 

@@ -226,6 +226,7 @@ Commands:
   workflow list            List all workflows
   workflow run <id>        Run a workflow (waits for completion)
   workflow status <id>     Get workflow status
+  workflow cancel <id>     Cancel a running workflow (run ID or workflow ID)
 
   worktree list            List all worktrees
   worktree activate <name> Activate a worktree
@@ -999,7 +1000,7 @@ func cmdRestart(args []string) error {
 
 func cmdWorkflow(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: trellis-ctl workflow <list|describe|run|status> [args]")
+		return fmt.Errorf("usage: trellis-ctl workflow <list|describe|run|status|cancel> [args]")
 	}
 
 	subcmd := args[0]
@@ -1014,6 +1015,8 @@ func cmdWorkflow(args []string) error {
 		return cmdWorkflowRun(subargs)
 	case "status":
 		return cmdWorkflowStatus(subargs)
+	case "cancel":
+		return cmdWorkflowCancel(subargs)
 	default:
 		return fmt.Errorf("unknown workflow subcommand: %s", subcmd)
 	}
@@ -1200,6 +1203,26 @@ func cmdWorkflowRun(args []string) error {
 		fmt.Println(status.Output)
 	}
 
+	// Print structured summary if the workflow has an output parser
+	if s := status.Summary; s != nil {
+		var parts []string
+		if s.TestsPassed+s.TestsFailed+s.TestsSkipped > 0 {
+			parts = append(parts, fmt.Sprintf("tests: %d passed, %d failed, %d skipped", s.TestsPassed, s.TestsFailed, s.TestsSkipped))
+		}
+		if s.Errors > 0 {
+			parts = append(parts, fmt.Sprintf("%d errors", s.Errors))
+		}
+		if s.Warnings > 0 {
+			parts = append(parts, fmt.Sprintf("%d warnings", s.Warnings))
+		}
+		if len(parts) > 0 {
+			fmt.Printf("\nSummary: %s\n", strings.Join(parts, "; "))
+		}
+		for _, t := range s.FailedTests {
+			fmt.Printf("  FAIL %s\n", t)
+		}
+	}
+
 	// Print result
 	duration := status.Duration.Round(time.Millisecond).String()
 	if status.Success {
@@ -1229,6 +1252,27 @@ func cmdWorkflowStatus(args []string) error {
 
 	// Always output JSON for status (it's the natural format)
 	printJSON(status)
+	return nil
+}
+
+func cmdWorkflowCancel(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: trellis-ctl workflow cancel <id>")
+	}
+
+	ctx := context.Background()
+	id := args[0]
+	status, err := apiClient.Workflows.Cancel(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if jsonOutput {
+		printJSON(status)
+		return nil
+	}
+
+	fmt.Printf("Canceled workflow run %s\n", status.ID)
 	return nil
 }
 

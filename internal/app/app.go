@@ -27,6 +27,7 @@ import (
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/inbox"
+	"github.com/wingedpig/trellis/internal/skill"
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/pair"
 	"github.com/wingedpig/trellis/internal/proxy"
@@ -261,6 +262,30 @@ func (app *App) Initialize(ctx context.Context) error {
 		}
 	} else {
 		log.Printf("Warning: no worktrees found, template expansion may not work correctly")
+	}
+
+	// Install the agent skill file into the repo and each worktree so coding
+	// agents discover trellis-ctl, and keep new worktrees covered. Best-effort
+	// and run in the background so it never delays startup.
+	if cfg.Agent.InstallSkillEnabled() {
+		dirs := make([]string, 0, len(worktrees)+1)
+		if repoDir != "" {
+			dirs = append(dirs, repoDir)
+		}
+		for _, wt := range worktrees {
+			if wt.Path != repoDir {
+				dirs = append(dirs, wt.Path)
+			}
+		}
+		go installSkillFiles(dirs)
+		if _, err := app.eventBus.SubscribeAsync(events.EventWorktreeCreated, func(_ context.Context, event events.Event) error {
+			if path, _ := event.Payload["path"].(string); path != "" {
+				installSkillFiles([]string{path})
+			}
+			return nil
+		}, 4); err != nil {
+			log.Printf("Warning: failed to subscribe skill installer to worktree creation: %v", err)
+		}
 	}
 
 	// Expand templates in config
@@ -1244,4 +1269,18 @@ func (app *App) injectServicesTraceGroup(cfg *config.Config, viewerNames []strin
 		LogViewers: viewerNames,
 	})
 	log.Printf("Created 'services' trace group with %d viewers", len(viewerNames))
+}
+
+// installSkillFiles installs the embedded agent skill file into each
+// directory, logging what changed. Best-effort: a failure in one directory
+// doesn't stop the others.
+func installSkillFiles(dirs []string) {
+	for _, dir := range dirs {
+		changed, err := skill.Install(dir)
+		if err != nil {
+			log.Printf("skill: install in %s failed: %v", dir, err)
+		} else if changed {
+			log.Printf("skill: installed %s in %s", skill.RelPath, dir)
+		}
+	}
 }
