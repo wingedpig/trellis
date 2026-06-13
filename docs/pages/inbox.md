@@ -19,17 +19,23 @@ The popup is sized to roughly 420×720 — small enough to dock alongside an edi
 
 Two stacked sections:
 
-- **Needs you** — sessions waiting for something: a permission prompt (Claude), an approval request (Codex), or a turn that finished and is awaiting your next message.
+- **Needs you** — sessions waiting for something: a permission prompt (Claude), an approval request (Codex), a turn that finished and is awaiting your next message, or a turn that ended in an error.
 - **Running** — sessions actively generating.
 
 Each row carries:
 
-- A coloured dot (yellow for "needs you", blue for "running").
-- The session's display name and the worktree it lives in.
+- A **status indicator** that reflects the row's reason:
+  - a blue dot while **running**,
+  - a yellow dot while **awaiting your input**,
+  - a pulsing red hand when the agent is **stalled on a permission/approval prompt**,
+  - a red warning triangle when the **last turn errored**.
+- The session's display name.
+- A second line showing the worktree and — while running — a **live activity description** of what the agent is doing right now (`Running go test`, `Editing schema.go`, `Thinking…`). It updates in place at each tool/step boundary.
+- A **time-in-state** label (`4m`, `2h`) showing how long the session has sat in its current state.
 - A small `CLAUDE` or `CODEX` agent badge.
 - A hide button (eye-with-slash) on hover.
 
-Within each section, newer state transitions float to the top.
+Within **Running**, newer state transitions float to the top. Within **Needs you**, the most urgent reason comes first — stalled approvals, then errors, then turns merely awaiting input — with ties broken by most-recent transition.
 
 ## Clicking a row
 
@@ -47,14 +53,28 @@ Hides are stored in `localStorage` so they survive a popup reopen. They are auto
 
 ## Live updates
 
-The inbox subscribes to the `session.state_changed` event bus. Each event carries `{session_id, agent, worktree, display_name, state, trashed}`, and the row is updated (or removed) in place. The footer shows `live` when the WebSocket is open and `offline (reconnecting…)` while it's not — the client auto-reconnects every 3 seconds.
+The inbox subscribes to two event streams:
+
+- `session.state_changed` — fired only on coarse `running ↔ needs_you` transitions. Each event carries `{session_id, agent, worktree, display_name, state, reason, unread, trashed}`, and the row is updated (or removed) in place.
+- `session.activity` — a lighter stream carrying `{session_id, activity}`, fired at tool/step boundaries (not on every token) and only when the description changes. It refreshes a row's activity line **in place without reordering** the list.
+
+The footer shows `live` when the WebSocket is open and `offline (reconnecting…)` while it's not — the client auto-reconnects every 3 seconds. Time-in-state labels are refreshed client-side on a 30-second tick, with no extra server traffic.
 
 ## State derivation
 
-State is a coarse two-value field derived per agent:
+`state` stays a coarse two-value field, derived per agent:
 
 - **Claude** — `running` while the session is generating *and* has no pending control request; otherwise `needs_you`.
 - **Codex** — `running` while the session is generating *and* has no pending approvals; otherwise `needs_you`.
+
+`state` is what drives sorting and transition detection — it flips only on a real `running ↔ needs_you` change. A finer **`reason`** field refines it for presentation only, and never reorders the list:
+
+| `reason` | meaning |
+|----------|---------|
+| `running` | a turn is actively in flight |
+| `awaiting_input` | the turn finished cleanly; your move |
+| `needs_approval` | stalled on a permission/approval prompt |
+| `error` | the last turn ended in an error |
 
 The aggregator merges both agents' session lists and tracks the timestamp of each session's most recent state transition, so the UI can sort by recency.
 
@@ -62,9 +82,9 @@ The aggregator merges both agents' session lists and tracks the timestamp of eac
 
 The two endpoints behind the popup:
 
-- `GET /api/v1/inbox/sessions` — initial merged list of `SessionRow{id, agent, worktree, display_name, state, last_state_change_at}` entries.
+- `GET /api/v1/inbox/sessions` — initial merged list of `SessionRow{id, agent, worktree, display_name, state, reason, activity, unread, last_state_change_at}` entries.
 - `GET /api/v1/inbox/ws?role=inbox|main` — single WebSocket endpoint that serves two roles:
-  - `role=inbox` — the popup connects this way. Receives `session.state_changed` events and can send `{type:"navigate", path:"..."}` commands.
+  - `role=inbox` — the popup connects this way. Receives `session.state_changed` events (forwarded as `{type:"state_changed"}`) and `session.activity` events (forwarded as `{type:"activity"}`), and can send `{type:"navigate", path:"..."}` commands.
   - `role=main` — every regular Trellis page connects this way (via `inbox_main_ws.js` loaded by the shared header). Receives `{type:"navigate", path:"..."}` commands and acts on them.
 
 If the inbox sends a `navigate` and there's no `role=main` connection at all, the server replies with `{type:"navigate_failed", reason:"no_main_window", path:"..."}` and the popup opens a window directly.

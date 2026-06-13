@@ -100,19 +100,28 @@ func (h *InboxHandler) serveInbox(w http.ResponseWriter, r *http.Request) {
 
 	eventCh := make(chan events.Event, 256)
 	done := make(chan struct{})
-	subID, err := h.bus.SubscribeAsync(events.EventSessionStateChanged, func(_ context.Context, ev events.Event) error {
+	forward := func(_ context.Context, ev events.Event) error {
 		select {
 		case eventCh <- ev:
 		case <-done:
 		default:
 		}
 		return nil
-	}, 256)
+	}
+	stateSub, err := h.bus.SubscribeAsync(events.EventSessionStateChanged, forward, 256)
 	if err != nil {
 		_ = writeJSON(inboxServerMsg{Type: "error", Reason: err.Error()})
 		return
 	}
-	defer h.bus.Unsubscribe(subID)
+	defer h.bus.Unsubscribe(stateSub)
+	// Lightweight activity updates ride a separate event so they can refresh a
+	// row's sub-line in place without reordering the inbox.
+	activitySub, err := h.bus.SubscribeAsync(events.EventSessionActivity, forward, 256)
+	if err != nil {
+		_ = writeJSON(inboxServerMsg{Type: "error", Reason: err.Error()})
+		return
+	}
+	defer h.bus.Unsubscribe(activitySub)
 
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -144,7 +153,11 @@ func (h *InboxHandler) serveInbox(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
-			if err := writeJSON(inboxServerMsg{Type: "state_changed", Event: payload}); err != nil {
+			msgType := "state_changed"
+			if ev.Type == events.EventSessionActivity {
+				msgType = "activity"
+			}
+			if err := writeJSON(inboxServerMsg{Type: msgType, Event: payload}); err != nil {
 				return
 			}
 		case msg := <-readCh:

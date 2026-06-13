@@ -57,6 +57,76 @@
         el.className = "inbox-status " + (cls || "");
     }
 
+    // reasonOf normalizes the fine-grained reason, tolerating older payloads
+    // that predate the field.
+    function reasonOf(r) {
+        if (r.reason) return r.reason;
+        return r.state === "needs_you" ? "awaiting_input" : "running";
+    }
+
+    // Urgency order within "Needs you": a stalled approval beats a failed turn
+    // beats a plainly finished turn.
+    function reasonRank(r) {
+        switch (reasonOf(r)) {
+            case "needs_approval": return 0;
+            case "error": return 1;
+            default: return 2; // awaiting_input
+        }
+    }
+
+    // buildIndicator returns the leading status glyph for a row: a colored dot
+    // for running/awaiting, or an attention icon for approval/error.
+    function buildIndicator(r) {
+        var reason = reasonOf(r);
+        if (reason === "needs_approval") {
+            var hand = document.createElement("i");
+            hand.className = "fa-solid fa-hand inbox-icon needs-approval";
+            hand.title = "Stalled on a permission prompt";
+            return hand;
+        }
+        if (reason === "error") {
+            var warn = document.createElement("i");
+            warn.className = "fa-solid fa-triangle-exclamation inbox-icon error";
+            warn.title = "Last turn ended in an error";
+            return warn;
+        }
+        var dot = document.createElement("span");
+        dot.className = "inbox-dot";
+        return dot;
+    }
+
+    // subText is the row's second line: live activity while running, otherwise
+    // the worktree plus a short reason hint.
+    function subText(r) {
+        if (r.state === "running") {
+            var act = r.activity || "Working…";
+            return r.worktree ? (r.worktree + " · " + act) : act;
+        }
+        var hint = "";
+        if (reasonOf(r) === "needs_approval") hint = "needs approval";
+        else if (reasonOf(r) === "error") hint = "failed";
+        if (hint) return r.worktree ? (r.worktree + " · " + hint) : hint;
+        return r.worktree || "";
+    }
+
+    // formatAgo renders a compact "time in current state" label.
+    function formatAgo(iso) {
+        if (!iso) return "";
+        var t = Date.parse(iso);
+        if (!t) return "";
+        var s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+        if (s < 45) return "now";
+        if (s < 90) return "1m";
+        if (s < 3600) return Math.floor(s / 60) + "m";
+        if (s < 86400) return Math.floor(s / 3600) + "h";
+        return Math.floor(s / 86400) + "d";
+    }
+
+    function rowSelector(id) {
+        var esc = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+        return '.inbox-row[data-session-id="' + esc + '"]';
+    }
+
     function render() {
         var needsYou = [];
         var running = [];
@@ -69,14 +139,19 @@
                 running.push(r);
             }
         });
-        var bySort = function(a, b) {
+        var byRecency = function(a, b) {
             // Newest transition on top.
             var ta = a.last_state_change_at ? Date.parse(a.last_state_change_at) : 0;
             var tb = b.last_state_change_at ? Date.parse(b.last_state_change_at) : 0;
             return tb - ta;
         };
-        needsYou.sort(bySort);
-        running.sort(bySort);
+        // Needs-you: most urgent reason first, then newest transition.
+        needsYou.sort(function(a, b) {
+            var ra = reasonRank(a), rb = reasonRank(b);
+            if (ra !== rb) return ra - rb;
+            return byRecency(a, b);
+        });
+        running.sort(byRecency);
 
         renderSection("needs-you-list", "needs-you-empty", needsYou, "needs-you");
         renderSection("running-list", "running-empty", running, "running");
@@ -94,14 +169,12 @@
         empty.style.display = "none";
         items.forEach(function(r) {
             var a = document.createElement("a");
-            a.className = "inbox-row " + cls + (r.unread ? " unread" : "");
+            a.className = "inbox-row " + cls + " reason-" + reasonOf(r) + (r.unread ? " unread" : "");
             a.href = rowURL(r);
             a.dataset.sessionId = r.id;
             a.title = r.display_name + " — " + r.worktree;
 
-            var dot = document.createElement("span");
-            dot.className = "inbox-dot";
-            a.appendChild(dot);
+            a.appendChild(buildIndicator(r));
 
             if (r.unread) {
                 var u = document.createElement("span");
@@ -117,10 +190,15 @@
             name.textContent = r.display_name || r.id.slice(0, 8);
             var sub = document.createElement("div");
             sub.className = "inbox-sub";
-            sub.textContent = r.worktree;
+            sub.textContent = subText(r);
             text.appendChild(name);
             text.appendChild(sub);
             a.appendChild(text);
+
+            var time = document.createElement("span");
+            time.className = "inbox-time";
+            time.textContent = formatAgo(r.last_state_change_at);
+            a.appendChild(time);
 
             var agent = document.createElement("span");
             agent.className = "inbox-agent";
@@ -205,6 +283,10 @@
             worktree: p.worktree !== undefined ? p.worktree : existing.worktree,
             display_name: p.display_name || existing.display_name,
             state: newState,
+            // reason refines state for presentation; activity arrives on its own
+            // event so it's preserved across state_changed updates.
+            reason: p.reason || existing.reason,
+            activity: existing.activity || "",
             unread: !!p.unread,
             trashed: !!p.trashed,
             // Only bump on a real running↔needs-you transition. Unread-only
@@ -228,6 +310,25 @@
         render();
     }
 
+    // applyActivity updates a single row's live activity in place. Activity
+    // never reorders the inbox, so we touch only that row's sub-line rather
+    // than re-rendering (which would also be correct but flickers).
+    function applyActivity(ev) {
+        if (!ev || !ev.payload) return;
+        var p = ev.payload;
+        var id = p.session_id;
+        if (!id) return;
+        var r = rows.get(id);
+        if (!r) return;
+        r.activity = p.activity || "";
+        var sub = document.querySelector(rowSelector(id) + " .inbox-sub");
+        if (sub) {
+            sub.textContent = subText(r);
+        } else {
+            render();
+        }
+    }
+
     function connect() {
         clearTimeout(reconnectTimer);
         setStatus("connecting…", "");
@@ -244,6 +345,8 @@
             try { msg = JSON.parse(e.data); } catch (err) { return; }
             if (msg.type === "state_changed") {
                 applyEvent(msg.event);
+            } else if (msg.type === "activity") {
+                applyActivity(msg.event);
             } else if (msg.type === "navigate_failed") {
                 // No main window connected — open one directly.
                 window.open(msg.path, "trellis-main");
@@ -260,6 +363,16 @@
             // onclose will fire next — handle reconnect there.
         };
     }
+
+    // Keep the relative "time in state" labels fresh without a server round
+    // trip or a full re-render (which would reset hover/scroll). Touch only
+    // the time spans in place.
+    setInterval(function() {
+        rows.forEach(function(r) {
+            var el = document.querySelector(rowSelector(r.id) + " .inbox-time");
+            if (el) el.textContent = formatAgo(r.last_state_change_at);
+        });
+    }, 30000);
 
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", function() {

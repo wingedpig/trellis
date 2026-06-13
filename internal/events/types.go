@@ -100,13 +100,32 @@ const (
 	// Session state transitions for the inbox view. Fired only on coarse
 	// transitions (running ↔ needs-you), never on intermediate streaming.
 	EventSessionStateChanged = "session.state_changed"
+
+	// EventSessionActivity carries a short, human-readable description of what
+	// a session is doing right now ("Running go test", "Editing schema.go").
+	// Fired at tool/item boundaries — not on every token — and only when the
+	// description changes. Carries {session_id, activity}. It is purely
+	// presentational: the inbox uses it to update a row's sub-line in place and
+	// must NOT let it reorder rows (unlike EventSessionStateChanged).
+	EventSessionActivity = "session.activity"
 )
 
 // Session inbox state values used as the `state` payload field on
-// EventSessionStateChanged.
+// EventSessionStateChanged. `state` is coarse — it drives sort order and
+// transition detection.
 const (
 	SessionStateRunning  = "running"
 	SessionStateNeedsYou = "needs_you"
+)
+
+// Session inbox reason values used as the `reason` payload field on
+// EventSessionStateChanged. `reason` refines `state` for presentation only
+// (icon, urgency sort) and never affects ordering or transition detection.
+const (
+	ReasonRunning       = "running"        // a turn is actively in flight
+	ReasonAwaitingInput = "awaiting_input" // turn finished cleanly, your move
+	ReasonNeedsApproval = "needs_approval" // stalled on a permission/approval prompt
+	ReasonError         = "error"          // last turn ended in an error
 )
 
 // RestartTrigger indicates why a service was restarted.

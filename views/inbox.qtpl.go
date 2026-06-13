@@ -111,6 +111,36 @@ func (p *InboxPage) StreamRender(qw422016 *qt422016.Writer) {
         }
         .inbox-row.running .inbox-dot { background: var(--bs-primary, #0d6efd); }
         .inbox-row.needs-you .inbox-dot { background: var(--bs-warning, #ffc107); }
+        /* awaiting_input keeps the warning dot; running keeps the primary dot. */
+        .inbox-icon {
+            width: 12px;
+            flex-shrink: 0;
+            font-size: 0.72rem;
+            text-align: center;
+        }
+        .inbox-icon.needs-approval { color: var(--bs-danger, #dc3545); }
+        .inbox-icon.error { color: var(--bs-danger, #dc3545); }
+        /* Urgent reasons override the coarse needs-you border colour. */
+        .inbox-row.reason-needs_approval,
+        .inbox-row.reason-error { border-left-color: var(--bs-danger, #dc3545); }
+        .inbox-row.reason-needs_approval .inbox-name { font-weight: 600; }
+        /* Gentle pulse to pull the eye toward a stalled approval. */
+        @keyframes inbox-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .inbox-icon.needs-approval { animation: inbox-pulse 1.6s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+            .inbox-icon.needs-approval { animation: none; }
+        }
+        .inbox-time {
+            flex-shrink: 0;
+            font-size: 0.68rem;
+            color: var(--trellis-text-muted, #6c757d);
+            font-variant-numeric: tabular-nums;
+            min-width: 1.6rem;
+            text-align: right;
+        }
         .inbox-text {
             flex: 1;
             min-width: 0;
@@ -188,31 +218,31 @@ func (p *InboxPage) StreamRender(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 }
 
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 func (p *InboxPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	p.StreamRender(qw422016)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	qt422016.ReleaseWriter(qw422016)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 }
 
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 func (p *InboxPage) Render() string {
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	p.WriteRender(qb422016)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	qs422016 := string(qb422016.B)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 	return qs422016
-//line views/inbox.qtpl:168
+//line views/inbox.qtpl:198
 }

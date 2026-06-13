@@ -37,7 +37,7 @@ Each worktree can have multiple Claude Code chat sessions. You can interact with
 
 ### Session Inbox
 
-A small chromeless popup, openable from the inbox icon in any Trellis header, lists every live Claude and Codex session across worktrees with a real-time "running / needs you" badge. Click a row and the foreground Trellis window jumps to that session — no scrolling through worktree lists to find the agent that's waiting on you.
+A small chromeless popup, openable from the inbox icon in any Trellis header, lists every live Claude and Codex session across worktrees. Each row shows a real-time status — running, awaiting your input, stalled on an approval, or errored — alongside a live description of what the agent is doing and how long it's been there. Click a row and the foreground Trellis window jumps to that session — no scrolling through worktree lists to find the agent that's waiting on you.
 
 ### Usage & Cost Tracking
 

@@ -171,6 +171,14 @@ type Session struct {
 	unread             bool
 	viewerCount        int
 	lastPublishedState string
+	// currentActivity is a short human-readable description of what the
+	// session is doing right now ("Running go test", "Editing schema.go").
+	// Updated at tool boundaries and published via EventSessionActivity so the
+	// inbox can show a live activity line. Empty when idle.
+	currentActivity string
+	// lastTurnError is true when the most recently completed turn ended in an
+	// error. Cleared on the next Send. Drives the inbox "error" reason.
+	lastTurnError bool
 	// Callback to persist after session ID is captured from init
 	persistFn    func()
 	messagesFile string // path for per-session message persistence
@@ -907,6 +915,7 @@ func (s *Session) publishStateLocked() {
 		"worktree":     s.worktreeName,
 		"display_name": s.displayName,
 		"state":        state,
+		"reason":       s.reasonLocked(),
 		"unread":       s.unread,
 		"trashed":      s.trashedAt != nil,
 	}
@@ -915,6 +924,147 @@ func (s *Session) publishStateLocked() {
 		Worktree: s.worktreeName,
 		Payload:  payload,
 	})
+}
+
+// reasonLocked derives the fine-grained inbox reason that refines the coarse
+// running/needs-you state for presentation. Caller must hold s.mu.
+func (s *Session) reasonLocked() string {
+	if s.pendingControlRequest != nil {
+		return events.ReasonNeedsApproval
+	}
+	if s.generating {
+		return events.ReasonRunning
+	}
+	if s.lastTurnError {
+		return events.ReasonError
+	}
+	return events.ReasonAwaitingInput
+}
+
+// Reason returns the fine-grained inbox reason (presentation only).
+func (s *Session) Reason() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reasonLocked()
+}
+
+// CurrentActivity returns the latest human-readable activity description, or
+// "" when the session is idle.
+func (s *Session) CurrentActivity() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentActivity
+}
+
+// setActivityLocked updates the current-activity string and, if it changed,
+// publishes a lightweight EventSessionActivity. Caller must hold s.mu. The
+// publish is non-blocking (async subscribers drop on a full buffer), matching
+// publishStateLocked, so it's safe to call under the lock.
+func (s *Session) setActivityLocked(label string) {
+	if s.currentActivity == label {
+		return
+	}
+	s.currentActivity = label
+	if s.manager == nil || s.manager.bus == nil {
+		return
+	}
+	_ = s.manager.bus.Publish(context.Background(), events.Event{
+		Type:     events.EventSessionActivity,
+		Worktree: s.worktreeName,
+		Payload: map[string]interface{}{
+			"session_id": s.id,
+			"activity":   label,
+		},
+	})
+}
+
+// toolActivityLabel produces a short human-readable description of a tool_use
+// invocation for the inbox activity line. name is the tool name; input is its
+// (possibly empty) raw JSON input.
+func toolActivityLabel(name string, input json.RawMessage) string {
+	switch name {
+	case "Bash":
+		var in struct {
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal(input, &in)
+		if cmd := strings.TrimSpace(in.Command); cmd != "" {
+			return "Running " + clip(firstLine(cmd), 48)
+		}
+		return "Running command"
+	case "Read":
+		return "Reading " + fileBase(input)
+	case "Edit", "MultiEdit", "Write", "NotebookEdit":
+		return "Editing " + fileBase(input)
+	case "Grep":
+		var in struct {
+			Pattern string `json:"pattern"`
+		}
+		_ = json.Unmarshal(input, &in)
+		if in.Pattern != "" {
+			return "Searching " + clip(in.Pattern, 32)
+		}
+		return "Searching"
+	case "Glob":
+		return "Finding files"
+	case "Task":
+		var in struct {
+			Description string `json:"description"`
+		}
+		_ = json.Unmarshal(input, &in)
+		if in.Description != "" {
+			return "Task: " + clip(in.Description, 40)
+		}
+		return "Running subagent"
+	case "WebFetch", "WebSearch":
+		return "Searching the web"
+	case "TodoWrite":
+		return "Updating plan"
+	case "":
+		return ""
+	default:
+		return name
+	}
+}
+
+// fileBase extracts a file path from common tool inputs and returns its base
+// name, or "file" when none is present.
+func fileBase(input json.RawMessage) string {
+	var in struct {
+		FilePath     string `json:"file_path"`
+		Path         string `json:"path"`
+		NotebookPath string `json:"notebook_path"`
+	}
+	_ = json.Unmarshal(input, &in)
+	p := in.FilePath
+	if p == "" {
+		p = in.Path
+	}
+	if p == "" {
+		p = in.NotebookPath
+	}
+	if p == "" {
+		return "file"
+	}
+	return filepath.Base(p)
+}
+
+// firstLine returns the first line of s.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// clip truncates s to at most n runes, appending an ellipsis when shortened.
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return strings.TrimSpace(string(r[:n])) + "…"
 }
 
 // IsUnread reports whether this session has a missed running→needs-you
@@ -1247,8 +1397,10 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 				s.lastProcessCost = event.Cost
 			}
 			s.generating = false
+			s.lastTurnError = event.IsError
 			s.currentBlocks = nil
 			s.pendingControlRequest = nil
+			s.setActivityLocked("")
 			s.publishStateLocked()
 			persist := s.persistFn
 			s.mu.Unlock()
@@ -1323,6 +1475,7 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		s.stdin = nil
 		s.cmd = nil
 		s.cancel = nil
+		s.setActivityLocked("")
 		s.publishStateLocked()
 	}
 	s.mu.Unlock()
@@ -1378,6 +1531,9 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 
 	switch inner.Type {
 	case "message_start":
+		s.mu.Lock()
+		s.setActivityLocked("Thinking…")
+		s.mu.Unlock()
 		// Extract input_tokens for context window tracking
 		// Sum input_tokens + cache tokens for total context usage
 		if inner.Message != nil {
@@ -1423,9 +1579,12 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 		switch cb.Type {
 		case "text":
 			s.currentStreamBlock = &ContentBlock{Type: "text"}
+			s.setActivityLocked("Responding…")
 		case "tool_use":
 			s.currentStreamBlock = &ContentBlock{Type: "tool_use", ID: cb.ID, Name: cb.Name}
 			s.streamPartialJSON = ""
+			// Provisional label (no input yet); enriched at content_block_stop.
+			s.setActivityLocked(toolActivityLabel(cb.Name, nil))
 		}
 		s.mu.Unlock()
 
@@ -1482,6 +1641,9 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 
 			s.mu.Lock()
 			s.currentBlocks = append(s.currentBlocks, block)
+			if block.Type == "tool_use" {
+				s.setActivityLocked(toolActivityLabel(block.Name, block.Input))
+			}
 			s.mu.Unlock()
 
 			// Persist the plan artifact when a plan-mode turn completes
@@ -1518,6 +1680,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	s.generating = true
 	s.currentBlocks = nil
 	s.hasStreamEvents = false
+	s.lastTurnError = false
 
 	// Add user message to history
 	userMsg := Message{
@@ -1527,6 +1690,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	}
 	s.messages = append(s.messages, userMsg)
 	s.persistMessage(userMsg)
+	s.setActivityLocked("Thinking…")
 	s.publishStateLocked()
 	s.mu.Unlock()
 
@@ -1616,6 +1780,7 @@ func (s *Session) Cancel() {
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
+	s.setActivityLocked("")
 	s.publishStateLocked()
 }
 

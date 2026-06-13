@@ -124,6 +124,14 @@ type Session struct {
 	unread             bool
 	viewerCount        int
 	lastPublishedState string
+	// currentActivity is a short human-readable description of what the
+	// session is doing right now ("Running go test", "Editing schema.go").
+	// Updated at item boundaries and published via EventSessionActivity so the
+	// inbox can show a live activity line. Empty when idle.
+	currentActivity string
+	// lastTurnError is true when the most recent turn ended in failure
+	// (turn/failed). Cleared on the next Send. Drives the inbox "error" reason.
+	lastTurnError bool
 	// approvalChans correlates a pending approval RequestID to the channel
 	// the JSON-RPC handler is parked on, so AnswerApproval can deliver the
 	// user's decision back to that handler.
@@ -362,6 +370,7 @@ func (s *Session) publishStateLocked() {
 		"worktree":     s.worktreeName,
 		"display_name": s.displayName,
 		"state":        state,
+		"reason":       s.reasonLocked(),
 		"unread":       s.unread,
 		"trashed":      s.trashedAt != nil,
 	}
@@ -370,6 +379,135 @@ func (s *Session) publishStateLocked() {
 		Worktree: s.worktreeName,
 		Payload:  payload,
 	})
+}
+
+// reasonLocked derives the fine-grained inbox reason that refines the coarse
+// running/needs-you state for presentation. Caller must hold s.mu.
+func (s *Session) reasonLocked() string {
+	if len(s.pendingApprovals) > 0 {
+		return events.ReasonNeedsApproval
+	}
+	if s.generating {
+		return events.ReasonRunning
+	}
+	if s.lastTurnError {
+		return events.ReasonError
+	}
+	return events.ReasonAwaitingInput
+}
+
+// Reason returns the fine-grained inbox reason (presentation only).
+func (s *Session) Reason() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reasonLocked()
+}
+
+// CurrentActivity returns the latest human-readable activity description, or
+// "" when the session is idle.
+func (s *Session) CurrentActivity() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentActivity
+}
+
+// setActivityLocked updates the current-activity string and, if it changed,
+// publishes a lightweight EventSessionActivity. Caller must hold s.mu. The
+// publish is non-blocking (async subscribers drop on a full buffer), matching
+// publishStateLocked, so it's safe to call under the lock.
+func (s *Session) setActivityLocked(label string) {
+	if s.currentActivity == label {
+		return
+	}
+	s.currentActivity = label
+	if s.manager == nil || s.manager.bus == nil {
+		return
+	}
+	_ = s.manager.bus.Publish(context.Background(), events.Event{
+		Type:     events.EventSessionActivity,
+		Worktree: s.worktreeName,
+		Payload: map[string]interface{}{
+			"session_id": s.id,
+			"activity":   label,
+		},
+	})
+}
+
+// noteItemActivity sets the activity line from a streamed item.
+func (s *Session) noteItemActivity(it Item) {
+	label := itemActivityLabel(it)
+	if label == "" {
+		return
+	}
+	s.mu.Lock()
+	s.setActivityLocked(label)
+	s.mu.Unlock()
+}
+
+// itemActivityLabel produces a short human-readable description of a Codex
+// turn item for the inbox activity line.
+func itemActivityLabel(it Item) string {
+	switch it.Type {
+	case "reasoning":
+		return "Thinking…"
+	case "agentMessage":
+		return "Responding…"
+	case "commandExecution":
+		if cmd := commandString(it.Command); cmd != "" {
+			return "Running " + clip(firstLine(cmd), 48)
+		}
+		return "Running command"
+	case "fileChange":
+		if it.Path != "" {
+			return "Editing " + filepath.Base(it.Path)
+		}
+		return "Editing file"
+	case "webSearch":
+		return "Searching the web"
+	case "mcpToolCall":
+		return "Running tool"
+	case "plan":
+		return "Updating plan"
+	case "", "userMessage":
+		return ""
+	default:
+		return it.Type
+	}
+}
+
+// commandString flattens a Codex command field (a JSON array of argv strings,
+// or occasionally a bare string) into a single command line.
+func commandString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var argv []string
+	if json.Unmarshal(raw, &argv) == nil {
+		return strings.TrimSpace(strings.Join(argv, " "))
+	}
+	var str string
+	if json.Unmarshal(raw, &str) == nil {
+		return strings.TrimSpace(str)
+	}
+	return ""
+}
+
+// firstLine returns the first line of s.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// clip truncates s to at most n runes, appending an ellipsis when shortened.
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return strings.TrimSpace(string(r[:n])) + "…"
 }
 
 // IsUnread reports whether this session has a missed running→needs-you
@@ -654,6 +792,8 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	s.currentItems = make(map[string]*Item)
 	s.currentOrder = nil
 	s.currentTurnID = ""
+	s.lastTurnError = false
+	s.setActivityLocked("Thinking…")
 	s.publishStateLocked()
 	rpc := s.rpc
 	threadID := s.threadID
@@ -731,6 +871,7 @@ func (s *Session) shutdownProcess() {
 	s.cmd = nil
 	s.started = false
 	s.generating = false
+	s.setActivityLocked("")
 	s.publishStateLocked()
 	s.mu.Unlock()
 	if rpc != nil {
@@ -768,6 +909,7 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 		if s.currentTurnID == "" {
 			s.currentTurnID = p.Turn.ID
 		}
+		s.setActivityLocked("Thinking…")
 		s.publishStateLocked()
 		s.mu.Unlock()
 		s.fanOut(StreamEvent{Type: "turn_started", ThreadID: p.ThreadID, TurnID: p.Turn.ID})
@@ -789,6 +931,7 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 		var p itemEvent
 		_ = json.Unmarshal(params, &p)
 		s.recordItem(p.Item)
+		s.noteItemActivity(p.Item)
 		ev := StreamEvent{Type: "item_started", ThreadID: p.ThreadID, TurnID: p.TurnID, ItemID: p.Item.ID, Item: itemPtr(p.Item)}
 		s.fanOut(ev)
 
@@ -1034,6 +1177,8 @@ func (s *Session) commitTurn(turnID, errMsg string) {
 	s.currentOrder = nil
 	s.currentTurnID = ""
 	s.generating = false
+	s.lastTurnError = errMsg != ""
+	s.setActivityLocked("")
 	s.publishStateLocked()
 }
 

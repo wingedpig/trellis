@@ -20,11 +20,17 @@ import (
 
 // SessionRow is one row in the inbox view.
 type SessionRow struct {
-	ID                string    `json:"id"`
-	Agent             string    `json:"agent"` // "claude" | "codex"
-	Worktree          string    `json:"worktree"`
-	DisplayName       string    `json:"display_name"`
-	State             string    `json:"state"`   // "running" | "needs_you"
+	ID          string `json:"id"`
+	Agent       string `json:"agent"` // "claude" | "codex"
+	Worktree    string `json:"worktree"`
+	DisplayName string `json:"display_name"`
+	State       string `json:"state"` // coarse: "running" | "needs_you"
+	// Reason refines State for presentation only: "running" | "awaiting_input"
+	// | "needs_approval" | "error". Never affects sort/transition detection.
+	Reason string `json:"reason"`
+	// Activity is a short human-readable description of what the session is
+	// doing right now ("Running go test"), or "" when idle.
+	Activity          string    `json:"activity"`
 	Unread            bool      `json:"unread"`  // missed running→needs-you transition
 	Trashed           bool      `json:"trashed"` // true while a removal animates client-side
 	LastStateChangeAt time.Time `json:"last_state_change_at"`
@@ -108,6 +114,8 @@ func (a *Aggregator) List() []SessionRow {
 			Worktree:          info.WorktreeName,
 			DisplayName:       info.DisplayName,
 			State:             state,
+			Reason:            s.Reason(),
+			Activity:          s.CurrentActivity(),
 			Unread:            s.IsUnread(),
 			LastStateChangeAt: ts,
 		})
@@ -132,6 +140,8 @@ func (a *Aggregator) List() []SessionRow {
 			Worktree:          info.WorktreeName,
 			DisplayName:       info.DisplayName,
 			State:             state,
+			Reason:            s.Reason(),
+			Activity:          s.CurrentActivity(),
 			Unread:            s.IsUnread(),
 			LastStateChangeAt: ts,
 		})
