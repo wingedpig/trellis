@@ -324,23 +324,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 </select>
             </div>
 
-            <div class="d-flex align-items-center gap-3 ms-auto">
-                {% if p.Worktree != nil %}
-                <span class="navbar-text">
-                    <i class="fa-solid fa-code-branch text-accent"></i> {%s p.Worktree.Name() %} ({%s p.Worktree.Branch %})
-                </span>
-                {% endif %}
-                <button class="btn btn-sm btn-terminal" onclick="showHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+?)">
-                    <i class="fa-solid fa-keyboard"></i>
-                </button>
-                <button class="btn btn-sm btn-terminal" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
-                    <i class="fa-solid fa-inbox"></i>
-                </button>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-                    <i class="fa-solid fa-sun" id="theme-icon-light"></i>
-                    <i class="fa-solid fa-moon" id="theme-icon-dark" style="display:none;"></i>
-                </button>
-            </div>
+            {%= NavbarRightControls(&p.BasePage, "btn btn-sm btn-terminal", "showHelp()", "Keyboard Shortcuts (Cmd/Ctrl+?)") %}
         </div>
     </div>
 </nav>

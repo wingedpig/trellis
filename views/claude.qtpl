@@ -54,7 +54,15 @@ type ClaudePage struct {
         </div>
         <div class="claude-input-footer">
             <div class="claude-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
-            <div id="claude-context-usage" class="claude-context-usage"></div>
+            <div class="claude-footer-right">
+                <select id="claude-model-select" class="claude-model-select" title="Model — switching restarts the session process" onchange="claudeSetModel(this.value)">
+                    <option value="opus">Opus</option>
+                    <option value="sonnet">Sonnet</option>
+                    <option value="haiku">Haiku</option>
+                    <option value="fable">Fable</option>
+                </select>
+                <div id="claude-context-usage" class="claude-context-usage"></div>
+            </div>
         </div>
     </div>
 </div>

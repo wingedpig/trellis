@@ -295,6 +295,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.ListSessions).Methods("GET")
 		api.HandleFunc("/claude/{worktree}/sessions", claudeHandler.CreateSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}", claudeHandler.RenameSessionAPI).Methods("PATCH")
+		api.HandleFunc("/claude/sessions/{session}/model", claudeHandler.SetModelAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}", claudeHandler.DeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/claude/sessions/{session}/ws", claudeHandler.WebSocket).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/export", claudeHandler.ExportSessionAPI).Methods("GET")

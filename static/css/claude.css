@@ -762,6 +762,26 @@ pre:hover .claude-code-copy {
     color: var(--trellis-text-muted);
 }
 
+.claude-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.claude-model-select {
+    font-size: 0.72rem;
+    color: var(--bs-body-color);
+    background: var(--trellis-input-bg);
+    border: 1px solid var(--trellis-input-border, var(--trellis-card-border));
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.35rem;
+    cursor: pointer;
+}
+.claude-model-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .claude-context-usage {
     font-size: 0.75rem;
     color: var(--trellis-text-muted);
@@ -815,6 +835,11 @@ pre:hover .claude-code-copy {
 
 .claude-working i {
     color: var(--bs-primary);
+}
+
+.claude-working-elapsed {
+    color: var(--trellis-text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 /* Error message */
@@ -992,6 +1017,101 @@ pre:hover .claude-code-copy {
     max-height: 300px;
     overflow-y: auto;
 }
+
+.claude-subagent-status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.claude-subagent-status.running { color: var(--bs-primary, #0d6efd); }
+.claude-subagent-status.done { color: var(--trellis-text-muted, #6c757d); }
+.claude-subagent-status .claude-subagent-meta {
+    color: var(--trellis-text-muted);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Aggregated agents panel (Agent / Task sub-agents) */
+.claude-agents-panel {
+    margin: 0.5rem 0;
+    border: 1px solid var(--trellis-card-border);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+.claude-agents-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--trellis-input-bg);
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+.claude-agents-panel-header:hover { background: var(--trellis-hover-bg, var(--trellis-input-bg)); }
+.claude-agents-icon { color: var(--bs-primary); }
+.claude-agents-panel-count { color: var(--trellis-text-muted); font-weight: 400; }
+.claude-agents-chevron {
+    font-size: 0.75rem;
+    color: var(--trellis-text-muted);
+    transition: transform 0.15s;
+}
+.claude-agents-panel.collapsed .claude-agents-chevron { transform: rotate(-90deg); }
+.claude-agents-panel.collapsed .claude-agents-panel-body { display: none; }
+.claude-agents-panel-body { padding: 0.15rem 0; }
+
+.claude-agent-row { border-top: 1px solid var(--trellis-card-border); }
+.claude-agent-row:first-child { border-top: 0; }
+.claude-agent-row-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.claude-agent-row-header:hover { background: var(--trellis-hover-bg, var(--trellis-input-bg)); }
+.claude-agent-icon { width: 1rem; text-align: center; flex-shrink: 0; }
+.claude-agent-row.running .claude-agent-icon { color: var(--bs-primary, #0d6efd); }
+.claude-agent-row.done .claude-agent-icon { color: var(--trellis-text-muted, #6c757d); }
+.claude-agent-type { flex-shrink: 0; }
+.claude-agent-desc {
+    color: var(--bs-body-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 32%;
+    flex-shrink: 0;
+}
+.claude-agent-activity {
+    color: var(--trellis-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+.claude-agent-elapsed {
+    flex-shrink: 0;
+    color: var(--trellis-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.claude-agent-detail { display: none; padding: 0.25rem 0.75rem 0.6rem 2rem; }
+.claude-agent-row.expanded .claude-agent-detail { display: block; }
+.claude-agent-prompt {
+    white-space: pre-wrap;
+    font-size: 0.8rem;
+    color: var(--trellis-text-muted);
+    margin-bottom: 0.4rem;
+    max-height: 8rem;
+    overflow-y: auto;
+}
+.claude-agent-result { font-size: 0.875rem; }
+.claude-agent-result:empty { display: none; }
 
 .claude-subagent-result {
     border-left: 2px solid var(--trellis-card-border);

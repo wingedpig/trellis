@@ -70,8 +70,10 @@ type serverMessage struct {
 	CacheReadInputTokens     int                 `json:"cache_read_input_tokens,omitempty"`
 	CostUSD                  float64             `json:"cost_usd,omitempty"`
 	Model                    string              `json:"model,omitempty"`
+	ModelOverride            string              `json:"model_override,omitempty"`
 	SlashCommands            []string            `json:"slash_commands,omitempty"`
 	Skills                   []string            `json:"skills,omitempty"`
+	Activity                 string              `json:"activity,omitempty"`
 }
 
 // WebSocket handles a Claude chat WebSocket connection for a specific session.
@@ -145,8 +147,10 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 		CacheReadInputTokens:     cacheRead,
 		CostUSD:                  session.CostUSD(),
 		Model:                    session.Model(),
+		ModelOverride:            session.ModelOverride(),
 		SlashCommands:            cmds,
 		Skills:                   skills,
+		Activity:                 session.CurrentActivity(),
 	})
 
 	// Re-send pending permission prompt if one was waiting when the client disconnected
@@ -210,6 +214,40 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 			}
 		}
 	}()
+
+	// Forward the session's authoritative live-activity label (e.g. "Editing
+	// schema.go", "Running subagent") so the client can show what the agent is
+	// doing right now, even during quiet stretches with no streamed text.
+	if h.bus != nil {
+		activityCh := make(chan string, 16)
+		sub, err := h.bus.SubscribeAsync(events.EventSessionActivity, func(_ context.Context, ev events.Event) error {
+			if ev.Payload == nil {
+				return nil
+			}
+			if sid, _ := ev.Payload["session_id"].(string); sid != session.ID() {
+				return nil
+			}
+			label, _ := ev.Payload["activity"].(string)
+			select {
+			case activityCh <- label:
+			default:
+			}
+			return nil
+		}, 64)
+		if err == nil {
+			defer h.bus.Unsubscribe(sub)
+			go func() {
+				for {
+					select {
+					case label := <-activityCh:
+						writeJSON(serverMessage{Type: "activity", Activity: label})
+					case <-wsClosed:
+						return
+					}
+				}
+			}()
+		}
+	}
 
 	// Main event loop
 	for {
@@ -363,6 +401,33 @@ func (h *ClaudeHandler) RenameSessionAPI(w http.ResponseWriter, r *http.Request)
 
 	if err := h.manager.RenameSession(sessionID, body.DisplayName); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetModelAPI forces the session onto a model alias (passed to the claude CLI
+// as --model). This restarts the session's process; the conversation resumes
+// on the next message.
+func (h *ClaudeHandler) SetModelAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["session"]
+
+	var body struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrInternalError, "invalid JSON: "+err.Error())
+		return
+	}
+
+	session := h.manager.GetSession(sessionID)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if err := session.SetModel(body.Model); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

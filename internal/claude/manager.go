@@ -91,6 +91,15 @@ type StreamEvent struct {
 	CompactMetadata json.RawMessage `json:"compact_metadata,omitempty"`
 	// stream_event inner event (from --include-partial-messages)
 	Event json.RawMessage `json:"event,omitempty"`
+	// parent_tool_use_id is set on events emitted by a Task subagent; it points
+	// at the Task tool_use that spawned the subagent. Used to route subagent
+	// activity to the right Task block instead of the main transcript.
+	ParentToolUseID string `json:"parent_tool_use_id,omitempty"`
+	// Activity carries a short human-readable label on synthetic
+	// "subagent_activity" events fanned out to live clients.
+	Activity string `json:"activity,omitempty"`
+	// Step is the subagent's running step count on "subagent_activity" events.
+	Step int `json:"step,omitempty"`
 }
 
 // ParsedMessage is the message field from an assistant StreamEvent.
@@ -157,6 +166,10 @@ type Session struct {
 	costUSD         float64
 	lastProcessCost float64 // last total_cost_usd seen from the current process
 	model           string  // most recent model id seen on this session
+	// modelOverride is a model alias (e.g. "opus", "sonnet") forced onto this
+	// session via the CLI's --model flag. Empty means the CLI default. Applied
+	// at process spawn, so changing it restarts the process.
+	modelOverride string
 	// Cached from system init event
 	slashCommands []string
 	skills        []string
@@ -176,6 +189,10 @@ type Session struct {
 	// Updated at tool boundaries and published via EventSessionActivity so the
 	// inbox can show a live activity line. Empty when idle.
 	currentActivity string
+	// subagentSteps counts tool invocations per running Task subagent, keyed by
+	// the spawning Task tool_use id. Drives the live step count shown in the
+	// Task block. Reset at the start of each turn.
+	subagentSteps map[string]int
 	// lastTurnError is true when the most recently completed turn ended in an
 	// error. Cleared on the next Send. Drives the inbox "error" reason.
 	lastTurnError bool
@@ -290,12 +307,13 @@ func (m *Manager) loadFromDisk() {
 			displayName:  rec.DisplayName,
 			claudeSID:    rec.SessionID,
 			workDir:      rec.WorkDir,
-			createdAt:    rec.CreatedAt,
-			trashedAt:    rec.TrashedAt,
-			costUSD:      rec.CostUSD,
-			model:        rec.Model,
-			subscribers:  make(map[chan StreamEvent]struct{}),
-			manager:      m,
+			createdAt:     rec.CreatedAt,
+			trashedAt:     rec.TrashedAt,
+			costUSD:       rec.CostUSD,
+			model:         rec.Model,
+			modelOverride: rec.ModelOverride,
+			subscribers:   make(map[chan StreamEvent]struct{}),
+			manager:       m,
 		}
 		s.persistFn = m.makePersistFn()
 		if m.messagesDir != "" {
@@ -348,10 +366,11 @@ func (m *Manager) persist() {
 			DisplayName:  s.displayName,
 			SessionID:    s.claudeSID,
 			WorkDir:      s.workDir,
-			CreatedAt:    s.createdAt,
-			TrashedAt:    s.trashedAt,
-			CostUSD:      s.costUSD,
-			Model:        s.model,
+			CreatedAt:     s.createdAt,
+			TrashedAt:     s.trashedAt,
+			CostUSD:       s.costUSD,
+			Model:         s.model,
+			ModelOverride: s.modelOverride,
 		})
 		s.mu.Unlock()
 	}
@@ -872,6 +891,69 @@ func (s *Session) Model() string {
 	return s.model
 }
 
+// ModelAliases are the model shortcuts offered in the UI picker. The claude
+// CLI's --model flag accepts these aliases and resolves each to the latest
+// model in that family.
+var ModelAliases = []string{"opus", "sonnet", "haiku", "fable"}
+
+// IsValidModelAlias reports whether alias is one trellis is willing to pass to
+// --model. The empty string (CLI default) is also valid.
+func IsValidModelAlias(alias string) bool {
+	if alias == "" {
+		return true
+	}
+	for _, m := range ModelAliases {
+		if m == alias {
+			return true
+		}
+	}
+	return false
+}
+
+// ModelOverride returns the model alias forced via --model, or "" for the
+// CLI default.
+func (s *Session) ModelOverride() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.modelOverride
+}
+
+// SetModel forces this session onto a model alias (e.g. "opus", "sonnet"),
+// passed to the claude CLI as --model on the next spawn. Because the override
+// only takes effect at process start, the running process is restarted; any
+// in-flight turn is aborted and the conversation resumes via --resume on the
+// next message. Pass "" to clear the override and fall back to the CLI default.
+func (s *Session) SetModel(alias string) error {
+	if !IsValidModelAlias(alias) {
+		return fmt.Errorf("unknown model alias %q", alias)
+	}
+	s.mu.Lock()
+	if s.modelOverride == alias {
+		s.mu.Unlock()
+		return nil
+	}
+	s.modelOverride = alias
+	// Restart the process so --model is applied. Mirrors MoveSession: cancel
+	// the context (kills the process) and reset run state; the next Send
+	// re-spawns via ensureProcess. Subscribers stay attached so connected
+	// clients keep their WebSocket.
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.started = false
+	s.generating = false
+	s.stdin = nil
+	s.cmd = nil
+	s.cancel = nil
+	persist := s.persistFn
+	s.publishStateLocked()
+	s.mu.Unlock()
+	if persist != nil {
+		persist()
+	}
+	return nil
+}
+
 // PendingControlRequest returns the pending control_request event, if any.
 // Used to re-display permission prompts to reconnecting clients.
 func (s *Session) PendingControlRequest() *StreamEvent {
@@ -1167,6 +1249,7 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	}
 	workDir := s.workDir
 	resumeSID := s.claudeSID
+	modelOverride := s.modelOverride
 	gen := s.processGen + 1
 	s.processGen = gen
 	s.mu.Unlock()
@@ -1183,6 +1266,11 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	// Resume a previous conversation if we have a Claude session ID
 	if resumeSID != "" {
 		args = append(args, "--resume", resumeSID)
+	}
+
+	// Force a specific model when the session has an override (alias).
+	if modelOverride != "" {
+		args = append(args, "--model", modelOverride)
 	}
 
 	cmdCtx, cancel := context.WithCancel(ctx)
@@ -1246,6 +1334,15 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 
 		if debugEvents {
 			log.Printf("claude [%s]: event: %s", s.id, truncateForLog(line, maxEventLogBytes))
+		}
+
+		// Events emitted by a Task subagent carry parent_tool_use_id. Route them
+		// to a lightweight live "subagent_activity" signal and skip the normal
+		// processing below so they never pollute the main transcript or the
+		// main session's activity label.
+		if event.ParentToolUseID != "" {
+			s.handleSubagentEvent(event)
+			continue
 		}
 
 		// Handle resume failures: if Claude can't find the conversation,
@@ -1663,6 +1760,93 @@ func (s *Session) handleStreamEvent(raw json.RawMessage) {
 	}
 }
 
+// handleSubagentEvent turns a parent_tool_use_id-tagged event from a Task
+// subagent into a lightweight, live "subagent_activity" signal for the
+// matching Task block. It derives a short label (the subagent's current tool)
+// and a running step count, then fans the result out to live clients. It never
+// mutates the main transcript or the main session activity.
+func (s *Session) handleSubagentEvent(event StreamEvent) {
+	parent := event.ParentToolUseID
+	label := ""
+	stepped := false
+
+	switch event.Type {
+	case "stream_event":
+		if event.Event == nil {
+			return
+		}
+		var inner struct {
+			Type         string `json:"type"`
+			ContentBlock struct {
+				Type string `json:"type"`
+				Name string `json:"name"`
+			} `json:"content_block"`
+		}
+		if json.Unmarshal(event.Event, &inner) != nil {
+			return
+		}
+		if inner.Type != "content_block_start" {
+			return // ignore deltas/start/stop chatter; tool starts carry the signal
+		}
+		switch inner.ContentBlock.Type {
+		case "tool_use":
+			label = toolActivityLabel(inner.ContentBlock.Name, nil)
+			stepped = true
+		case "text", "thinking":
+			label = "Responding…"
+		default:
+			return
+		}
+	case "assistant":
+		if event.Message == nil {
+			return
+		}
+		var msg struct {
+			Content []struct {
+				Type string          `json:"type"`
+				Name string          `json:"name"`
+				Text string          `json:"text"`
+				Input json.RawMessage `json:"input"`
+			} `json:"content"`
+		}
+		if json.Unmarshal(event.Message, &msg) != nil {
+			return
+		}
+		for _, b := range msg.Content {
+			if b.Type == "tool_use" {
+				label = toolActivityLabel(b.Name, b.Input)
+				break
+			}
+			if b.Type == "text" && b.Text != "" && label == "" {
+				label = "Responding…"
+			}
+		}
+	default:
+		return // user (tool_result), system, etc. — no label change
+	}
+
+	if label == "" {
+		return
+	}
+
+	s.mu.Lock()
+	if s.subagentSteps == nil {
+		s.subagentSteps = make(map[string]int)
+	}
+	if stepped {
+		s.subagentSteps[parent]++
+	}
+	step := s.subagentSteps[parent]
+	s.mu.Unlock()
+
+	s.fanOut(StreamEvent{
+		Type:            "subagent_activity",
+		ParentToolUseID: parent,
+		Activity:        label,
+		Step:            step,
+	})
+}
+
 // EnsureProcess starts the claude process if not already running.
 // Called on WebSocket connect so the init event arrives before user types.
 func (s *Session) EnsureProcess(ctx context.Context) error {
@@ -1681,6 +1865,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	s.currentBlocks = nil
 	s.hasStreamEvents = false
 	s.lastTurnError = false
+	s.subagentSteps = nil
 
 	// Add user message to history
 	userMsg := Message{

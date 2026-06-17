@@ -17,14 +17,20 @@
     let streamingToolInput = '';  // Accumulated JSON for tool_use input from stream deltas
     let usingStreamEvents = false; // True once stream_event events are seen (skip assistant events)
     let lastToolName = '';        // Name of the last tool_use block, for working indicator
+    let lastToolId = '';          // Id of the last tool_use block (for streaming enrichment)
     let lastToolInput = null;     // Parsed input of the last tool_use block
     let streamingPlanMode = false; // True when streaming a plan mode tool block
     let slashCommands = [];       // Available slash commands from system init
     let inputTokens = 0;          // Most recent input token count for context usage
     let contextWindow = 200000;   // Context window size, updated per model
     let sessionModel = '';        // Most recent model id for this session
+    let modelOverride = '';       // Forced model alias (--model), '' = CLI default
     let sessionCostUSD = 0;       // Accumulated session cost from the server
     let tokenBreakdown = { base: 0, cacheCreate: 0, cacheRead: 0, total: 0 };
+    let turnStartedAt = 0;        // ms timestamp the current turn began (0 when idle)
+    let currentActivityLabel = ''; // Authoritative "what the agent is doing now" label
+    let runningTicker = null;     // Interval that refreshes live elapsed timers
+    let historyGenerating = false; // True while rendering history for an in-flight turn
 
     // Context window per model: Fable/Mythos and Opus 4.6+ / Sonnet 4.6+
     // run with a 1M window; everything else (Haiku, older models) is 200K.
@@ -45,6 +51,48 @@
         if (!model) return;
         sessionModel = model;
         contextWindow = contextWindowFor(model);
+        updateModelSelect();
+    }
+
+    // aliasFromModelId maps a full model id (e.g. "claude-opus-4-8") to the
+    // picker alias, so the dropdown can preselect the running model when no
+    // explicit override is set.
+    function aliasFromModelId(id) {
+        var m = (id || '').toLowerCase();
+        if (m.indexOf('opus') !== -1) return 'opus';
+        if (m.indexOf('sonnet') !== -1) return 'sonnet';
+        if (m.indexOf('haiku') !== -1) return 'haiku';
+        if (m.indexOf('fable') !== -1 || m.indexOf('mythos') !== -1) return 'fable';
+        return '';
+    }
+
+    // updateModelSelect reflects the current model in the footer dropdown:
+    // the explicit override if set, otherwise the alias of the running model.
+    function updateModelSelect() {
+        var sel = document.getElementById('claude-model-select');
+        if (!sel) return;
+        var current = modelOverride || aliasFromModelId(sessionModel);
+        if (current && sel.value !== current) sel.value = current;
+    }
+
+    // setModel forces the session onto a model alias. The server restarts the
+    // claude process so the change applies on the next turn.
+    function setModel(alias) {
+        if (!alias || alias === modelOverride) return;
+        var prev = modelOverride;
+        modelOverride = alias;          // optimistic — picker stays on the new choice
+        updateModelSelect();
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(CLAUDE_SESSION) + '/model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: alias })
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+        }).catch(function(err) {
+            modelOverride = prev;        // revert on failure
+            updateModelSelect();
+            alert('Failed to change model: ' + err);
+        });
     }
 
     function isPlanModeTool(name) {
@@ -378,12 +426,18 @@
         switch (msg.type) {
             case 'history':
                 renderHistory(msg.messages || [], !!msg.generating);
+                currentActivityLabel = msg.activity || '';
                 if (msg.generating) {
                     setGenerating(true);
+                    // Loading an already-running session: show a live status row
+                    // immediately so it never looks frozen before the next event.
+                    showWorkingIndicator(null, null, currentActivityLabel || 'Working…');
                 } else {
                     requestAnimationFrame(function() { inputEl.focus(); });
                 }
+                modelOverride = msg.model_override || '';
                 setSessionModel(msg.model);
+                updateModelSelect();
                 if (msg.cost_usd) {
                     sessionCostUSD = msg.cost_usd;
                 }
@@ -423,6 +477,9 @@
                 break;
             case 'status':
                 setGenerating(msg.generating || false);
+                break;
+            case 'activity':
+                setActivity(msg.activity || '');
                 break;
         }
     }
@@ -515,6 +572,11 @@
                     updatePlanButton();
                 }
                 break;
+            case 'subagent_activity':
+                // Live activity from a running Task subagent — route it to the
+                // matching Task block's status line.
+                updateSubagentActivity(event.parent_tool_use_id, event.activity, event.step);
+                break;
             case 'user':
                 // Echoed user messages contain tool_result blocks from tool execution
                 if (event.message && event.message.content) {
@@ -579,6 +641,7 @@
                     } else if (inner.content_block.type === 'tool_use') {
                         ensureAssistantBubble();
                         lastToolName = inner.content_block.name || 'Tool';
+                        lastToolId = inner.content_block.id || '';
                         if (isPlanModeTool(inner.content_block.name)) {
                             // Render banner immediately; input will be updated on content_block_stop
                             appendPlanModeBanner(currentBubble, inner.content_block.name, {}, inner.content_block.id);
@@ -659,6 +722,9 @@
                                 }
                             }
                             streamingPlanMode = false;
+                        } else if (isSubagentTool(lastToolName)) {
+                            // Sub-agent input arrived — enrich its panel row.
+                            updateAgentRowInput(lastToolId, input);
                         } else {
                             var toolDivs = currentBubble.querySelectorAll('.claude-tool-use');
                             if (toolDivs.length > 0) {
@@ -693,16 +759,6 @@
                                         var tbody = lastTool.querySelector('.claude-tool-body');
                                         if (tbody) {
                                             renderBashInput(tbody, input);
-                                            if (inputPre) inputPre.style.display = 'none';
-                                        }
-                                    }
-                                    // Task: render subagent display
-                                    if (lastToolName === 'Task' && (input.prompt || input.description)) {
-                                        var oldTask = lastTool.querySelector('.claude-subagent');
-                                        if (oldTask) oldTask.remove();
-                                        var tbody2 = lastTool.querySelector('.claude-tool-body');
-                                        if (tbody2) {
-                                            renderTaskInput(tbody2, input);
                                             if (inputPre) inputPre.style.display = 'none';
                                         }
                                     }
@@ -880,14 +936,201 @@
         var indicator = document.createElement('div');
         indicator.className = 'claude-working';
         indicator.id = 'claude-working';
-        indicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>' + escapeHtml(label) + '</span>';
+        indicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' +
+            '<span class="claude-working-label">' + escapeHtml(label) + '</span>' +
+            '<span class="claude-working-elapsed"></span>';
         messagesEl.appendChild(indicator);
+        updateWorkingElapsed();
         scrollToBottom();
     }
 
     function removeWorkingIndicator() {
         var indicator = document.getElementById('claude-working');
         if (indicator) indicator.remove();
+    }
+
+    // updateWorkingElapsed keeps the bottom working row's timer in sync with
+    // the current turn. updateWorkingLabel swaps just the text in place.
+    function updateWorkingElapsed() {
+        var indicator = document.getElementById('claude-working');
+        if (!indicator) return;
+        var el = indicator.querySelector('.claude-working-elapsed');
+        if (el) el.textContent = turnStartedAt ? ' · ' + formatClock(Date.now() - turnStartedAt) : '';
+    }
+
+    function updateWorkingLabel(label) {
+        var indicator = document.getElementById('claude-working');
+        if (!indicator) return;
+        var el = indicator.querySelector('.claude-working-label');
+        if (el) el.textContent = label;
+    }
+
+    // --- Agents panel ---
+    // Sub-agents launched via the Agent tool (or the legacy Task name) are
+    // aggregated into one collapsible panel per assistant turn. Each row shows
+    // the sub-agent's type, description, live activity and elapsed time, and
+    // marks done — with its result — when the tool returns.
+
+    function isSubagentTool(name) {
+        return name === 'Agent' || name === 'Task';
+    }
+
+    // ensureAgentsPanel returns the bubble's agents panel, creating it (with a
+    // collapsible header) on first use.
+    function ensureAgentsPanel(bubble) {
+        if (!bubble) return null;
+        var panel = bubble.querySelector(':scope > .claude-agents-panel');
+        if (panel) return panel;
+        panel = document.createElement('div');
+        panel.className = 'claude-agents-panel';
+        var header = document.createElement('div');
+        header.className = 'claude-agents-panel-header';
+        header.innerHTML =
+            '<i class="fa-solid fa-chevron-down claude-agents-chevron"></i>' +
+            '<i class="fa-solid fa-diagram-project claude-agents-icon"></i>' +
+            '<span class="claude-agents-panel-title">Agents</span>' +
+            '<span class="claude-agents-panel-count"></span>';
+        header.addEventListener('click', function() { panel.classList.toggle('collapsed'); });
+        var body = document.createElement('div');
+        body.className = 'claude-agents-panel-body';
+        panel.appendChild(header);
+        panel.appendChild(body);
+        bubble.appendChild(panel);
+        return panel;
+    }
+
+    function subagentTypeLabel(input) {
+        return (input && input.subagent_type) ? input.subagent_type : 'Agent';
+    }
+
+    // addAgentRow appends a row for one sub-agent. opts: {done, resultContent}.
+    function addAgentRow(panel, id, input, opts) {
+        if (!panel) return null;
+        opts = opts || {};
+        var body = panel.querySelector('.claude-agents-panel-body');
+        if (!body) return null;
+        input = input || {};
+        var row = document.createElement('div');
+        row.className = 'claude-agent-row ' + (opts.done ? 'done' : 'running');
+        row.dataset.toolId = id || '';
+        if (!opts.done) row.dataset.startedAt = String(Date.now());
+
+        var head = document.createElement('div');
+        head.className = 'claude-agent-row-header';
+        head.innerHTML =
+            '<i class="claude-agent-icon fa-solid ' + (opts.done ? 'fa-circle-check' : 'fa-circle-notch fa-spin') + '"></i>' +
+            '<span class="claude-subagent-badge badge claude-agent-type"></span>' +
+            '<span class="claude-agent-desc"></span>' +
+            '<span class="claude-agent-activity"></span>' +
+            '<span class="claude-agent-elapsed"></span>';
+        head.addEventListener('click', function() { row.classList.toggle('expanded'); });
+        row.appendChild(head);
+
+        var detail = document.createElement('div');
+        detail.className = 'claude-agent-detail';
+        var prompt = document.createElement('div');
+        prompt.className = 'claude-agent-prompt';
+        var result = document.createElement('div');
+        result.className = 'claude-agent-result';
+        detail.appendChild(prompt);
+        detail.appendChild(result);
+        row.appendChild(detail);
+
+        body.appendChild(row);
+        applyAgentInput(row, input);
+        var act = row.querySelector('.claude-agent-activity');
+        if (act) act.textContent = opts.done ? 'Completed' : 'Starting…';
+        if (opts.done && opts.resultContent != null) renderAgentResult(row, opts.resultContent);
+        updateAgentsPanelCount(panel);
+        updateSubagentElapsed();
+        return row;
+    }
+
+    // applyAgentInput fills/refreshes a row's type, description and prompt from
+    // the tool input (which may arrive after the row when streaming).
+    function applyAgentInput(row, input) {
+        if (!row || !input) return;
+        var typeEl = row.querySelector('.claude-agent-type');
+        if (typeEl) typeEl.textContent = subagentTypeLabel(input);
+        var descEl = row.querySelector('.claude-agent-desc');
+        if (descEl && input.description) descEl.textContent = input.description;
+        var promptEl = row.querySelector('.claude-agent-prompt');
+        if (promptEl && input.prompt && !promptEl.textContent) promptEl.textContent = input.prompt;
+    }
+
+    function agentRow(id) {
+        if (!id) return null;
+        return messagesEl.querySelector('.claude-agent-row[data-tool-id="' + CSS.escape(id) + '"]');
+    }
+
+    // updateAgentRowInput enriches a streaming row once its input JSON parses.
+    function updateAgentRowInput(id, input) {
+        applyAgentInput(agentRow(id), input);
+    }
+
+    // updateSubagentActivity (subagent_activity event entry) sets a row's live
+    // activity label from the running sub-agent's current tool.
+    function updateSubagentActivity(parentId, label, step) {
+        var row = agentRow(parentId);
+        if (!row) return;
+        var actEl = row.querySelector('.claude-agent-activity');
+        if (actEl && label) actEl.textContent = label;
+        if (step) row.dataset.step = String(step);
+        updateSubagentElapsed();
+    }
+
+    // updateSubagentElapsed (ticker entry) refreshes every running row's timer.
+    function updateSubagentElapsed() {
+        var running = messagesEl.querySelectorAll('.claude-agent-row.running');
+        for (var i = 0; i < running.length; i++) {
+            var row = running[i];
+            var el = row.querySelector('.claude-agent-elapsed');
+            if (!el) continue;
+            var started = parseInt(row.dataset.startedAt || '0', 10);
+            el.textContent = started ? formatClock(Date.now() - started) : '';
+        }
+    }
+
+    function renderAgentResult(row, content) {
+        var resEl = row && row.querySelector('.claude-agent-result');
+        if (!resEl) return;
+        var text = content || '';
+        if (typeof text !== 'string') {
+            try { text = JSON.stringify(text, null, 2); } catch (e) { text = String(text); }
+        }
+        resEl.innerHTML = mdSafe(text);
+        addCopyButtons(resEl);
+    }
+
+    // markAgentRowDone freezes a row's timer, flips it to the done state and
+    // renders the sub-agent's result (shown when the row is expanded).
+    function markAgentRowDone(row, content) {
+        if (!row) return;
+        row.classList.remove('running');
+        row.classList.add('done');
+        var icon = row.querySelector('.claude-agent-icon');
+        if (icon) icon.className = 'claude-agent-icon fa-solid fa-circle-check';
+        var actEl = row.querySelector('.claude-agent-activity');
+        if (actEl) actEl.textContent = 'Completed';
+        if (content != null) renderAgentResult(row, content);
+        var panel = row.closest('.claude-agents-panel');
+        if (panel) updateAgentsPanelCount(panel);
+    }
+
+    // markRunningSubagentsDone (called when the turn ends) freezes any rows that
+    // never received an explicit result.
+    function markRunningSubagentsDone() {
+        var running = messagesEl.querySelectorAll('.claude-agent-row.running');
+        for (var i = 0; i < running.length; i++) markAgentRowDone(running[i], null);
+    }
+
+    function updateAgentsPanelCount(panel) {
+        if (!panel) return;
+        var countEl = panel.querySelector('.claude-agents-panel-count');
+        if (!countEl) return;
+        var active = panel.querySelectorAll('.claude-agent-row.running').length;
+        var total = panel.querySelectorAll('.claude-agent-row').length;
+        countEl.textContent = active > 0 ? ' · ' + active + ' active' : ' · ' + total;
     }
 
     function insertCompactionMarker(metadata) {
@@ -976,54 +1219,6 @@
         resultPre.parentNode.insertBefore(toggle, resultPre.nextSibling);
     }
 
-    function renderTaskInput(body, input) {
-        var container = document.createElement('div');
-        container.className = 'claude-subagent';
-        var header = document.createElement('div');
-        header.className = 'claude-subagent-header';
-        if (input.subagent_type) {
-            var badge = document.createElement('span');
-            badge.className = 'claude-subagent-badge badge';
-            badge.textContent = input.subagent_type;
-            header.appendChild(badge);
-        }
-        if (input.model) {
-            var modelBadge = document.createElement('span');
-            modelBadge.className = 'claude-subagent-model-badge badge';
-            modelBadge.textContent = input.model;
-            header.appendChild(modelBadge);
-        }
-        if (input.description) {
-            var desc = document.createElement('span');
-            desc.className = 'claude-subagent-desc';
-            desc.textContent = input.description;
-            header.appendChild(desc);
-        }
-        container.appendChild(header);
-        if (input.prompt) {
-            var promptDiv = document.createElement('div');
-            promptDiv.className = 'claude-subagent-prompt';
-            promptDiv.textContent = input.prompt;
-            container.appendChild(promptDiv);
-        }
-        body.insertBefore(container, body.firstChild);
-    }
-
-    function renderTaskResult(resultDiv, content) {
-        var resultLabel = resultDiv.querySelector('.claude-tool-result-label');
-        var resultPre = resultDiv.querySelector('pre');
-        var rendered = document.createElement('div');
-        rendered.className = 'claude-subagent-result';
-        rendered.innerHTML = mdSafe(content);
-        addCopyButtons(rendered);
-        if (resultPre) resultPre.style.display = 'none';
-        if (resultLabel) {
-            resultDiv.insertBefore(rendered, resultLabel.nextSibling);
-        } else {
-            resultDiv.appendChild(rendered);
-        }
-    }
-
     // --- Rendering ---
 
     function ensureAssistantBubble() {
@@ -1102,6 +1297,18 @@
             accumulatedText = '';
         }
 
+        // Sub-agent tools (Agent / legacy Task) aggregate into a shared panel.
+        if (isSubagentTool(block.name)) {
+            var agentsPanel = ensureAgentsPanel(currentBubble);
+            addAgentRow(agentsPanel, block.id, block.input || {});
+            var afterPanelText = document.createElement('div');
+            afterPanelText.className = 'claude-text-content';
+            currentBubble.appendChild(afterPanelText);
+            currentTextEl = afterPanelText;
+            scrollToBottom();
+            return;
+        }
+
         const toolDiv = document.createElement('div');
         toolDiv.className = 'claude-tool-use';
         toolDiv.dataset.toolId = block.id || '';
@@ -1144,11 +1351,6 @@
         // Bash: render terminal-styled command
         if (block.name === 'Bash' && block.input && block.input.command) {
             renderBashInput(body, block.input);
-            inputPre.style.display = 'none';
-        }
-        // Task: render subagent display
-        if (block.name === 'Task' && block.input && (block.input.prompt || block.input.description)) {
-            renderTaskInput(body, block.input);
             inputPre.style.display = 'none';
         }
 
@@ -1202,6 +1404,15 @@
             return;
         }
 
+        // Sub-agent results land on the agents-panel row, not a tool block.
+        var agentResultRow = currentBubble ?
+            currentBubble.querySelector('.claude-agent-row[data-tool-id="' + escaped + '"]') :
+            messagesEl.querySelector('.claude-agent-row[data-tool-id="' + escaped + '"]');
+        if (agentResultRow) {
+            markAgentRowDone(agentResultRow, block.content);
+            return;
+        }
+
         const toolDiv = currentBubble ?
             currentBubble.querySelector('[data-tool-id="' + escaped + '"]') :
             messagesEl.querySelector('[data-tool-id="' + escaped + '"]');
@@ -1224,8 +1435,6 @@
                 var filePath = (toolName === 'Read' && subEl) ? subEl.textContent : '';
                 if (toolName === 'Bash') {
                     renderBashResult(resultPre, content);
-                } else if (toolName === 'Task') {
-                    renderTaskResult(resultDiv, content);
                 } else {
                     renderToolResultContent(resultPre, content, toolName, filePath);
                 }
@@ -1258,6 +1467,7 @@
         currentTextEl = null;
         accumulatedText = '';
         usingStreamEvents = false;
+        historyGenerating = !!generating;
 
         if (messages.length === 0) {
             showEmptyState();
@@ -2102,6 +2312,24 @@
             return;
         }
 
+        // Sub-agent tools render as rows in the shared agents panel.
+        if (isSubagentTool(block.name) && block.input &&
+            (block.input.prompt || block.input.description || block.input.subagent_type)) {
+            var agentResult = null, agentHasResult = false;
+            if (block.id) {
+                for (var ai = 0; ai < allBlocks.length; ai++) {
+                    var arb = allBlocks[ai];
+                    if (arb.type === 'tool_result' && arb.tool_use_id === block.id) {
+                        agentHasResult = true; agentResult = arb.content; break;
+                    }
+                }
+            }
+            var agentStillRunning = historyGenerating && !agentHasResult;
+            addAgentRow(ensureAgentsPanel(bubble), block.id, block.input,
+                { done: !agentStillRunning, resultContent: agentHasResult ? agentResult : null });
+            return;
+        }
+
         const toolDiv = document.createElement('div');
         toolDiv.className = 'claude-tool-use';
         toolDiv.dataset.toolId = block.id || '';
@@ -2177,12 +2405,6 @@
             renderBashInput(body, block.input);
             inputPre.style.display = 'none';
         }
-        // Task: render subagent display
-        if (block.name === 'Task' && block.input && (block.input.prompt || block.input.description)) {
-            renderTaskInput(body, block.input);
-            inputPre.style.display = 'none';
-        }
-
         // Find matching tool_result
         if (block.id) {
             for (const b of allBlocks) {
@@ -2203,8 +2425,6 @@
                     body.appendChild(resultDiv);
                     if (block.name === 'Bash') {
                         renderBashResult(resultPre, content);
-                    } else if (block.name === 'Task') {
-                        renderTaskResult(resultDiv, content);
                     } else {
                         renderToolResultContent(resultPre, content, block.name, filePath);
                     }
@@ -2675,6 +2895,7 @@
         window.claudeSend = localClaudeSend;
         window.claudeCancel = localClaudeCancel;
         window.claudeReset = localClaudeReset;
+        window.claudeSetModel = setModel;
         window.claudeShowPlan = localClaudeShowPlan;
         window.claudePlanEdit = localClaudePlanEdit;
         window.claudePlanSave = localClaudePlanSave;
@@ -2689,10 +2910,61 @@
         generating = value;
         sendBtn.style.display = value ? 'none' : 'flex';
         cancelBtn.style.display = value ? 'flex' : 'none';
+        // Switching models restarts the process and aborts the turn, so lock the
+        // picker while a turn is in flight.
+        var modelSel = document.getElementById('claude-model-select');
+        if (modelSel) modelSel.disabled = value;
         inputEl.focus();
-        if (!value) {
+        if (value) {
+            if (!turnStartedAt) turnStartedAt = Date.now();
+            startRunningTicker();
+        } else {
+            turnStartedAt = 0;
+            currentActivityLabel = '';
+            stopRunningTicker();
+            markRunningSubagentsDone();
             // Re-focus after any pending DOM updates (markdown rendering, scroll, etc.)
             requestAnimationFrame(function() { inputEl.focus(); });
+        }
+    }
+
+    // --- Live "running" indicators ---
+    // While a turn is in flight a 1s ticker keeps the header pill, the bottom
+    // working row, and any running Task block showing a live elapsed time, so
+    // the UI never looks frozen during quiet stretches (long tools, subagents,
+    // extended thinking).
+
+    function startRunningTicker() {
+        if (runningTicker) return;
+        runningTicker = setInterval(tickRunningUI, 1000);
+    }
+
+    function stopRunningTicker() {
+        if (runningTicker) { clearInterval(runningTicker); runningTicker = null; }
+    }
+
+    function tickRunningUI() {
+        updateWorkingElapsed();
+        updateSubagentElapsed();
+    }
+
+    // formatClock renders a live mm:ss (or h:mm:ss) timer.
+    function formatClock(ms) {
+        var s = Math.max(0, Math.floor(ms / 1000));
+        var h = Math.floor(s / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        if (h > 0) return h + ':' + pad(m) + ':' + pad(sec);
+        return m + ':' + pad(sec);
+    }
+
+    // setActivity records the authoritative "doing X now" label (pushed by the
+    // server) and reflects it in the header pill and the bottom working row.
+    function setActivity(label) {
+        currentActivityLabel = label || '';
+        if (generating && currentActivityLabel) {
+            updateWorkingLabel(currentActivityLabel);
         }
     }
 

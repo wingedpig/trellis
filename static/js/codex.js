@@ -28,6 +28,9 @@
     let itemEls = new Map();
     let workingEl = null;
     let lastTurnID = null;
+    let turnStartedAt = 0;         // ms timestamp the current turn began (0 when idle)
+    let currentActivityLabel = ''; // Authoritative "what the agent is doing now" label
+    let runningTicker = null;      // Interval that refreshes live elapsed timers
 
     // Most recent thread-level token usage (from `thread/tokenUsage/updated`).
     let tokenUsage = null;
@@ -213,8 +216,15 @@
         switch (msg.type) {
             case 'history':
                 renderHistory(msg.messages || [], !!msg.generating);
-                if (msg.generating) setGenerating(true);
-                else requestAnimationFrame(function () { inputEl.focus(); });
+                currentActivityLabel = msg.activity || '';
+                if (msg.generating) {
+                    setGenerating(true);
+                    // Loading an already-running session: show a live status row
+                    // immediately so it never looks frozen before the next event.
+                    showWorking();
+                } else {
+                    requestAnimationFrame(function () { inputEl.focus(); });
+                }
                 if (msg.token_usage) {
                     tokenUsage = msg.token_usage;
                     renderContextUsage();
@@ -229,6 +239,9 @@
                 break;
             case 'status':
                 setGenerating(msg.generating || false);
+                break;
+            case 'activity':
+                setActivity(msg.activity || '');
                 break;
             case 'error':
                 showError(msg.message || 'Unknown error');
@@ -938,9 +951,13 @@
         if (workingEl) return;
         workingEl = document.createElement('div');
         workingEl.className = 'codex-working';
-        workingEl.innerHTML = '<span class="codex-working-spinner"></span><span class="codex-working-label">Working…</span>';
+        var label = currentActivityLabel || 'Working…';
+        workingEl.innerHTML = '<span class="codex-working-spinner"></span>' +
+            '<span class="codex-working-label">' + escapeHtml(label) + '</span>' +
+            '<span class="codex-working-elapsed"></span>';
         const turn = ensureTurn();
         turn.querySelector('.codex-bubble').appendChild(workingEl);
+        updateWorkingElapsed();
     }
 
     function hideWorking() {
@@ -950,11 +967,63 @@
         workingEl = null;
     }
 
+    function updateWorkingElapsed() {
+        if (!workingEl) return;
+        var el = workingEl.querySelector('.codex-working-elapsed');
+        if (el) el.textContent = turnStartedAt ? ' · ' + formatClock(Date.now() - turnStartedAt) : '';
+    }
+
+    function updateWorkingLabel(label) {
+        if (!workingEl) return;
+        var el = workingEl.querySelector('.codex-working-label');
+        if (el) el.textContent = label;
+    }
+
     function setGenerating(value) {
         generating = !!value;
         sendBtn.style.display = generating ? 'none' : '';
         cancelBtn.style.display = generating ? '' : 'none';
         inputEl.disabled = false;
+        if (generating) {
+            if (!turnStartedAt) turnStartedAt = Date.now();
+            startRunningTicker();
+        } else {
+            turnStartedAt = 0;
+            currentActivityLabel = '';
+            stopRunningTicker();
+        }
+    }
+
+    // --- Live "running" indicators ---
+    // A 1s ticker keeps the header pill and the working row showing a live
+    // elapsed time while a turn is in flight, so the UI never looks frozen.
+
+    function startRunningTicker() {
+        if (runningTicker) return;
+        runningTicker = setInterval(tickRunningUI, 1000);
+    }
+
+    function stopRunningTicker() {
+        if (runningTicker) { clearInterval(runningTicker); runningTicker = null; }
+    }
+
+    function tickRunningUI() {
+        updateWorkingElapsed();
+    }
+
+    function formatClock(ms) {
+        var s = Math.max(0, Math.floor(ms / 1000));
+        var h = Math.floor(s / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var sec = s % 60;
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        if (h > 0) return h + ':' + pad(m) + ':' + pad(sec);
+        return m + ':' + pad(sec);
+    }
+
+    function setActivity(label) {
+        currentActivityLabel = label || '';
+        if (generating && currentActivityLabel) updateWorkingLabel(currentActivityLabel);
     }
 
     function showError(message) {

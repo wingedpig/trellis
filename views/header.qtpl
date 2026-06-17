@@ -73,6 +73,20 @@ func (p *BasePage) BranchName() string {
     }
     return ""
 }
+
+// WorktreeLabel returns the worktree's display label for the navbar: the git
+// branch (e.g. "paid-memberships-simplified"), which is the worktree name
+// without the project prefix that Name() carries. Falls back to the directory
+// name on a detached HEAD.
+func (p *BasePage) WorktreeLabel() string {
+    if p.Worktree == nil {
+        return ""
+    }
+    if p.Worktree.Branch != "" {
+        return p.Worktree.Branch
+    }
+    return p.Worktree.Name()
+}
 %}
 
 // NavScript outputs the shared navigation JavaScript.
@@ -891,6 +905,32 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 {% endfunc %}
 
+// NavbarRightControls renders the right-hand navbar control group shared by the
+// standard page header and the fullscreen terminal page. The three genuine
+// differences between the two are parameterised: btnClass (button styling),
+// the keyboard-help button's onclick + title, and whether the today's-cost
+// usage badge appears (page header only). Keeping this in one place avoids the
+// drift that previously left the terminal navbar showing a stale worktree label.
+{% func NavbarRightControls(p *BasePage, btnClass, helpOnClick, helpTitle string) %}
+<div class="d-flex align-items-center gap-3 ms-auto">
+    {% if p.Worktree != nil %}
+    <a class="navbar-text text-decoration-none" href="/worktree/{%s p.WorktreeLabel() %}" title="Go to worktree home">
+        <i class="fa-solid fa-code-branch text-accent"></i> {%s p.WorktreeLabel() %}
+    </a>
+    {% endif %}
+    <button class="{%s btnClass %}" onclick="{%s helpOnClick %}" title="{%s helpTitle %}">
+        <i class="fa-solid fa-keyboard"></i>
+    </button>
+    <button class="{%s btnClass %}" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
+        <i class="fa-solid fa-inbox"></i>
+    </button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+        <i class="fa-solid fa-sun" id="theme-icon-light"></i>
+        <i class="fa-solid fa-moon" id="theme-icon-dark" style="display:none;"></i>
+    </button>
+</div>
+{% endfunc %}
+
 {% func (p *BasePage) Header() %}
 <!DOCTYPE html>
 <html lang="en">
@@ -967,27 +1007,7 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
                 </select>
             </div>
 
-            <div class="d-flex align-items-center gap-3 ms-auto">
-                {% if p.Worktree != nil %}
-                <span class="navbar-text">
-                    <i class="fa-solid fa-code-branch text-accent"></i> {%s p.WorktreeName() %} ({%s p.BranchName() %})
-                </span>
-                {% endif %}
-                <a class="navbar-text text-decoration-none" id="usageTodayBadge" href="/usage"
-                   title="Claude Code + Codex usage today (all projects) — click for details" style="display:none;">
-                    <i class="fa-solid fa-coins text-accent"></i> <span id="usageTodayAmount"></span>
-                </a>
-                <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
-                    <i class="fa-solid fa-keyboard"></i>
-                </button>
-                <button class="btn btn-sm btn-link text-muted" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
-                    <i class="fa-solid fa-inbox"></i>
-                </button>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-                    <i class="fa-solid fa-sun" id="theme-icon-light"></i>
-                    <i class="fa-solid fa-moon" id="theme-icon-dark" style="display:none;"></i>
-                </button>
-            </div>
+            {%= NavbarRightControls(p, "btn btn-sm btn-link text-muted", "showShortcutHelp()", "Keyboard Shortcuts (Cmd/Ctrl+H)") %}
         </div>
     </div>
 </nav>
@@ -1005,32 +1025,6 @@ function toggleTheme() { TrellisNav.toggleTheme(); }
 <script src="/static/js/shortcut_help.js"></script>
 {%= NavScript(p.SessionID(), p.ShortcutsJSON(), "page") %}
 <script src="/static/js/inbox_main_ws.js"></script>
-<script>
-// Today's Claude Code cost badge in the navbar. Hidden until there is
-// measurable spend; refreshed every 5 minutes.
-(function() {
-    function refreshUsageBadge() {
-        fetch('/api/v1/usage/today')
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function(data) {
-                var t = data.data || data;
-                var cost = t.cost_usd || 0;
-                var badge = document.getElementById('usageTodayBadge');
-                var amount = document.getElementById('usageTodayAmount');
-                if (!badge || !amount) return;
-                if (cost >= 0.005) {
-                    amount.textContent = '$' + cost.toFixed(2) + ' today';
-                    badge.style.display = '';
-                } else {
-                    badge.style.display = 'none';
-                }
-            })
-            .catch(function() {});
-    }
-    refreshUsageBadge();
-    setInterval(refreshUsageBadge, 5 * 60 * 1000);
-})();
-</script>
 <main>
 <div class="page-container container-fluid mt-4">
 {% endfunc %}

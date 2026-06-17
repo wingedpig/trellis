@@ -68,6 +68,7 @@ type codexServerMessage struct {
 	Generating bool               `json:"generating,omitempty"`
 	Message    string             `json:"message,omitempty"`
 	TokenUsage *codex.TokenUsage  `json:"token_usage,omitempty"`
+	Activity   string             `json:"activity,omitempty"`
 }
 
 // WebSocket handles a chat WebSocket for a specific session.
@@ -128,6 +129,7 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 		Messages:   session.MessagesForWire(),
 		Generating: session.IsGenerating(),
 		TokenUsage: &usage,
+		Activity:   session.CurrentActivity(),
 	})
 
 	// Re-send any pending approval prompts.
@@ -185,6 +187,39 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 			}
 		}
 	}()
+
+	// Forward the session's authoritative live-activity label so the client can
+	// show what the agent is doing now, even during quiet stretches.
+	if h.bus != nil {
+		activityCh := make(chan string, 16)
+		sub, err := h.bus.SubscribeAsync(events.EventSessionActivity, func(_ context.Context, ev events.Event) error {
+			if ev.Payload == nil {
+				return nil
+			}
+			if sid, _ := ev.Payload["session_id"].(string); sid != session.ID() {
+				return nil
+			}
+			label, _ := ev.Payload["activity"].(string)
+			select {
+			case activityCh <- label:
+			default:
+			}
+			return nil
+		}, 64)
+		if err == nil {
+			defer h.bus.Unsubscribe(sub)
+			go func() {
+				for {
+					select {
+					case label := <-activityCh:
+						writeJSON(codexServerMessage{Type: "activity", Activity: label})
+					case <-wsClosed:
+						return
+					}
+				}
+			}()
+		}
+	}
 
 	for {
 		select {

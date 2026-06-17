@@ -102,13 +102,27 @@ func (p *BasePage) BranchName() string {
 	return ""
 }
 
+// WorktreeLabel returns the worktree's display label for the navbar: the git
+// branch (e.g. "paid-memberships-simplified"), which is the worktree name
+// without the project prefix that Name() carries. Falls back to the directory
+// name on a detached HEAD.
+func (p *BasePage) WorktreeLabel() string {
+	if p.Worktree == nil {
+		return ""
+	}
+	if p.Worktree.Branch != "" {
+		return p.Worktree.Branch
+	}
+	return p.Worktree.Name()
+}
+
 // NavScript outputs the shared navigation JavaScript.
 // mode: "page" for regular pages (navigation via href), "terminal" for fullscreen terminal (in-place switching)
 // The terminal mode expects global functions: switchTerminal(), showLogViewer(), showService()
 
-//line views/header.qtpl:81
+//line views/header.qtpl:95
 func StreamNavScript(qw422016 *qt422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:81
+//line views/header.qtpl:95
 	qw422016.N().S(`
 <script>
 // ============================================
@@ -117,20 +131,20 @@ func StreamNavScript(qw422016 *qt422016.Writer, sessionID, shortcutsJSON, mode s
 
 window.TrellisNav = (function() {
     const NAV_MODE = '`)
-//line views/header.qtpl:88
+//line views/header.qtpl:102
 	qw422016.E().S(JSAttr(mode))
-//line views/header.qtpl:88
+//line views/header.qtpl:102
 	qw422016.N().S(`';
     const SESSION_ID = '`)
-//line views/header.qtpl:89
+//line views/header.qtpl:103
 	qw422016.E().S(JSAttr(sessionID))
-//line views/header.qtpl:89
+//line views/header.qtpl:103
 	qw422016.N().S(`';
     // Start with shortcuts from page (terminal page passes these), will be updated from API
     let CUSTOM_SHORTCUTS = `)
-//line views/header.qtpl:91
+//line views/header.qtpl:105
 	qw422016.N().S(shortcutsJSON)
-//line views/header.qtpl:91
+//line views/header.qtpl:105
 	qw422016.N().S(`;
 
     // Theme management
@@ -933,38 +947,128 @@ window.TrellisNav = (function() {
 function toggleTheme() { TrellisNav.toggleTheme(); }
 </script>
 `)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 }
 
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 func WriteNavScript(qq422016 qtio422016.Writer, sessionID, shortcutsJSON, mode string) {
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	StreamNavScript(qw422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 }
 
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 func NavScript(sessionID, shortcutsJSON, mode string) string {
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	WriteNavScript(qb422016, sessionID, shortcutsJSON, mode)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 	return qs422016
-//line views/header.qtpl:892
+//line views/header.qtpl:906
 }
 
-//line views/header.qtpl:894
+// NavbarRightControls renders the right-hand navbar control group shared by the
+// standard page header and the fullscreen terminal page. The three genuine
+// differences between the two are parameterised: btnClass (button styling),
+// the keyboard-help button's onclick + title, and whether the today's-cost
+// usage badge appears (page header only). Keeping this in one place avoids the
+// drift that previously left the terminal navbar showing a stale worktree label.
+
+//line views/header.qtpl:914
+func StreamNavbarRightControls(qw422016 *qt422016.Writer, p *BasePage, btnClass, helpOnClick, helpTitle string) {
+//line views/header.qtpl:914
+	qw422016.N().S(`
+<div class="d-flex align-items-center gap-3 ms-auto">
+    `)
+//line views/header.qtpl:916
+	if p.Worktree != nil {
+//line views/header.qtpl:916
+		qw422016.N().S(`
+    <a class="navbar-text text-decoration-none" href="/worktree/`)
+//line views/header.qtpl:917
+		qw422016.E().S(p.WorktreeLabel())
+//line views/header.qtpl:917
+		qw422016.N().S(`" title="Go to worktree home">
+        <i class="fa-solid fa-code-branch text-accent"></i> `)
+//line views/header.qtpl:918
+		qw422016.E().S(p.WorktreeLabel())
+//line views/header.qtpl:918
+		qw422016.N().S(`
+    </a>
+    `)
+//line views/header.qtpl:920
+	}
+//line views/header.qtpl:920
+	qw422016.N().S(`
+    <button class="`)
+//line views/header.qtpl:921
+	qw422016.E().S(btnClass)
+//line views/header.qtpl:921
+	qw422016.N().S(`" onclick="`)
+//line views/header.qtpl:921
+	qw422016.E().S(helpOnClick)
+//line views/header.qtpl:921
+	qw422016.N().S(`" title="`)
+//line views/header.qtpl:921
+	qw422016.E().S(helpTitle)
+//line views/header.qtpl:921
+	qw422016.N().S(`">
+        <i class="fa-solid fa-keyboard"></i>
+    </button>
+    <button class="`)
+//line views/header.qtpl:924
+	qw422016.E().S(btnClass)
+//line views/header.qtpl:924
+	qw422016.N().S(`" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
+        <i class="fa-solid fa-inbox"></i>
+    </button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+        <i class="fa-solid fa-sun" id="theme-icon-light"></i>
+        <i class="fa-solid fa-moon" id="theme-icon-dark" style="display:none;"></i>
+    </button>
+</div>
+`)
+//line views/header.qtpl:932
+}
+
+//line views/header.qtpl:932
+func WriteNavbarRightControls(qq422016 qtio422016.Writer, p *BasePage, btnClass, helpOnClick, helpTitle string) {
+//line views/header.qtpl:932
+	qw422016 := qt422016.AcquireWriter(qq422016)
+//line views/header.qtpl:932
+	StreamNavbarRightControls(qw422016, p, btnClass, helpOnClick, helpTitle)
+//line views/header.qtpl:932
+	qt422016.ReleaseWriter(qw422016)
+//line views/header.qtpl:932
+}
+
+//line views/header.qtpl:932
+func NavbarRightControls(p *BasePage, btnClass, helpOnClick, helpTitle string) string {
+//line views/header.qtpl:932
+	qb422016 := qt422016.AcquireByteBuffer()
+//line views/header.qtpl:932
+	WriteNavbarRightControls(qb422016, p, btnClass, helpOnClick, helpTitle)
+//line views/header.qtpl:932
+	qs422016 := string(qb422016.B)
+//line views/header.qtpl:932
+	qt422016.ReleaseByteBuffer(qb422016)
+//line views/header.qtpl:932
+	return qs422016
+//line views/header.qtpl:932
+}
+
+//line views/header.qtpl:934
 func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:894
+//line views/header.qtpl:934
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -972,9 +1076,9 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/header.qtpl:900
+//line views/header.qtpl:940
 	qw422016.E().S(p.Title)
-//line views/header.qtpl:900
+//line views/header.qtpl:940
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -1045,43 +1149,11 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
                 </select>
             </div>
 
-            <div class="d-flex align-items-center gap-3 ms-auto">
-                `)
-//line views/header.qtpl:971
-	if p.Worktree != nil {
-//line views/header.qtpl:971
-		qw422016.N().S(`
-                <span class="navbar-text">
-                    <i class="fa-solid fa-code-branch text-accent"></i> `)
-//line views/header.qtpl:973
-		qw422016.E().S(p.WorktreeName())
-//line views/header.qtpl:973
-		qw422016.N().S(` (`)
-//line views/header.qtpl:973
-		qw422016.E().S(p.BranchName())
-//line views/header.qtpl:973
-		qw422016.N().S(`)
-                </span>
-                `)
-//line views/header.qtpl:975
-	}
-//line views/header.qtpl:975
+            `)
+//line views/header.qtpl:1010
+	StreamNavbarRightControls(qw422016, p, "btn btn-sm btn-link text-muted", "showShortcutHelp()", "Keyboard Shortcuts (Cmd/Ctrl+H)")
+//line views/header.qtpl:1010
 	qw422016.N().S(`
-                <a class="navbar-text text-decoration-none" id="usageTodayBadge" href="/usage"
-                   title="Claude Code + Codex usage today (all projects) — click for details" style="display:none;">
-                    <i class="fa-solid fa-coins text-accent"></i> <span id="usageTodayAmount"></span>
-                </a>
-                <button class="btn btn-sm btn-link text-muted" onclick="showShortcutHelp()" title="Keyboard Shortcuts (Cmd/Ctrl+H)">
-                    <i class="fa-solid fa-keyboard"></i>
-                </button>
-                <button class="btn btn-sm btn-link text-muted" onclick="window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720')" title="Open session inbox (Cmd/Ctrl + I)">
-                    <i class="fa-solid fa-inbox"></i>
-                </button>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-                    <i class="fa-solid fa-sun" id="theme-icon-light"></i>
-                    <i class="fa-solid fa-moon" id="theme-icon-dark" style="display:none;"></i>
-                </button>
-            </div>
         </div>
     </div>
 </nav>
@@ -1098,72 +1170,46 @@ func (p *BasePage) StreamHeader(qw422016 *qt422016.Writer) {
 <script src="/static/js/command_palette.js"></script>
 <script src="/static/js/shortcut_help.js"></script>
 `)
-//line views/header.qtpl:1006
+//line views/header.qtpl:1026
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "page")
-//line views/header.qtpl:1006
+//line views/header.qtpl:1026
 	qw422016.N().S(`
 <script src="/static/js/inbox_main_ws.js"></script>
-<script>
-// Today's Claude Code cost badge in the navbar. Hidden until there is
-// measurable spend; refreshed every 5 minutes.
-(function() {
-    function refreshUsageBadge() {
-        fetch('/api/v1/usage/today')
-            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(function(data) {
-                var t = data.data || data;
-                var cost = t.cost_usd || 0;
-                var badge = document.getElementById('usageTodayBadge');
-                var amount = document.getElementById('usageTodayAmount');
-                if (!badge || !amount) return;
-                if (cost >= 0.005) {
-                    amount.textContent = '$' + cost.toFixed(2) + ' today';
-                    badge.style.display = '';
-                } else {
-                    badge.style.display = 'none';
-                }
-            })
-            .catch(function() {});
-    }
-    refreshUsageBadge();
-    setInterval(refreshUsageBadge, 5 * 60 * 1000);
-})();
-</script>
 <main>
 <div class="page-container container-fluid mt-4">
 `)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 }
 
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 func (p *BasePage) WriteHeader(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	p.StreamHeader(qw422016)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 }
 
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 func (p *BasePage) Header() string {
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	p.WriteHeader(qb422016)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 	return qs422016
-//line views/header.qtpl:1036
+//line views/header.qtpl:1030
 }
 
-//line views/header.qtpl:1038
+//line views/header.qtpl:1032
 func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
-//line views/header.qtpl:1038
+//line views/header.qtpl:1032
 	qw422016.N().S(`
 </div>
 </main>
@@ -1171,31 +1217,31 @@ func (p *BasePage) StreamFooter(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 }
 
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 func (p *BasePage) WriteFooter(qq422016 qtio422016.Writer) {
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	p.StreamFooter(qw422016)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	qt422016.ReleaseWriter(qw422016)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 }
 
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 func (p *BasePage) Footer() string {
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	p.WriteFooter(qb422016)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	qs422016 := string(qb422016.B)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 	return qs422016
-//line views/header.qtpl:1044
+//line views/header.qtpl:1038
 }

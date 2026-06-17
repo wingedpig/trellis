@@ -22,8 +22,9 @@ type SessionRecord struct {
 	WorkDir      string     `json:"work_dir"`
 	CreatedAt    time.Time  `json:"created_at"`
 	TrashedAt    *time.Time `json:"trashed_at,omitempty"`
-	CostUSD      float64    `json:"cost_usd,omitempty"` // accumulated API cost across the session's turns
-	Model        string     `json:"model,omitempty"`    // most recent model id seen
+	CostUSD      float64    `json:"cost_usd,omitempty"`        // accumulated API cost across the session's turns
+	Model        string     `json:"model,omitempty"`           // most recent model id seen
+	ModelOverride string    `json:"model_override,omitempty"`  // model alias forced via --model (e.g. "opus")
 }
 
 // loadRecords reads session records from disk.
