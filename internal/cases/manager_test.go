@@ -51,11 +51,55 @@ func TestCreate_allowedAfterArchive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first create: %v", err)
 	}
-	if err := m.Archive(wt, c.ID); err != nil {
+	if _, err := m.Archive(wt, c.ID); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 	if _, err := m.Create(wt, "Second", "feature", "wt1", "main", ""); err != nil {
 		t.Fatalf("second create after archive: %v", err)
+	}
+}
+
+// TestArchive_collisionWithExistingArchived reproduces the case where two
+// cases share a date + title slug: the first is archived, then a second case
+// with the same title is created and archived. The second archive must not
+// fail on the existing destination directory — it gets a suffixed ID instead.
+func TestArchive_collisionWithExistingArchived(t *testing.T) {
+	m, wt := newManagerWithTempDir(t)
+
+	first, err := m.Create(wt, "Main", "task", "wt1", "main", "")
+	if err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	firstID, err := m.Archive(wt, first.ID)
+	if err != nil {
+		t.Fatalf("archive first: %v", err)
+	}
+
+	// A second case with the same title slugifies to the same base ID. Create
+	// must pick a distinct ID so it doesn't shadow the archived one.
+	second, err := m.Create(wt, "Main", "task", "wt1", "main", "")
+	if err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	if second.ID == firstID {
+		t.Fatalf("second case reused archived ID %q", firstID)
+	}
+
+	// Archiving the second must succeed despite the same base name and keep
+	// case.json's ID consistent with the directory it lands in.
+	secondID, err := m.Archive(wt, second.ID)
+	if err != nil {
+		t.Fatalf("archive second: %v", err)
+	}
+	if secondID == firstID {
+		t.Fatalf("second archived over first: both %q", firstID)
+	}
+	got, err := m.Get(wt, secondID)
+	if err != nil {
+		t.Fatalf("get archived second: %v", err)
+	}
+	if got.ID != secondID {
+		t.Errorf("archived case.json ID = %q, want %q (must match directory)", got.ID, secondID)
 	}
 }
 
@@ -151,7 +195,7 @@ func TestUpdateSummary_worksOnArchived(t *testing.T) {
 	c, _ := m.Create(wt, "Archived edit", "task", "wt1", "main", "")
 	syn := "first"
 	_ = m.SetSummary(wt, c.ID, &CaseSummary{Synopsis: syn, GeneratedAt: time.Now()})
-	if err := m.Archive(wt, c.ID); err != nil {
+	if _, err := m.Archive(wt, c.ID); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 	newSyn := "edited"
@@ -171,7 +215,7 @@ func TestReplaceSummary_worksOnArchived(t *testing.T) {
 	m, wt := newManagerWithTempDir(t)
 	c, _ := m.Create(wt, "Replace test", "task", "wt1", "main", "")
 	_ = m.SetSummary(wt, c.ID, &CaseSummary{Synopsis: "before"})
-	_ = m.Archive(wt, c.ID)
+	_, _ = m.Archive(wt, c.ID)
 	if err := m.ReplaceSummary(wt, c.ID, &CaseSummary{Synopsis: "after", GeneratedAt: time.Now()}); err != nil {
 		t.Fatalf("ReplaceSummary: %v", err)
 	}
@@ -187,7 +231,7 @@ func TestIsArchived(t *testing.T) {
 	if m.IsArchived(wt, c.ID) {
 		t.Error("freshly-created case reported archived")
 	}
-	if err := m.Archive(wt, c.ID); err != nil {
+	if _, err := m.Archive(wt, c.ID); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 	if !m.IsArchived(wt, c.ID) {
@@ -199,7 +243,7 @@ func TestReopen_refusesIfAnotherCaseIsOpen(t *testing.T) {
 	m, wt := newManagerWithTempDir(t)
 
 	first, _ := m.Create(wt, "Original", "feature", "wt1", "main", "")
-	if err := m.Archive(wt, first.ID); err != nil {
+	if _, err := m.Archive(wt, first.ID); err != nil {
 		t.Fatalf("archive first: %v", err)
 	}
 
@@ -297,7 +341,7 @@ func TestPlan_seedGetUpdate(t *testing.T) {
 	}
 
 	// Plan survives archiving.
-	if err := m.Archive(wt, c.ID); err != nil {
+	if _, err := m.Archive(wt, c.ID); err != nil {
 		t.Fatalf("Archive: %v", err)
 	}
 	if plan, _ = m.GetPlan(wt, c.ID); plan != edited {

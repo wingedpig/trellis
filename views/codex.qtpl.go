@@ -26,17 +26,19 @@ type CodexPage struct {
 	BasePage
 	WorktreeName     string
 	SessionID        string
+	SessionName      string // Session display name (e.g. "Session 1" or a user-given name)
 	SessionCreatedAt string // ISO 8601 timestamp
+	IsDefaultBranch  bool   // Worktree is on the repo's default branch (main/master)
 }
 
-//line views/codex.qtpl:13
+//line views/codex.qtpl:15
 func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/codex.qtpl:13
+//line views/codex.qtpl:15
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:14
+//line views/codex.qtpl:16
 	p.StreamHeader(qw422016)
-//line views/codex.qtpl:14
+//line views/codex.qtpl:16
 	qw422016.N().S(`
 
 <link href="/static/css/codex.css" rel="stylesheet">
@@ -87,20 +89,38 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:63
+//line views/codex.qtpl:65
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:63
+//line views/codex.qtpl:65
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:64
+//line views/codex.qtpl:66
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:64
+//line views/codex.qtpl:66
+	qw422016.N().S(`';
+var PAGE_SESSION_NAME = '`)
+//line views/codex.qtpl:67
+	qw422016.E().S(JSAttr(p.SessionName))
+//line views/codex.qtpl:67
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:65
+//line views/codex.qtpl:68
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:65
+//line views/codex.qtpl:68
 	qw422016.N().S(`';
+var PAGE_IS_DEFAULT_BRANCH = `)
+//line views/codex.qtpl:69
+	if p.IsDefaultBranch {
+//line views/codex.qtpl:69
+		qw422016.N().S(`true`)
+//line views/codex.qtpl:69
+	} else {
+//line views/codex.qtpl:69
+		qw422016.N().S(`false`)
+//line views/codex.qtpl:69
+	}
+//line views/codex.qtpl:69
+	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
 }).join(' ');
@@ -187,8 +207,10 @@ function bind() {
     window.WRAPUP_AGENT = 'codex';
     window.WRAPUP_WORKTREE = PAGE_WORKTREE;
     window.WRAPUP_SESSION_ID = PAGE_SESSION;
+    window.WRAPUP_SESSION_NAME = PAGE_SESSION_NAME;
     window.WRAPUP_SESSION_CREATED = PAGE_SESSION_CREATED;
     window.WRAPUP_WORKTREE_NAME_HUMANIZED = PAGE_WORKTREE_NAME_HUMANIZED;
+    window.WRAPUP_IS_DEFAULT_BRANCH = PAGE_IS_DEFAULT_BRANCH;
     window.WRAPUP_CASE = snap.caseObj;
     window.showCodexSaveToCaseModal = localShowCodexSaveToCaseModal;
     window.onCodexSaveToCaseSelectChange = localOnCodexSaveToCaseSelectChange;
@@ -390,36 +412,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:354
+//line views/codex.qtpl:360
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:354
+//line views/codex.qtpl:360
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 }
 
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 }
 
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 	return qs422016
-//line views/codex.qtpl:355
+//line views/codex.qtpl:361
 }

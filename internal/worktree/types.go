@@ -70,13 +70,14 @@ type GitExecutor interface {
 type Manager interface {
 	List() ([]WorktreeInfo, error)
 	Active() *WorktreeInfo
-	SetActive(name string) error                                     // Set active without hooks (for startup)
+	SetActive(name string) error                                        // Set active without hooks (for startup)
 	Activate(ctx context.Context, name string) (*ActivateResult, error) // Set active with lifecycle hooks
 	Create(ctx context.Context, branchName string, switchTo bool) error
 	Remove(ctx context.Context, name string, deleteBranch bool) error
 	Refresh() error
 	GetByName(name string) (WorktreeInfo, bool)
 	GetByPath(path string) (WorktreeInfo, bool)
+	DefaultBranch() string
 	Count() int
 	Status() (GitStatus, error)
 	BinariesPath() string

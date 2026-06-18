@@ -26,17 +26,19 @@ type ClaudePage struct {
 	BasePage
 	WorktreeName     string
 	SessionID        string
+	SessionName      string // Session display name (e.g. "Session 1" or a user-given name)
 	SessionCreatedAt string // ISO 8601 timestamp
+	IsDefaultBranch  bool   // Worktree is on the repo's default branch (main/master)
 }
 
-//line views/claude.qtpl:13
+//line views/claude.qtpl:15
 func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/claude.qtpl:13
+//line views/claude.qtpl:15
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:14
+//line views/claude.qtpl:16
 	p.StreamHeader(qw422016)
-//line views/claude.qtpl:14
+//line views/claude.qtpl:16
 	qw422016.N().S(`
 
 <link href="/static/css/claude.css" rel="stylesheet">
@@ -104,14 +106,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // commit / wrap-up on a cache-restored session would target whichever
 // session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:80
+//line views/claude.qtpl:82
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:80
+//line views/claude.qtpl:82
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:81
+//line views/claude.qtpl:83
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:81
+//line views/claude.qtpl:83
 	qw422016.N().S(`';
 
 function localShowSaveToCaseModal() {
@@ -300,20 +302,38 @@ if (container) {
 // (e.g. set after creating a new case via the wrap-up flow) survive the
 // SPA cache round-trip. Restore on page-entered.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:268
+//line views/claude.qtpl:270
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:268
+//line views/claude.qtpl:270
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:269
+//line views/claude.qtpl:271
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:269
+//line views/claude.qtpl:271
+	qw422016.N().S(`';
+var PAGE_SESSION_NAME = '`)
+//line views/claude.qtpl:272
+	qw422016.E().S(JSAttr(p.SessionName))
+//line views/claude.qtpl:272
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/claude.qtpl:270
+//line views/claude.qtpl:273
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:270
+//line views/claude.qtpl:273
 	qw422016.N().S(`';
+var PAGE_IS_DEFAULT_BRANCH = `)
+//line views/claude.qtpl:274
+	if p.IsDefaultBranch {
+//line views/claude.qtpl:274
+		qw422016.N().S(`true`)
+//line views/claude.qtpl:274
+	} else {
+//line views/claude.qtpl:274
+		qw422016.N().S(`false`)
+//line views/claude.qtpl:274
+	}
+//line views/claude.qtpl:274
+	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
 }).join(' ');
@@ -325,10 +345,12 @@ function captureWrap() {
 function applyWrap() {
     window.WRAPUP_WORKTREE = PAGE_WORKTREE;
     window.WRAPUP_SESSION_ID = PAGE_SESSION;
+    window.WRAPUP_SESSION_NAME = PAGE_SESSION_NAME;
     window.WRAPUP_SESSION_CREATED = PAGE_SESSION_CREATED;
     window.WRAPUP_CASE = snap.caseObj;
     window.WRAPUP_AGENT = 'claude';
     window.WRAPUP_WORKTREE_NAME_HUMANIZED = PAGE_WORKTREE_NAME_HUMANIZED;
+    window.WRAPUP_IS_DEFAULT_BRANCH = PAGE_IS_DEFAULT_BRANCH;
 }
 applyWrap();
 var container = document.currentScript && document.currentScript.closest('.page-container');
@@ -466,36 +488,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:422
+//line views/claude.qtpl:428
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:422
+//line views/claude.qtpl:428
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 }
 
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 }
 
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 	return qs422016
-//line views/claude.qtpl:423
+//line views/claude.qtpl:429
 }

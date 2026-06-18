@@ -15,11 +15,15 @@
 // Requires globals set by the including page:
 //   WRAPUP_WORKTREE         — worktree name (string)
 //   WRAPUP_SESSION_ID       — session ID (string or null)
+//   WRAPUP_SESSION_NAME     — session display name (string), used as the
+//                              preferred title when creating a new case
 //   WRAPUP_SESSION_CREATED  — ISO 8601 timestamp of session creation (string)
 //   WRAPUP_CASE             — {id, title, kind} or null
 //   WRAPUP_AGENT            — 'claude' or 'codex' (defaults to 'claude')
 //   WRAPUP_WORKTREE_NAME_HUMANIZED — optional humanized worktree name for
 //                              prefilling the title when no case exists
+//   WRAPUP_IS_DEFAULT_BRANCH — whether the worktree is on the repo's default
+//                              branch (main/master); see _newCaseTitlePrefill
 
 window.toggleAllCheckboxes = window.toggleAllCheckboxes || function(containerId, checked) {
     var container = document.getElementById(containerId);
@@ -169,10 +173,7 @@ function showCommitModal(mode) {
         } else {
             caseInfoEl.style.display = 'none';
             newCaseEl.style.display = '';
-            var prefillTitle = (typeof WRAPUP_WORKTREE_NAME_HUMANIZED !== 'undefined' && WRAPUP_WORKTREE_NAME_HUMANIZED)
-                ? WRAPUP_WORKTREE_NAME_HUMANIZED
-                : '';
-            document.getElementById('wrapUpNewTitle').value = prefillTitle;
+            document.getElementById('wrapUpNewTitle').value = _newCaseTitlePrefill();
             // Commit mode defaults to 'feature'; wrap-up keeps 'task' for
             // legacy compatibility (was 'task' before this change).
             document.getElementById('wrapUpNewKind').value = isCommit ? 'feature' : 'task';
@@ -211,6 +212,29 @@ function showCommitModal(mode) {
 
 // Back-compat shim: pages that haven't migrated still call showWrapUpModal().
 function showWrapUpModal() { showCommitModal('wrapup'); }
+
+// _newCaseTitlePrefill chooses the default title for a brand-new case.
+//
+//   1. A renamed session wins — its display name is the most descriptive
+//      thing we have. Auto-assigned "Session N" names carry no information,
+//      so they don't count as "renamed".
+//   2. Otherwise the humanized worktree name is usually a good default
+//      (e.g. "fix-login-bug" → "Fix Login Bug")…
+//   3. …except on the default branch, where it degrades to "Main"/"Master".
+//      There we fall back to the session name even if it's just "Session N",
+//      since that's still more useful than the branch name.
+function _newCaseTitlePrefill() {
+    var sessionName = (typeof WRAPUP_SESSION_NAME !== 'undefined' && WRAPUP_SESSION_NAME)
+        ? WRAPUP_SESSION_NAME.trim() : '';
+    var worktreeTitle = (typeof WRAPUP_WORKTREE_NAME_HUMANIZED !== 'undefined' && WRAPUP_WORKTREE_NAME_HUMANIZED)
+        ? WRAPUP_WORKTREE_NAME_HUMANIZED : '';
+    var isDefaultBranch = (typeof WRAPUP_IS_DEFAULT_BRANCH !== 'undefined') && WRAPUP_IS_DEFAULT_BRANCH;
+
+    var renamed = sessionName && !/^Session \d+$/.test(sessionName);
+    if (renamed) return sessionName;
+    if (isDefaultBranch) return sessionName || worktreeTitle;
+    return worktreeTitle || sessionName;
+}
 
 function _ensureRegenerateButton() {
     var msgEl = document.getElementById('wrapUpCommitMsg');

@@ -272,21 +272,16 @@ func (m *Manager) Create(worktreePath, title, kind, worktreeName, branch, baseCo
 	}
 	id := datePrefix + "__" + slug
 
-	// Handle collisions
 	dir := m.casesDir(worktreePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create cases dir: %w", err)
 	}
 
-	candidateID := id
-	for suffix := 2; ; suffix++ {
-		casePath := filepath.Join(dir, candidateID)
-		if _, err := os.Stat(casePath); os.IsNotExist(err) {
-			break
-		}
-		candidateID = id + "-" + strconv.Itoa(suffix)
-	}
-	id = candidateID
+	// Handle collisions. IDs must be unique across BOTH the live and archived
+	// directories: a live case sharing an ID with an archived one would shadow
+	// it (lookups scan the live dir first) and later fail to archive (the
+	// destination directory already exists).
+	id = uniqueCaseID(id, dir, m.archivedDir(worktreePath))
 
 	caseDir := filepath.Join(dir, id)
 	if err := os.MkdirAll(caseDir, 0o755); err != nil {
@@ -369,22 +364,63 @@ func (m *Manager) Update(worktreePath, caseID string, updates CaseUpdate) error 
 }
 
 // Archive moves a case from the active cases directory to the archived directory.
-func (m *Manager) Archive(worktreePath, caseID string) error {
+// Archive moves a case from the live cases directory to the archived
+// directory. It returns the case's final ID, which differs from caseID only
+// when an archived case with the same name already exists (e.g. two cases
+// created on the same date with the same title slug) — in that case a numeric
+// suffix is appended and the moved case.json's ID is updated to match.
+func (m *Manager) Archive(worktreePath, caseID string) (string, error) {
 	if err := validID(caseID); err != nil {
-		return err
+		return "", err
 	}
 	src := filepath.Join(m.casesDir(worktreePath), caseID)
 	if _, err := os.Stat(src); os.IsNotExist(err) {
-		return fmt.Errorf("case not found: %s", caseID)
+		return "", fmt.Errorf("case not found: %s", caseID)
 	}
 
 	archDir := m.archivedDir(worktreePath)
 	if err := os.MkdirAll(archDir, 0o755); err != nil {
-		return fmt.Errorf("create archived dir: %w", err)
+		return "", fmt.Errorf("create archived dir: %w", err)
 	}
 
-	dst := filepath.Join(archDir, caseID)
-	return os.Rename(src, dst)
+	finalID := uniqueCaseID(caseID, archDir)
+	dst := filepath.Join(archDir, finalID)
+	if err := os.Rename(src, dst); err != nil {
+		return "", err
+	}
+
+	// Keep the stored ID in sync with the (possibly suffixed) directory name.
+	if finalID != caseID {
+		caseJSON := filepath.Join(dst, "case.json")
+		if c, err := loadCase(caseJSON); err == nil {
+			c.ID = finalID
+			_ = saveCase(caseJSON, c)
+		}
+	}
+
+	return finalID, nil
+}
+
+// uniqueCaseID returns baseID, or baseID with a numeric suffix ("-2", "-3", …),
+// such that no directory of that name exists under any of dirs.
+func uniqueCaseID(baseID string, dirs ...string) string {
+	exists := func(id string) bool {
+		for _, d := range dirs {
+			if _, err := os.Stat(filepath.Join(d, id)); err == nil {
+				return true
+			}
+		}
+		return false
+	}
+	if !exists(baseID) {
+		return baseID
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := baseID + "-" + strconv.Itoa(suffix)
+		if !exists(candidate) {
+			return candidate
+		}
+	}
 }
 
 // Reopen moves a case from the archived directory back to the active cases

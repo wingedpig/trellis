@@ -20,18 +20,19 @@ import (
 
 // WorktreeManager manages git worktrees.
 type WorktreeManager struct {
-	mu          sync.RWMutex
-	activateMu  sync.Mutex // Serializes Activate operations
-	git         GitExecutor
-	bus         events.EventBus
-	cfg         config.WorktreeConfig
-	repoDir     string // Directory to run git commands in
-	createDir   string // Directory where new worktrees are created
-	worktrees   []WorktreeInfo
-	active      *WorktreeInfo
-	binPath     string
-	lifecycle   *LifecycleRunner
-	projectName string
+	mu            sync.RWMutex
+	activateMu    sync.Mutex // Serializes Activate operations
+	git           GitExecutor
+	bus           events.EventBus
+	cfg           config.WorktreeConfig
+	repoDir       string // Directory to run git commands in
+	createDir     string // Directory where new worktrees are created
+	worktrees     []WorktreeInfo
+	active        *WorktreeInfo
+	binPath       string
+	lifecycle     *LifecycleRunner
+	projectName   string
+	defaultBranch string // Cached default branch (main/master), refreshed in Refresh()
 }
 
 // NewManager creates a new worktree manager.
@@ -239,6 +240,7 @@ func (m *WorktreeManager) Refresh() error {
 
 	m.mu.Lock()
 	m.worktrees = worktrees
+	m.defaultBranch = defaultBranch
 
 	// Update active if it still exists
 	if m.active != nil {
@@ -295,6 +297,14 @@ func (m *WorktreeManager) GetByName(name string) (WorktreeInfo, bool) {
 	}
 
 	return WorktreeInfo{}, false
+}
+
+// DefaultBranch returns the repository's default branch (main/master), cached
+// from the most recent Refresh.
+func (m *WorktreeManager) DefaultBranch() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.defaultBranch
 }
 
 // GetByPath returns a worktree by its path.

@@ -260,7 +260,7 @@ func (h *CaseHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.caseMgr.Archive(wt.Path, caseID); err != nil {
+	if _, err := h.caseMgr.Archive(wt.Path, caseID); err != nil {
 		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
 		return
 	}

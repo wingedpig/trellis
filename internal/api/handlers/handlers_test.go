@@ -100,8 +100,8 @@ func (m *mockServiceManager) List() []service.ServiceInfo {
 	return result
 }
 
-func (m *mockServiceManager) StartAll(ctx context.Context) error    { return nil }
-func (m *mockServiceManager) StopAll(ctx context.Context) error     { return nil }
+func (m *mockServiceManager) StartAll(ctx context.Context) error     { return nil }
+func (m *mockServiceManager) StopAll(ctx context.Context) error      { return nil }
 func (m *mockServiceManager) StartWatched(ctx context.Context) error { return nil }
 func (m *mockServiceManager) StopWatched(ctx context.Context) error  { return nil }
 
@@ -195,6 +195,8 @@ func (m *mockWorktreeManager) GetByName(name string) (worktree.WorktreeInfo, boo
 	}
 	return worktree.WorktreeInfo{}, false
 }
+
+func (m *mockWorktreeManager) DefaultBranch() string { return "main" }
 
 func (m *mockWorktreeManager) GetByPath(path string) (worktree.WorktreeInfo, bool) {
 	for _, wt := range m.worktrees {

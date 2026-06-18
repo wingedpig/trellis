@@ -340,11 +340,15 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		}
 	}
 
-	// Step 6 (wrap-up): archive the case directory before staging.
+	// Step 6 (wrap-up): archive the case directory before staging. Archive may
+	// rename the directory (and the case ID) to dodge a collision with an
+	// existing archived case, so adopt the returned ID for the steps below.
 	if archive {
-		if err := deps.caseMgr.Archive(wt.Path, caseID); err != nil {
+		archivedID, err := deps.caseMgr.Archive(wt.Path, caseID)
+		if err != nil {
 			return nil, http.StatusInternalServerError, ErrInternalError, "archive case: " + err.Error()
 		}
+		caseID = archivedID
 	}
 
 	// Step 7: git add user files + (if wrap-up) the archived case dir.

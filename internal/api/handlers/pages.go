@@ -790,12 +790,12 @@ func (h *PageHandler) WorktreeHome(w http.ResponseWriter, r *http.Request) {
 			Title:    "Worktree: " + name,
 			Worktree: activeWorktree,
 		},
-		WorktreeName:   name,
-		Branch:         branch,
-		Cases:          openCases,
-		ClaudeSessions: claudeSessions,
-		CodexSessions:  codexSessions,
-		Terminals:      terminals,
+		WorktreeName:    name,
+		Branch:          branch,
+		Cases:           openCases,
+		ClaudeSessions:  claudeSessions,
+		CodexSessions:   codexSessions,
+		Terminals:       terminals,
 		TmuxSessionName: h.worktreeToSession(name),
 	}
 
@@ -978,6 +978,22 @@ func (h *PageHandler) CaseTraceView(w http.ResponseWriter, r *http.Request) {
 	page.WriteRender(w)
 }
 
+// isDefaultBranchWorktree reports whether the named worktree is checked out on
+// the repository's default branch (main/master). The wrap-up flow uses this to
+// decide whether the humanized worktree name is a useful default case title:
+// on the default branch it degrades to "Main"/"Master", so the session name is
+// preferred instead.
+func (h *PageHandler) isDefaultBranchWorktree(worktreeName string) bool {
+	if h.worktrees == nil {
+		return false
+	}
+	wt, ok := h.worktrees.GetByName(worktreeName)
+	if !ok || wt.Branch == "" {
+		return false
+	}
+	return wt.Branch == h.worktrees.DefaultBranch()
+}
+
 // ClaudePage renders the Claude Code chat page for a specific session.
 func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -989,11 +1005,12 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 		activeWorktree = h.worktrees.Active()
 	}
 
-	var sessionCreatedAt string
+	var sessionCreatedAt, sessionName string
 	if h.claudeManager != nil {
 		session := h.claudeManager.GetSession(sessionID)
 		if session != nil {
 			sessionCreatedAt = session.Info().CreatedAt.Format(time.RFC3339)
+			sessionName = session.DisplayName()
 		}
 	}
 
@@ -1004,7 +1021,9 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 		},
 		WorktreeName:     worktreeName,
 		SessionID:        sessionID,
+		SessionName:      sessionName,
 		SessionCreatedAt: sessionCreatedAt,
+		IsDefaultBranch:  h.isDefaultBranchWorktree(worktreeName),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1029,11 +1048,12 @@ func (h *PageHandler) CodexPage(w http.ResponseWriter, r *http.Request) {
 		activeWorktree = h.worktrees.Active()
 	}
 
-	var sessionCreatedAt string
+	var sessionCreatedAt, sessionName string
 	if h.codexManager != nil {
 		session := h.codexManager.GetSession(sessionID)
 		if session != nil {
 			sessionCreatedAt = session.Info().CreatedAt.Format(time.RFC3339)
+			sessionName = session.DisplayName()
 		}
 	}
 
@@ -1044,7 +1064,9 @@ func (h *PageHandler) CodexPage(w http.ResponseWriter, r *http.Request) {
 		},
 		WorktreeName:     worktreeName,
 		SessionID:        sessionID,
+		SessionName:      sessionName,
 		SessionCreatedAt: sessionCreatedAt,
+		IsDefaultBranch:  h.isDefaultBranchWorktree(worktreeName),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
