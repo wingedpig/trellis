@@ -313,6 +313,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/{worktree}/commit", claudeHandler.Commit).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/generate-commit-message", claudeHandler.GenerateCommitMessage).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/generate-summary", claudeHandler.GenerateSummary).Methods("POST")
+		api.HandleFunc("/claude/{worktree}/derive-components", claudeHandler.DeriveComponents).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/trace-reports", claudeHandler.ListTraceReports).Methods("GET")
 		// Backwards compat: worktree-level WebSocket uses first session
 		api.HandleFunc("/claude/{worktree}/ws", claudeHandler.WebSocketByWorktree).Methods("GET")
@@ -341,6 +342,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/codex/{worktree}/commit", codexHandler.Commit).Methods("POST")
 		api.HandleFunc("/codex/{worktree}/generate-commit-message", codexHandler.GenerateCommitMessage).Methods("POST")
 		api.HandleFunc("/codex/{worktree}/generate-summary", codexHandler.GenerateSummary).Methods("POST")
+		api.HandleFunc("/codex/{worktree}/derive-components", codexHandler.DeriveComponents).Methods("POST")
 		api.HandleFunc("/codex/{worktree}/trace-reports", codexHandler.ListTraceReports).Methods("GET")
 		api.HandleFunc("/codex/{worktree}/ws", codexHandler.WebSocketByWorktree).Methods("GET")
 	}

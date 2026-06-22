@@ -44,6 +44,7 @@ var _modalState = {
     generatedSummary: null,
     summaryInflight: false,
     components: [],
+    componentsLoaded: false,  // true once chips are painted (deriver or fallback)
 };
 
 function _agent() {
@@ -63,6 +64,7 @@ function showCommitModal(mode) {
     _modalState.generatedSummary = null;
     _modalState.summaryInflight = false;
     _modalState.components = [];
+    _modalState.componentsLoaded = false;
 
     var modal = document.getElementById('wrapUpModal');
     if (!modal) return;
@@ -351,6 +353,7 @@ function _generateSummary() {
     if (section) section.style.display = '';
     if (statusEl) statusEl.textContent = 'Generating…';
     _modalState.components = [];
+    _modalState.componentsLoaded = false;
     _renderChips();
 
     var body = { files: files };
@@ -363,18 +366,21 @@ function _generateSummary() {
         if (typeof WRAPUP_SESSION_ID !== 'undefined' && WRAPUP_SESSION_ID) {
             body.session_id = WRAPUP_SESSION_ID;
         }
-        if (!body.title) {
-            // Without a title the model has nothing to anchor on. Wait
-            // for the user to fill it in (the title input's blur or
-            // submit handler can re-trigger generation if we want, but
-            // keep it manual for now via the Regenerate button on the
-            // commit-message field).
-            _modalState.summaryInflight = false;
-            if (statusEl) statusEl.textContent = 'Enter a title above to generate tags.';
-            return;
-        }
     } else {
         body.case_id = modal.dataset.caseId;
+    }
+
+    // Paint the component chips immediately from the deterministic deriver —
+    // no LLM, so this returns in milliseconds, independent of the prose
+    // summary (which needs the model and, for new cases, a title).
+    _deriveComponents(body);
+
+    // The prose summary needs a title for the new-case path; defer it until
+    // one is entered. Chips are already painting regardless.
+    if (modal.dataset.isNewCase === 'true' && !body.title) {
+        _modalState.summaryInflight = false;
+        if (statusEl) statusEl.textContent = '';
+        return;
     }
 
     fetch(_apiBase() + '/generate-summary', {
@@ -386,22 +392,50 @@ function _generateSummary() {
     .then(function(result) {
         _modalState.summaryInflight = false;
         if (!result.ok) {
-            var msg = (result.data && result.data.error && result.data.error.message)
-                ? result.data.error.message
-                : 'failed';
-            if (statusEl) statusEl.textContent = 'Generation failed: ' + msg;
+            // generate-summary only supplies the prose fields now; the chips
+            // are already painted by the deriver and the server regenerates
+            // the summary at commit time, so fail quietly here.
+            if (statusEl) statusEl.textContent = '';
             return;
         }
         var s = result.data.data || result.data;
         _modalState.generatedSummary = s;
-        _modalState.components = (s.components || []).slice();
+        // Backstop: if the fast deriver hasn't populated chips (e.g. it
+        // errored), use the identical deterministic components carried in
+        // this response. Never clobber chips the user may have edited.
+        if (!_modalState.componentsLoaded && s.components) {
+            _modalState.components = s.components.slice();
+            _modalState.componentsLoaded = true;
+            _renderChips();
+        }
         if (statusEl) statusEl.textContent = '';
+    })
+    .catch(function() {
+        _modalState.summaryInflight = false;
+        if (statusEl) statusEl.textContent = '';
+    });
+}
+
+// _deriveComponents paints the component chips from the deterministic
+// server-side deriver — no LLM, so it returns near-instantly. Runs
+// independently of the prose summary and fails silently (generate-summary's
+// response carries the same deterministic components as a backstop).
+function _deriveComponents(body) {
+    fetch(_apiBase() + '/derive-components', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ case_id: body.case_id, files: body.files })
+    })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+        if (!d) return;
+        // Don't clobber chips the user may already have edited.
+        if (_modalState.componentsLoaded) return;
+        _modalState.components = (d.components || []).slice();
+        _modalState.componentsLoaded = true;
         _renderChips();
     })
-    .catch(function(err) {
-        _modalState.summaryInflight = false;
-        if (statusEl) statusEl.textContent = 'Generation failed: ' + (err && err.message ? err.message : err);
-    });
+    .catch(function() { /* silent — generate-summary backstops */ });
 }
 
 // _renderChips paints the components list from _modalState.

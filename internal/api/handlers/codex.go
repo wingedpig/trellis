@@ -706,6 +706,19 @@ func (h *CodexHandler) GenerateSummary(w http.ResponseWriter, r *http.Request) {
 	generateSummaryHTTP(w, r, codexAdapter{m: h.manager}, deps)
 }
 
+// DeriveComponents returns the deterministic wrap-up component list (no LLM),
+// so the wrap-up modal can paint its chips instantly.
+func (h *CodexHandler) DeriveComponents(w http.ResponseWriter, r *http.Request) {
+	deps := commitDeps{
+		caseMgr:     h.caseMgr,
+		traceMgr:    h.traceMgr,
+		claudeMgr:   h.claudeMgr,
+		codexMgr:    h.manager,
+		worktreeMgr: h.worktreeMgr,
+	}
+	deriveComponentsHTTP(w, r, deps)
+}
+
 // ImportSessionAPI imports a transcript into a worktree, creating a new session.
 func (h *CodexHandler) ImportSessionAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

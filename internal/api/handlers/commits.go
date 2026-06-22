@@ -763,6 +763,50 @@ func generateSummaryHTTP(w http.ResponseWriter, r *http.Request, agent agentAdap
 	WriteJSON(w, http.StatusOK, summary)
 }
 
+// deriveComponentsHTTP returns the deterministic component list for a wrap-up,
+// computed from the changed paths with NO model call — so the wrap-up modal can
+// paint its chips instantly instead of waiting on generate-summary's LLM round
+// trip. Mirrors generateSummaryHTTP's case resolution (explicit id, then the
+// worktree's open case, then a synthetic empty case for the new-case flow where
+// components come purely from the selected files) minus the prose generation.
+func deriveComponentsHTTP(w http.ResponseWriter, r *http.Request, deps commitDeps) {
+	worktreeName := mux.Vars(r)["worktree"]
+	wt, ok := deps.worktreeMgr.GetByName(worktreeName)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	if deps.caseMgr == nil {
+		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "case manager not configured")
+		return
+	}
+
+	var body struct {
+		CaseID string   `json:"case_id"`
+		Files  []string `json:"files"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	var c *cases.CaseJSON
+	if body.CaseID != "" {
+		got, err := deps.caseMgr.Get(wt.Path, body.CaseID)
+		if err != nil {
+			WriteError(w, http.StatusNotFound, ErrNotFound, "case not found")
+			return
+		}
+		c = got
+	} else if open, _ := deps.caseMgr.FirstOpenCase(wt.Path); open != nil {
+		c = open
+	} else {
+		c = &cases.CaseJSON{Status: "open"}
+	}
+
+	paths := changedPathsForCase(r.Context(), deps, wt.Path, c, body.Files)
+	WriteJSON(w, http.StatusOK, map[string][]string{
+		"components": genai.DeriveComponents(paths),
+	})
+}
+
 // WrapUpCommitInfo is the git data we surface on the case detail page for an
 // archived case. The wrap-up commit is intentionally NOT recorded in
 // case.json's commits[]; it's located on demand from git history as "the
