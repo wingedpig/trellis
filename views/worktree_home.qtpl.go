@@ -830,7 +830,35 @@ function renameCodexSession(sessionId, currentName) {
     renameModal.show();
 }
 
-let codexTrashedVisible = false;
+// var (not let): SPA navigation re-injects and re-executes this inline script
+// in global scope, and a top-level `)
+//line views/worktree_home.qtpl:394
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:394
+	qw422016.N().S(`let`)
+//line views/worktree_home.qtpl:394
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:394
+	qw422016.N().S(`/`)
+//line views/worktree_home.qtpl:394
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:394
+	qw422016.N().S(`const`)
+//line views/worktree_home.qtpl:394
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:394
+	qw422016.N().S(` throws "already declared" on
+// the second run. `)
+//line views/worktree_home.qtpl:394
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:394
+	qw422016.N().S(`var`)
+//line views/worktree_home.qtpl:394
+	qw422016.N().S("`")
+//line views/worktree_home.qtpl:394
+	qw422016.N().S(` allows redeclaration; resetting to false matches the
+// freshly-rendered (collapsed) trash panel.
+var codexTrashedVisible = false;
 function toggleTrashedCodexSessions() {
     const container = document.getElementById('trashedCodexSessionsContainer');
     const btn = document.getElementById('showCodexTrashBtn');
@@ -925,7 +953,9 @@ function deleteClaudeSession(sessionId) {
     .catch(err => alert('Failed to trash session: ' + err));
 }
 
-let trashedVisible = false;
+// var (not let): see codexTrashedVisible above — SPA re-execution would throw
+// "already declared" on a top-level let/const.
+var trashedVisible = false;
 function toggleTrashedSessions() {
     const container = document.getElementById('trashedSessionsContainer');
     const btn = document.getElementById('showTrashBtn');
@@ -1251,36 +1281,36 @@ function archiveCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:960
+//line views/worktree_home.qtpl:966
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:960
+//line views/worktree_home.qtpl:966
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 }
 
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 }
 
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 	return qs422016
-//line views/worktree_home.qtpl:961
+//line views/worktree_home.qtpl:967
 }

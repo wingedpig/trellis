@@ -537,7 +537,11 @@ function renameCodexSession(sessionId, currentName) {
     renameModal.show();
 }
 
-let codexTrashedVisible = false;
+// var (not let): SPA navigation re-injects and re-executes this inline script
+// in global scope, and a top-level `let`/`const` throws "already declared" on
+// the second run. `var` allows redeclaration; resetting to false matches the
+// freshly-rendered (collapsed) trash panel.
+var codexTrashedVisible = false;
 function toggleTrashedCodexSessions() {
     const container = document.getElementById('trashedCodexSessionsContainer');
     const btn = document.getElementById('showCodexTrashBtn');
@@ -632,7 +636,9 @@ function deleteClaudeSession(sessionId) {
     .catch(err => alert('Failed to trash session: ' + err));
 }
 
-let trashedVisible = false;
+// var (not let): see codexTrashedVisible above — SPA re-execution would throw
+// "already declared" on a top-level let/const.
+var trashedVisible = false;
 function toggleTrashedSessions() {
     const container = document.getElementById('trashedSessionsContainer');
     const btn = document.getElementById('showTrashBtn');
