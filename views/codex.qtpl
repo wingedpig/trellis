@@ -288,8 +288,7 @@ if (container) {
 
                 <!-- Generated tags (wrap-up only) -->
                 <div class="mb-3" id="wrapUpTagsSection" style="display:none">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                    <div class="d-flex justify-content-end align-items-center mb-1">
                         <span class="small text-muted" id="wrapUpTagsStatus"></span>
                     </div>
                     <div>

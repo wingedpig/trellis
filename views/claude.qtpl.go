@@ -442,8 +442,7 @@ if (container) {
 
                 <!-- Generated tags (wrap-up only) -->
                 <div class="mb-3" id="wrapUpTagsSection" style="display:none">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label class="form-label mb-0">Tags <small class="text-muted">(generated — click × to drop)</small></label>
+                    <div class="d-flex justify-content-end align-items-center mb-1">
                         <span class="small text-muted" id="wrapUpTagsStatus"></span>
                     </div>
                     <div>
@@ -488,36 +487,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:428
+//line views/claude.qtpl:427
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:428
+//line views/claude.qtpl:427
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 }
 
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 }
 
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 	return qs422016
-//line views/claude.qtpl:429
+//line views/claude.qtpl:428
 }
