@@ -21,10 +21,13 @@ type SummaryInput struct {
 	TranscriptSummaries []string // brief summaries / preview lines for attached transcripts
 	CommitDescriptions  []string // per-commit descriptions accumulated during the case
 	TraceSummaries      []string // one-line summary per linked trace
+	ChangedPaths        []string // repo-relative paths the case touched; source for deterministic components
 	Cwd                 string
 }
 
-// SummaryOutput is the JSON shape we expect from the model.
+// SummaryOutput is the structured case summary. The prose fields come from the
+// model; Components is derived deterministically from the changed paths (see
+// DeriveComponents) and overwrites whatever the model may have returned.
 type SummaryOutput struct {
 	Synopsis   string   `json:"synopsis"`
 	Symptoms   string   `json:"symptoms"`
@@ -43,20 +46,13 @@ type GeneratedSummary struct {
 
 const summaryPromptTemplate = `You are summarizing a completed development "case" — a unit of work that has been wrapped up. The summary will be stored alongside the case for later retrieval ("find the case where we fixed X") and should be optimized for full-text search.
 
-Return your response as a single JSON object on its own with exactly these fields. Components MUST be an array of strings.
+Return your response as a single JSON object on its own with exactly these fields.
 {
   "synopsis":    "<one human-readable line, ideally under 120 chars>",
   "symptoms":    "<the observable problem, error messages, or user-facing behavior — empty string if not applicable, e.g. a feature with no precipitating bug>",
   "root_cause":  "<what was actually wrong, if there was a wrong — empty string for feature work or investigations with no resolution>",
-  "resolution":  "<what changed — the approach, not the full diff>",
-  "components":  ["<short machine-friendly identifiers for the parts of the codebase touched>"]
+  "resolution":  "<what changed — the approach, not the full diff>"
 }
-
-Rules for "components":
-  - Each entry is a SHORT identifier — a package path ("internal/cases"), a directory ("views"), a single-word subsystem ("wrap-up", "summary-generation"), or a service name. Lowercase, hyphens or slashes only.
-  - NEVER an English phrase ("the case detail page", "wrap up workflow"). Convert prose to kebab-case identifiers.
-  - Draw from real file paths, package names, or subsystem labels evident in the inputs — don't invent.
-  - 1-6 entries. Omit anything ambiguous rather than padding.
 
 Important: this case's KIND is %q and STATUS is %q. Calibrate accordingly — do NOT assume a feature is a "resolved bug" or that a wontfix has a "resolution". Empty strings are fine when a field doesn't apply.
 
@@ -92,7 +88,9 @@ func GenerateCaseSummary(ctx context.Context, in SummaryInput) (*GeneratedSummar
 	if strings.TrimSpace(out.Synopsis) == "" {
 		return nil, fmt.Errorf("generated summary has empty synopsis")
 	}
-	out.Components = NormalizeComponents(out.Components)
+	// Components are derived deterministically from the changed paths, not
+	// taken from the model — grounded in real paths by construction.
+	out.Components = DeriveComponents(in.ChangedPaths)
 	return &GeneratedSummary{
 		SummaryOutput: out,
 		GeneratedAt:   time.Now(),

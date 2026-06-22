@@ -529,6 +529,7 @@ func generateCaseSummary(parent context.Context, deps commitDeps, worktreePath s
 		TranscriptSummaries: transcriptSummaries,
 		CommitDescriptions:  commitDescriptions,
 		TraceSummaries:      traceSummaries,
+		ChangedPaths:        changedPathsForCase(ctx, deps, worktreePath, c, files),
 		Cwd:                 worktreePath,
 	})
 	if err != nil {
@@ -590,6 +591,7 @@ func regenerateSummaryForCase(parent context.Context, deps commitDeps, worktreeP
 		TranscriptSummaries: transcriptSummaries,
 		CommitDescriptions:  commitDescriptions,
 		TraceSummaries:      traceSummaries,
+		ChangedPaths:        changedPathsForCase(ctx, deps, worktreePath, c, nil),
 		Cwd:                 worktreePath,
 	})
 	if err != nil {
@@ -604,6 +606,45 @@ func regenerateSummaryForCase(parent context.Context, deps commitDeps, worktreeP
 		GeneratedAt: gen.GeneratedAt,
 		Model:       gen.Model,
 	}, nil
+}
+
+// changedPathsForCase gathers repo-relative paths a case touched, for
+// deterministic component derivation (see genai.DeriveComponents). `extra` is
+// any caller-supplied set (e.g. the wrap-up commit's selected files); the
+// case's recorded intermediate commits are unioned in. When no `extra` is
+// supplied (the regenerate path) the wrap-up commit — which isn't recorded in
+// c.Commits — is located from git history and added too, so archived cases
+// still yield components.
+func changedPathsForCase(ctx context.Context, deps commitDeps, worktreePath string, c *cases.CaseJSON, extra []string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		if _, dup := seen[p]; dup {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	for _, p := range extra {
+		add(p)
+	}
+	for _, ce := range c.Commits {
+		for _, p := range ce.FilesChanged {
+			add(p)
+		}
+	}
+	if len(extra) == 0 && deps.caseMgr != nil && c.ID != "" {
+		if wu := FindWrapUpCommit(ctx, worktreePath, deps.caseMgr.ArchivedRelDir(), c.ID); wu != nil {
+			for _, p := range wu.FilesChanged {
+				add(p)
+			}
+		}
+	}
+	return out
 }
 
 func traceSummariesForCase(deps commitDeps, worktreePath, caseID string) []string {
