@@ -48,7 +48,7 @@ type WrapUpCommitInfo struct {
                     </button>
                     {% endif %}
                 </div>
-                <div id="case-title-edit" class="d-flex align-items-center gap-2" style="display:none">
+                <div id="case-title-edit" class="d-none align-items-center gap-2">
                     <input type="text" id="case-title-input" class="form-control form-control-lg" style="max-width: 32rem;">
                     <button class="btn btn-primary btn-sm" onclick="saveCaseTitle()">
                         <i class="fa-solid fa-check"></i> Save
@@ -589,17 +589,26 @@ function addLink() {
 }
 
 // Inline title edit. The case ID is immutable; only the title changes.
+// Toggle between the title view and edit forms by swapping Bootstrap display
+// utility classes. Both .d-flex and .d-none are `!important`, so we must swap
+// classes rather than set inline `display` (an inline style without
+// !important loses to the utility class — which is what left the rename field
+// permanently visible).
 function editCaseTitle() {
     var current = document.getElementById('case-title-h2').textContent;
     document.getElementById('case-title-input').value = current;
-    document.getElementById('case-title-view').style.display = 'none';
-    document.getElementById('case-title-edit').style.display = 'flex';
+    var view = document.getElementById('case-title-view');
+    var edit = document.getElementById('case-title-edit');
+    view.classList.add('d-none'); view.classList.remove('d-flex');
+    edit.classList.remove('d-none'); edit.classList.add('d-flex');
     document.getElementById('case-title-input').focus();
 }
 
 function cancelEditCaseTitle() {
-    document.getElementById('case-title-edit').style.display = 'none';
-    document.getElementById('case-title-view').style.display = 'flex';
+    var view = document.getElementById('case-title-view');
+    var edit = document.getElementById('case-title-edit');
+    edit.classList.add('d-none'); edit.classList.remove('d-flex');
+    view.classList.remove('d-none'); view.classList.add('d-flex');
 }
 
 function saveCaseTitle() {

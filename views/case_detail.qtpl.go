@@ -97,7 +97,7 @@ func (p *CaseDetailPage) StreamRender(qw422016 *qt422016.Writer) {
 //line views/case_detail.qtpl:49
 	qw422016.N().S(`
                 </div>
-                <div id="case-title-edit" class="d-flex align-items-center gap-2" style="display:none">
+                <div id="case-title-edit" class="d-none align-items-center gap-2">
                     <input type="text" id="case-title-input" class="form-control form-control-lg" style="max-width: 32rem;">
                     <button class="btn btn-primary btn-sm" onclick="saveCaseTitle()">
                         <i class="fa-solid fa-check"></i> Save
@@ -1111,17 +1111,42 @@ function addLink() {
 }
 
 // Inline title edit. The case ID is immutable; only the title changes.
+// Toggle between the title view and edit forms by swapping Bootstrap display
+// utility classes. Both .d-flex and .d-none are `)
+//line views/case_detail.qtpl:377
+	qw422016.N().S("`")
+//line views/case_detail.qtpl:377
+	qw422016.N().S(`!important`)
+//line views/case_detail.qtpl:377
+	qw422016.N().S("`")
+//line views/case_detail.qtpl:377
+	qw422016.N().S(`, so we must swap
+// classes rather than set inline `)
+//line views/case_detail.qtpl:377
+	qw422016.N().S("`")
+//line views/case_detail.qtpl:377
+	qw422016.N().S(`display`)
+//line views/case_detail.qtpl:377
+	qw422016.N().S("`")
+//line views/case_detail.qtpl:377
+	qw422016.N().S(` (an inline style without
+// !important loses to the utility class — which is what left the rename field
+// permanently visible).
 function editCaseTitle() {
     var current = document.getElementById('case-title-h2').textContent;
     document.getElementById('case-title-input').value = current;
-    document.getElementById('case-title-view').style.display = 'none';
-    document.getElementById('case-title-edit').style.display = 'flex';
+    var view = document.getElementById('case-title-view');
+    var edit = document.getElementById('case-title-edit');
+    view.classList.add('d-none'); view.classList.remove('d-flex');
+    edit.classList.remove('d-none'); edit.classList.add('d-flex');
     document.getElementById('case-title-input').focus();
 }
 
 function cancelEditCaseTitle() {
-    document.getElementById('case-title-edit').style.display = 'none';
-    document.getElementById('case-title-view').style.display = 'flex';
+    var view = document.getElementById('case-title-view');
+    var edit = document.getElementById('case-title-edit');
+    edit.classList.add('d-none'); edit.classList.remove('d-flex');
+    view.classList.remove('d-none'); view.classList.add('d-flex');
 }
 
 function saveCaseTitle() {
@@ -1314,13 +1339,13 @@ function continueCodexTranscript(codexId) {
 var WRAPUP_WORKTREE = WORKTREE_NAME;
 var WRAPUP_SESSION_ID = null;
 var WRAPUP_CASE = {id: CASE_ID, title: `)
-//line views/case_detail.qtpl:794
+//line views/case_detail.qtpl:803
 	qw422016.N().S(notesJSONSafe(p.Case.Title))
-//line views/case_detail.qtpl:794
+//line views/case_detail.qtpl:803
 	qw422016.N().S(`, kind: '`)
-//line views/case_detail.qtpl:794
+//line views/case_detail.qtpl:803
 	qw422016.E().S(p.Case.Kind)
-//line views/case_detail.qtpl:794
+//line views/case_detail.qtpl:803
 	qw422016.N().S(`'};
 // SPA: snapshot wrap-up globals on page-leaving and restore on page-entered.
 // Using page-leaving captures in-page mutations (e.g. WRAPUP_CASE.title being
@@ -1447,198 +1472,198 @@ var WRAPUP_CASE = {id: CASE_ID, title: `)
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/case_detail.qtpl:919
+//line views/case_detail.qtpl:928
 	p.StreamFooter(qw422016)
-//line views/case_detail.qtpl:919
+//line views/case_detail.qtpl:928
 	qw422016.N().S(`
 `)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 }
 
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 func (p *CaseDetailPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	p.StreamRender(qw422016)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	qt422016.ReleaseWriter(qw422016)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 }
 
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 func (p *CaseDetailPage) Render() string {
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	p.WriteRender(qb422016)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	qs422016 := string(qb422016.B)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 	return qs422016
-//line views/case_detail.qtpl:920
+//line views/case_detail.qtpl:929
 }
 
-//line views/case_detail.qtpl:922
+//line views/case_detail.qtpl:931
 func streamrenderSummary(qw422016 *qt422016.Writer, s *cases.CaseSummary) {
-//line views/case_detail.qtpl:922
+//line views/case_detail.qtpl:931
 	qw422016.N().S(`
 `)
-//line views/case_detail.qtpl:923
+//line views/case_detail.qtpl:932
 	if s == nil {
-//line views/case_detail.qtpl:923
+//line views/case_detail.qtpl:932
 		return
-//line views/case_detail.qtpl:923
+//line views/case_detail.qtpl:932
 	}
-//line views/case_detail.qtpl:923
+//line views/case_detail.qtpl:932
 	qw422016.N().S(`
 <dl class="case-summary mb-0">
     `)
-//line views/case_detail.qtpl:925
+//line views/case_detail.qtpl:934
 	if s.Synopsis != "" {
-//line views/case_detail.qtpl:925
+//line views/case_detail.qtpl:934
 		qw422016.N().S(`
     <dt>Synopsis</dt>
     <dd data-field="synopsis">`)
-//line views/case_detail.qtpl:927
+//line views/case_detail.qtpl:936
 		qw422016.E().S(s.Synopsis)
-//line views/case_detail.qtpl:927
+//line views/case_detail.qtpl:936
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:928
+//line views/case_detail.qtpl:937
 	}
-//line views/case_detail.qtpl:928
+//line views/case_detail.qtpl:937
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:929
+//line views/case_detail.qtpl:938
 	if s.Symptoms != "" {
-//line views/case_detail.qtpl:929
+//line views/case_detail.qtpl:938
 		qw422016.N().S(`
     <dt>Symptoms</dt>
     <dd data-field="symptoms">`)
-//line views/case_detail.qtpl:931
+//line views/case_detail.qtpl:940
 		qw422016.E().S(s.Symptoms)
-//line views/case_detail.qtpl:931
+//line views/case_detail.qtpl:940
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:932
+//line views/case_detail.qtpl:941
 	}
-//line views/case_detail.qtpl:932
+//line views/case_detail.qtpl:941
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:933
+//line views/case_detail.qtpl:942
 	if s.RootCause != "" {
-//line views/case_detail.qtpl:933
+//line views/case_detail.qtpl:942
 		qw422016.N().S(`
     <dt>Root cause</dt>
     <dd data-field="root_cause">`)
-//line views/case_detail.qtpl:935
+//line views/case_detail.qtpl:944
 		qw422016.E().S(s.RootCause)
-//line views/case_detail.qtpl:935
+//line views/case_detail.qtpl:944
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:936
+//line views/case_detail.qtpl:945
 	}
-//line views/case_detail.qtpl:936
+//line views/case_detail.qtpl:945
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:937
+//line views/case_detail.qtpl:946
 	if s.Resolution != "" {
-//line views/case_detail.qtpl:937
+//line views/case_detail.qtpl:946
 		qw422016.N().S(`
     <dt>Resolution</dt>
     <dd data-field="resolution">`)
-//line views/case_detail.qtpl:939
+//line views/case_detail.qtpl:948
 		qw422016.E().S(s.Resolution)
-//line views/case_detail.qtpl:939
+//line views/case_detail.qtpl:948
 		qw422016.N().S(`</dd>
     `)
-//line views/case_detail.qtpl:940
+//line views/case_detail.qtpl:949
 	}
-//line views/case_detail.qtpl:940
+//line views/case_detail.qtpl:949
 	qw422016.N().S(`
     `)
-//line views/case_detail.qtpl:941
+//line views/case_detail.qtpl:950
 	if len(s.Components) > 0 {
-//line views/case_detail.qtpl:941
+//line views/case_detail.qtpl:950
 		qw422016.N().S(`
     <dt>Components</dt>
     <dd data-field="components">
         `)
-//line views/case_detail.qtpl:944
+//line views/case_detail.qtpl:953
 		for _, c := range s.Components {
-//line views/case_detail.qtpl:944
+//line views/case_detail.qtpl:953
 			qw422016.N().S(`<span class="badge bg-info me-1">`)
-//line views/case_detail.qtpl:944
+//line views/case_detail.qtpl:953
 			qw422016.E().S(c)
-//line views/case_detail.qtpl:944
+//line views/case_detail.qtpl:953
 			qw422016.N().S(`</span>`)
-//line views/case_detail.qtpl:944
+//line views/case_detail.qtpl:953
 		}
-//line views/case_detail.qtpl:944
+//line views/case_detail.qtpl:953
 		qw422016.N().S(`
     </dd>
     `)
-//line views/case_detail.qtpl:946
+//line views/case_detail.qtpl:955
 	}
-//line views/case_detail.qtpl:946
+//line views/case_detail.qtpl:955
 	qw422016.N().S(`
 </dl>
 <div class="small text-muted mt-2">
     `)
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 	if s.Model != "" {
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 		qw422016.N().S(`Model: `)
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 		qw422016.E().S(s.Model)
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 		qw422016.N().S(`. `)
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 	}
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 	qw422016.N().S(`Generated `)
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 	qw422016.E().S(s.GeneratedAt.Format("2006-01-02 15:04"))
-//line views/case_detail.qtpl:949
+//line views/case_detail.qtpl:958
 	qw422016.N().S(`.
 </div>
 `)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 }
 
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 func writerenderSummary(qq422016 qtio422016.Writer, s *cases.CaseSummary) {
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	streamrenderSummary(qw422016, s)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	qt422016.ReleaseWriter(qw422016)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 }
 
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 func renderSummary(s *cases.CaseSummary) string {
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	writerenderSummary(qb422016, s)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	qs422016 := string(qb422016.B)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 	return qs422016
-//line views/case_detail.qtpl:951
+//line views/case_detail.qtpl:960
 }
 
 // firstLine returns the first non-empty line of s, used to render commit
 // messages compactly on the case detail page.
 //
-//line views/case_detail.qtpl:954
+//line views/case_detail.qtpl:963
 func firstLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
