@@ -429,9 +429,10 @@ function _deriveComponents(body) {
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
         if (!d) return;
+        var data = d.data || d;  // unwrap the WriteJSON {data,meta} envelope
         // Don't clobber chips the user may already have edited.
         if (_modalState.componentsLoaded) return;
-        _modalState.components = (d.components || []).slice();
+        _modalState.components = (data.components || []).slice();
         _modalState.componentsLoaded = true;
         _renderChips();
     })
