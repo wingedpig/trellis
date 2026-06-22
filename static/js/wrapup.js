@@ -351,7 +351,7 @@ function _generateSummary() {
 
     _modalState.summaryInflight = true;
     if (section) section.style.display = '';
-    if (statusEl) statusEl.textContent = 'Generating…';
+    if (statusEl) statusEl.textContent = '';
     _modalState.components = [];
     _modalState.componentsLoaded = false;
     _renderChips();
