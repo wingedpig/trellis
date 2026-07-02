@@ -21,17 +21,18 @@ import (
 	"github.com/wingedpig/trellis/internal/api/handlers"
 	"github.com/wingedpig/trellis/internal/api/middleware"
 	"github.com/wingedpig/trellis/internal/cases"
+	"github.com/wingedpig/trellis/internal/checklist"
 	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/inbox"
-	"github.com/wingedpig/trellis/internal/skill"
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/pair"
 	"github.com/wingedpig/trellis/internal/proxy"
 	"github.com/wingedpig/trellis/internal/service"
+	"github.com/wingedpig/trellis/internal/skill"
 	"github.com/wingedpig/trellis/internal/terminal"
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/usage"
@@ -44,28 +45,29 @@ import (
 type App struct {
 	mu sync.RWMutex
 
-	configPath       string // Path to config file (for determining repo directory)
-	worktreeOverride string // Worktree name/branch override from command line
-	version          string // Application version string
-	originalConfig   *config.Config // Original unexpanded config (for worktree switching)
-	config           *config.Config // Expanded config for current worktree
-	eventBus         events.EventBus
-	serviceManager   service.Manager
-	worktreeManager  worktree.Manager
-	workflowRunner   workflow.Runner
-	terminalManager  terminal.Manager
-	logManager       *logs.Manager
-	traceManager     *trace.Manager
-	crashManager     *crashes.Manager
-	binaryWatcher    *watcher.BinaryWatcher
-	vsCodeHandler    *handlers.VSCodeHandler
-	claudeManager    *claude.Manager
-	codexManager     *codex.Manager
-	caseManager      *cases.Manager
-	inboxAggregator  *inbox.Aggregator
-	pairRegistry     *pair.Registry
-	proxyManager     *proxy.Manager
-	apiServer        *api.Server
+	configPath        string         // Path to config file (for determining repo directory)
+	worktreeOverride  string         // Worktree name/branch override from command line
+	version           string         // Application version string
+	originalConfig    *config.Config // Original unexpanded config (for worktree switching)
+	config            *config.Config // Expanded config for current worktree
+	eventBus          events.EventBus
+	serviceManager    service.Manager
+	worktreeManager   worktree.Manager
+	workflowRunner    workflow.Runner
+	terminalManager   terminal.Manager
+	logManager        *logs.Manager
+	traceManager      *trace.Manager
+	crashManager      *crashes.Manager
+	binaryWatcher     *watcher.BinaryWatcher
+	vsCodeHandler     *handlers.VSCodeHandler
+	claudeManager     *claude.Manager
+	codexManager      *codex.Manager
+	caseManager       *cases.Manager
+	inboxAggregator   *inbox.Aggregator
+	pairRegistry      *pair.Registry
+	checklistRegistry *checklist.Registry
+	proxyManager      *proxy.Manager
+	apiServer         *api.Server
 
 	done     chan struct{}
 	stopOnce sync.Once
@@ -395,6 +397,23 @@ func (app *App) Initialize(ctx context.Context) error {
 		)
 		pair.EnsureGlobalRegistry(app.pairRegistry)
 		app.pairRegistry.Rehydrate()
+
+		// Checklist registry — phased-checklist outer loops built on top of
+		// pairs (see PHASE_LOOP_SPEC.md). Rehydrated AFTER the pair registry so
+		// each run's active review pair already exists when its driver resumes.
+		checklistStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "checklist-runs")
+		checklistStore, err := checklist.NewStore(checklistStateDir)
+		if err != nil {
+			log.Printf("checklist store init failed: %v", err)
+		} else {
+			app.checklistRegistry = checklist.NewRegistry(
+				checklistStore,
+				&pair.Agents{Claude: app.claudeManager, Codex: app.codexManager},
+				app.pairRegistry,
+				app.eventBus,
+			)
+			app.checklistRegistry.Rehydrate()
+		}
 	}
 
 	// Initialize case manager
@@ -823,25 +842,26 @@ func (app *App) Initialize(ctx context.Context) error {
 			PermitAnyHost:  permitAnyHost,
 		},
 		api.Dependencies{
-			ServiceManager:  app.serviceManager,
-			WorktreeManager: app.worktreeManager,
-			WorkflowRunner:  app.workflowRunner,
-			TerminalManager: app.terminalManager,
-			LogManager:      app.logManager,
-			TraceManager:    app.traceManager,
-			CrashManager:    app.crashManager,
-			EventBus:        app.eventBus,
-			ClaudeManager:   app.claudeManager,
-			CodexManager:    app.codexManager,
-			UsageManager:    usage.NewManager(),
-			CaseManager:     app.caseManager,
-			InboxAggregator: app.inboxAggregator,
-			PairRegistry:    app.pairRegistry,
-			VSCodeHandler:   app.vsCodeHandler,
-			Shortcuts:       shortcuts,
-			Notifications:   notifications,
-			Links:           links,
-			Version:         app.version,
+			ServiceManager:    app.serviceManager,
+			WorktreeManager:   app.worktreeManager,
+			WorkflowRunner:    app.workflowRunner,
+			TerminalManager:   app.terminalManager,
+			LogManager:        app.logManager,
+			TraceManager:      app.traceManager,
+			CrashManager:      app.crashManager,
+			EventBus:          app.eventBus,
+			ClaudeManager:     app.claudeManager,
+			CodexManager:      app.codexManager,
+			UsageManager:      usage.NewManager(),
+			CaseManager:       app.caseManager,
+			InboxAggregator:   app.inboxAggregator,
+			PairRegistry:      app.pairRegistry,
+			ChecklistRegistry: app.checklistRegistry,
+			VSCodeHandler:     app.vsCodeHandler,
+			Shortcuts:         shortcuts,
+			Notifications:     notifications,
+			Links:             links,
+			Version:           app.version,
 		},
 	)
 
@@ -983,6 +1003,13 @@ func (app *App) Shutdown(ctx context.Context) error {
 	// Stop log viewers
 	if app.logManager != nil {
 		app.logManager.Stop()
+	}
+
+	// Stop checklist drivers before pair drivers (a running review phase is a
+	// pair; stop the outer loop first so it doesn't react to the pair going
+	// away). Records remain on disk; active runs resume on next start.
+	if app.checklistRegistry != nil {
+		app.checklistRegistry.Shutdown(shutdownCtx)
 	}
 
 	// Stop pair drivers (records remain on disk; active loops resume on

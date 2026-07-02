@@ -20,6 +20,7 @@ import (
 	"github.com/wingedpig/trellis/internal/api/middleware"
 	"github.com/wingedpig/trellis/internal/api/version"
 	"github.com/wingedpig/trellis/internal/cases"
+	"github.com/wingedpig/trellis/internal/checklist"
 	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/codex"
 	"github.com/wingedpig/trellis/internal/crashes"
@@ -57,27 +58,28 @@ type ServerConfig struct {
 
 // Dependencies holds all dependencies for API handlers.
 type Dependencies struct {
-	ServiceManager  service.Manager
-	WorktreeManager worktree.Manager
-	WorkflowRunner  workflow.Runner
-	TerminalManager terminal.Manager
-	EventBus        events.EventBus
-	LogManager      *logs.Manager                // Log viewer manager
-	TraceManager    *trace.Manager               // Distributed trace manager
-	CrashManager    *crashes.Manager             // Crash history manager
-	ClaudeManager   *claude.Manager              // Claude Code session manager
-	CodexManager    *codex.Manager               // OpenAI Codex session manager
-	UsageManager    *usage.Manager               // Claude Code token usage/cost reports
-	CaseManager     *cases.Manager               // Case objects manager
-	InboxAggregator *inbox.Aggregator            // Cross-agent session inbox
-	PairRegistry    *pair.Registry               // Paired review loops
-	VSCodeHandler   *handlers.VSCodeHandler
-	Shortcuts       []handlers.ShortcutConfig    // Keyboard shortcuts for terminal windows
-	Notifications   handlers.NotificationConfig  // Browser notification settings
-	Links           []handlers.LinkConfig        // Links for terminal picker
-	Version         string                       // Application version string
-	AllowedOrigins  []string                     // Cross-origin browser origins permitted to reach the API
-	PermitAnyHost   bool                         // Skip Host-header allow-list (set when bind is non-loopback)
+	ServiceManager    service.Manager
+	WorktreeManager   worktree.Manager
+	WorkflowRunner    workflow.Runner
+	TerminalManager   terminal.Manager
+	EventBus          events.EventBus
+	LogManager        *logs.Manager       // Log viewer manager
+	TraceManager      *trace.Manager      // Distributed trace manager
+	CrashManager      *crashes.Manager    // Crash history manager
+	ClaudeManager     *claude.Manager     // Claude Code session manager
+	CodexManager      *codex.Manager      // OpenAI Codex session manager
+	UsageManager      *usage.Manager      // Claude Code token usage/cost reports
+	CaseManager       *cases.Manager      // Case objects manager
+	InboxAggregator   *inbox.Aggregator   // Cross-agent session inbox
+	PairRegistry      *pair.Registry      // Paired review loops
+	ChecklistRegistry *checklist.Registry // Phased-checklist outer loops
+	VSCodeHandler     *handlers.VSCodeHandler
+	Shortcuts         []handlers.ShortcutConfig   // Keyboard shortcuts for terminal windows
+	Notifications     handlers.NotificationConfig // Browser notification settings
+	Links             []handlers.LinkConfig       // Links for terminal picker
+	Version           string                      // Application version string
+	AllowedOrigins    []string                    // Cross-origin browser origins permitted to reach the API
+	PermitAnyHost     bool                        // Skip Host-header allow-list (set when bind is non-loopback)
 }
 
 // NewRouter creates a new API router with its own terminal handler. It is a
@@ -103,6 +105,22 @@ func registerPairRoutes(api *mux.Router, h *handlers.PairHandler) {
 	api.HandleFunc("/pair/{id}/force-relay", h.ForceRelay).Methods("POST")
 	api.HandleFunc("/pair/{id}/config", h.UpdateConfig).Methods("POST")
 	api.HandleFunc("/pair/{id}/confirm", h.Confirm).Methods("POST")
+}
+
+// registerChecklistRoutes mounts the phased-checklist outer-loop endpoints.
+// Order matters: more specific paths first.
+func registerChecklistRoutes(api *mux.Router, h *handlers.ChecklistHandler) {
+	api.HandleFunc("/checklist", h.List).Methods("GET")
+	api.HandleFunc("/checklist", h.Create).Methods("POST")
+	api.HandleFunc("/checklist/ws", h.WebSocket).Methods("GET")
+	api.HandleFunc("/checklist/by-session/{session}", h.FindBySession).Methods("GET")
+	api.HandleFunc("/checklist/{id}", h.Get).Methods("GET")
+	api.HandleFunc("/checklist/{id}", h.Forget).Methods("DELETE")
+	api.HandleFunc("/checklist/{id}/pause", h.Pause).Methods("POST")
+	api.HandleFunc("/checklist/{id}/resume", h.Resume).Methods("POST")
+	api.HandleFunc("/checklist/{id}/stop", h.Stop).Methods("POST")
+	api.HandleFunc("/checklist/{id}/skip", h.Skip).Methods("POST")
+	api.HandleFunc("/checklist/{id}/retry", h.Retry).Methods("POST")
 }
 
 // registerPageRoutes registers all UI page routes on the given router.
@@ -240,6 +258,13 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		pairHandler := handlers.NewPairHandler(deps.PairRegistry, deps.EventBus)
 		pairHandler.SetUpgrader(ws)
 		registerPairRoutes(api, pairHandler)
+	}
+
+	// Checklist handlers (phased-checklist outer loops; see PHASE_LOOP_SPEC.md)
+	if deps.ChecklistRegistry != nil {
+		checklistHandler := handlers.NewChecklistHandler(deps.ChecklistRegistry, deps.EventBus)
+		checklistHandler.SetUpgrader(ws)
+		registerChecklistRoutes(api, checklistHandler)
 	}
 
 	// Terminal handlers (using the provided handler)
