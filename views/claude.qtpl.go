@@ -64,21 +64,20 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
             <button id="claude-cancel-btn" class="btn btn-outline-danger claude-btn" onclick="claudeCancel()" title="Cancel" style="display:none;">
                 <i class="fa-solid fa-stop"></i>
             </button>
-            <button id="claude-reset-btn" class="btn btn-outline-secondary claude-btn" onclick="claudeReset()" title="New conversation">
-                <i class="fa-solid fa-rotate-right"></i>
-            </button>
-            <button id="claude-plan-btn" class="btn btn-outline-secondary claude-btn" onclick="claudeShowPlan()" title="View plan" style="display:none;">
-                <i class="fa-solid fa-clipboard-check"></i>
-            </button>
-            <button class="btn btn-outline-secondary claude-btn" onclick="showSaveToCaseModal()" title="Save to case">
-                <i class="fa-solid fa-briefcase"></i>
-            </button>
-            <button class="btn btn-outline-secondary claude-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
-                <i class="fa-solid fa-code-commit"></i>
-            </button>
-            <button class="btn btn-outline-secondary claude-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
-                <i class="fa-solid fa-flag-checkered"></i>
-            </button>
+            <div class="dropup claude-actions">
+                <button type="button" class="btn btn-outline-secondary claude-btn" data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button class="dropdown-item" type="button" onclick="claudeReset()"><i class="fa-solid fa-rotate-right fa-fw"></i> New conversation</button></li>
+                    <li><button id="claude-plan-btn" class="dropdown-item" type="button" onclick="claudeShowPlan()" style="display:none;"><i class="fa-solid fa-clipboard-check fa-fw"></i> View plan</button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button class="dropdown-item" type="button" onclick="showSaveToCaseModal()"><i class="fa-solid fa-briefcase fa-fw"></i> Save to case</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="showCommitModal('commit')"><i class="fa-solid fa-code-commit fa-fw"></i> Commit</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="showCommitModal('wrapup')"><i class="fa-solid fa-flag-checkered fa-fw"></i> Wrap up</button></li>
+                    <!-- pair.js and checklist.js inject their items at the end of this menu -->
+                </ul>
+            </div>
         </div>
         <div class="claude-input-footer">
             <div class="claude-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
@@ -106,14 +105,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // commit / wrap-up on a cache-restored session would target whichever
 // session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:82
+//line views/claude.qtpl:81
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:82
+//line views/claude.qtpl:81
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:83
+//line views/claude.qtpl:82
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:83
+//line views/claude.qtpl:82
 	qw422016.N().S(`';
 
 function localShowSaveToCaseModal() {
@@ -302,37 +301,37 @@ if (container) {
 // (e.g. set after creating a new case via the wrap-up flow) survive the
 // SPA cache round-trip. Restore on page-entered.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:270
+//line views/claude.qtpl:269
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:270
+//line views/claude.qtpl:269
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:271
+//line views/claude.qtpl:270
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:271
+//line views/claude.qtpl:270
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/claude.qtpl:272
+//line views/claude.qtpl:271
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/claude.qtpl:272
+//line views/claude.qtpl:271
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/claude.qtpl:273
+//line views/claude.qtpl:272
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:273
+//line views/claude.qtpl:272
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/claude.qtpl:274
+//line views/claude.qtpl:273
 	if p.IsDefaultBranch {
-//line views/claude.qtpl:274
+//line views/claude.qtpl:273
 		qw422016.N().S(`true`)
-//line views/claude.qtpl:274
+//line views/claude.qtpl:273
 	} else {
-//line views/claude.qtpl:274
+//line views/claude.qtpl:273
 		qw422016.N().S(`false`)
-//line views/claude.qtpl:274
+//line views/claude.qtpl:273
 	}
-//line views/claude.qtpl:274
+//line views/claude.qtpl:273
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -483,6 +482,7 @@ if (container) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/claude.js"></script>
 <script src="/static/js/pair.js"></script>
+<script src="/static/js/checklist.js"></script>
 <script src="/static/js/wrapup.js"></script>
 <script src="/static/js/workflow_picker.js"></script>
 

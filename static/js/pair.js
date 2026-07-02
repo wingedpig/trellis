@@ -133,21 +133,35 @@
     return document.querySelector('.claude-chat-container, .codex-chat-container');
   }
 
-  // applyChatContainerOffset re-sizes the chat container by subtracting
-  // `bannerPx` from the height that the page's CSS would otherwise compute.
-  // Inline-style specificity beats the class rule, so this reliably wins
-  // regardless of media-query order or cascade subtleties.
-  function applyChatContainerOffset(bannerPx) {
+  // totalTrellisBannerHeight sums the visible heights of every top-of-page
+  // session banner (pair + checklist). A checklist run's review phase is a
+  // pair, so both banners can be on-screen at once; the chat must shrink by
+  // their combined height. checklist.js runs the same computation, so
+  // whichever renders last still arrives at the correct total.
+  function totalTrellisBannerHeight() {
+    let h = 0;
+    ['checklist-banner', 'pair-banner'].forEach(function (id) {
+      const b = document.getElementById(id);
+      if (b && b.style.display !== 'none') h += b.offsetHeight;
+    });
+    return h;
+  }
+
+  // applyChatContainerOffset re-sizes the chat container by subtracting the
+  // combined banner height from the height the page CSS would otherwise
+  // compute. Inline-style specificity beats the class rule, so this reliably
+  // wins regardless of media-query order or cascade subtleties.
+  function applyChatContainerOffset() {
     const c = findChatContainer();
     if (!c) return;
+    const bannerPx = totalTrellisBannerHeight();
     if (!bannerPx) {
       c.style.removeProperty('height');
       return;
     }
     // Mirror the original page rule (calc(100vh - 120px) / 100dvh) and just
-    // subtract the banner. Use the larger of vh and dvh by writing two
-    // declarations — the second wins where supported, the first is the
-    // legacy fallback.
+    // subtract the banners. The second declaration wins where dvh is
+    // supported, the first is the legacy fallback.
     c.style.cssText += ';height: calc(100vh - 120px - ' + bannerPx + 'px);' +
                        'height: calc(100dvh - 120px - ' + bannerPx + 'px);';
   }
@@ -164,7 +178,7 @@
     if (!currentPair || currentPair.state === 'stopped' || !isParticipant) {
       banner.style.display = 'none';
       banner.innerHTML = '';
-      applyChatContainerOffset(0);
+      applyChatContainerOffset();
       return;
     }
     banner.style.display = 'block';
@@ -210,10 +224,10 @@
     }
     banner.appendChild(buttons);
 
-    // Resize the chat container to make room for the banner. Reading
-    // offsetHeight forces synchronous layout so we get the post-render
-    // value of a banner whose display just flipped from none to block.
-    applyChatContainerOffset(banner.offsetHeight);
+    // Resize the chat container to make room for the banner(s). Reading
+    // offsetHeight inside the helper forces synchronous layout so we get the
+    // post-render value of a banner whose display just flipped to block.
+    applyChatContainerOffset();
   }
 
   async function doAction(op) {
@@ -277,17 +291,22 @@
   // ---------- Pair-for-Review button ----------
 
   function injectToolbarButton() {
-    // Find the "Wrap up" button and add Pair next to it.
+    // The session toolbar is now a drop-up menu (see claude.qtpl / codex.qtpl).
+    // Anchor on the "Wrap up" item and append a matching dropdown-item to the
+    // same menu.
     const wrapUp = document.querySelector('[onclick*="showCommitModal(\'wrapup\')"]');
     if (!wrapUp || document.getElementById('pair-toolbar-btn')) return;
-    const btn = el('button', {
+    const menu = wrapUp.closest('ul.dropdown-menu');
+    if (!menu) return;
+    const item = el('button', {
       id: 'pair-toolbar-btn',
-      class: 'btn btn-outline-secondary ' + (me.agent === 'claude' ? 'claude-btn' : 'codex-btn'),
-      title: 'Start a paired review loop',
+      type: 'button',
+      class: 'dropdown-item',
       onclick: openCreateModal,
     });
-    btn.appendChild(el('i', { class: 'fa-solid fa-link' }));
-    wrapUp.parentNode.insertBefore(btn, wrapUp.nextSibling);
+    item.appendChild(el('i', { class: 'fa-solid fa-link fa-fw' }));
+    item.appendChild(document.createTextNode(' Pair for review'));
+    menu.appendChild(el('li', null, item));
   }
 
   // ---------- Modal scaffolding ----------

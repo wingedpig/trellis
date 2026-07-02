@@ -37,15 +37,17 @@ type CodexPage struct {
             <button id="codex-cancel-btn" class="btn btn-outline-danger codex-btn" onclick="codexCancel()" title="Cancel" style="display:none;">
                 <i class="fa-solid fa-stop"></i>
             </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showCodexSaveToCaseModal()" title="Save to case">
-                <i class="fa-solid fa-briefcase"></i>
-            </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
-                <i class="fa-solid fa-code-commit"></i>
-            </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
-                <i class="fa-solid fa-flag-checkered"></i>
-            </button>
+            <div class="dropup codex-actions">
+                <button type="button" class="btn btn-outline-secondary codex-btn" data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button class="dropdown-item" type="button" onclick="showCodexSaveToCaseModal()"><i class="fa-solid fa-briefcase fa-fw"></i> Save to case</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="showCommitModal('commit')"><i class="fa-solid fa-code-commit fa-fw"></i> Commit</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="showCommitModal('wrapup')"><i class="fa-solid fa-flag-checkered fa-fw"></i> Wrap up</button></li>
+                    <!-- pair.js and checklist.js inject their items at the end of this menu -->
+                </ul>
+            </div>
         </div>
         <div class="codex-input-footer">
             <div class="codex-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
@@ -353,6 +355,7 @@ if (container) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/codex.js"></script>
 <script src="/static/js/pair.js"></script>
+<script src="/static/js/checklist.js"></script>
 <script src="/static/js/wrapup.js"></script>
 <script src="/static/js/workflow_picker.js"></script>
 

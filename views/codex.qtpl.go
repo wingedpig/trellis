@@ -63,15 +63,17 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
             <button id="codex-cancel-btn" class="btn btn-outline-danger codex-btn" onclick="codexCancel()" title="Cancel" style="display:none;">
                 <i class="fa-solid fa-stop"></i>
             </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showCodexSaveToCaseModal()" title="Save to case">
-                <i class="fa-solid fa-briefcase"></i>
-            </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('commit')" title="Commit (intermediate)">
-                <i class="fa-solid fa-code-commit"></i>
-            </button>
-            <button class="btn btn-outline-secondary codex-btn" onclick="showCommitModal('wrapup')" title="Wrap up session">
-                <i class="fa-solid fa-flag-checkered"></i>
-            </button>
+            <div class="dropup codex-actions">
+                <button type="button" class="btn btn-outline-secondary codex-btn" data-bs-toggle="dropdown" aria-expanded="false" title="More actions">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button class="dropdown-item" type="button" onclick="showCodexSaveToCaseModal()"><i class="fa-solid fa-briefcase fa-fw"></i> Save to case</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="showCommitModal('commit')"><i class="fa-solid fa-code-commit fa-fw"></i> Commit</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="showCommitModal('wrapup')"><i class="fa-solid fa-flag-checkered fa-fw"></i> Wrap up</button></li>
+                    <!-- pair.js and checklist.js inject their items at the end of this menu -->
+                </ul>
+            </div>
         </div>
         <div class="codex-input-footer">
             <div class="codex-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
@@ -89,37 +91,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:65
+//line views/codex.qtpl:67
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:65
+//line views/codex.qtpl:67
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:66
+//line views/codex.qtpl:68
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:66
+//line views/codex.qtpl:68
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:67
+//line views/codex.qtpl:69
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:67
+//line views/codex.qtpl:69
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:68
+//line views/codex.qtpl:70
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:68
+//line views/codex.qtpl:70
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:69
+//line views/codex.qtpl:71
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:69
+//line views/codex.qtpl:71
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:69
+//line views/codex.qtpl:71
 	} else {
-//line views/codex.qtpl:69
+//line views/codex.qtpl:71
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:69
+//line views/codex.qtpl:71
 	}
-//line views/codex.qtpl:69
+//line views/codex.qtpl:71
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -407,40 +409,41 @@ if (container) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/codex.js"></script>
 <script src="/static/js/pair.js"></script>
+<script src="/static/js/checklist.js"></script>
 <script src="/static/js/wrapup.js"></script>
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:362
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:359
+//line views/codex.qtpl:362
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 }
 
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 }
 
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 	return qs422016
-//line views/codex.qtpl:360
+//line views/codex.qtpl:363
 }
