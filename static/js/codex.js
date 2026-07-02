@@ -483,7 +483,8 @@
     function openForkModal(index) {
         document.getElementById('codexForkIndex').value = String(index);
         document.getElementById('codexForkName').value = '';
-        document.getElementById('codexForkSubtitle').textContent = 'Forks session at message #' + (index + 1) + '.';
+        document.getElementById('codexForkSubtitle').textContent =
+            'The new session branches from this answer, keeping the ' + (index + 1) + ' messages up to and including it.';
         const modal = new bootstrap.Modal(document.getElementById('codexForkModal'));
         modal.show();
     }

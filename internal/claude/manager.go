@@ -2024,19 +2024,31 @@ func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayN
 	}
 
 	src.mu.Lock()
-	// Copy the message prefix.
+	if len(src.messages) == 0 {
+		src.mu.Unlock()
+		return nil, fmt.Errorf("source session has no messages to fork")
+	}
+	// Clamp the requested index.
 	if messageIndex < 0 {
 		messageIndex = 0
 	}
 	if messageIndex >= len(src.messages) {
 		messageIndex = len(src.messages) - 1
 	}
-	if len(src.messages) == 0 {
-		src.mu.Unlock()
-		return nil, fmt.Errorf("source session has no messages to fork")
+	// Never carry a trailing unanswered user question into the fork: walk back
+	// over trailing user messages so the new session ends on the last actual
+	// response. The UI only offers Fork on assistant messages, so this normally
+	// no-ops; it also guards direct API callers passing a user-message index.
+	end := messageIndex
+	for end >= 0 && src.messages[end].Role == "user" {
+		end--
 	}
-	prefix := make([]Message, messageIndex+1)
-	copy(prefix, src.messages[:messageIndex+1])
+	if end < 0 {
+		src.mu.Unlock()
+		return nil, fmt.Errorf("cannot fork before the first response")
+	}
+	prefix := make([]Message, end+1)
+	copy(prefix, src.messages[:end+1])
 	worktreeName := src.worktreeName
 	workDir := src.workDir
 	src.mu.Unlock()

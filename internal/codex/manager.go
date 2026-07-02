@@ -1595,9 +1595,23 @@ func (m *Manager) ForkSession(sourceID string, messageIndex int, displayName str
 	if messageIndex >= len(src.messages) {
 		messageIndex = len(src.messages) - 1
 	}
-	atLastMessage := messageIndex == len(src.messages)-1
-	prefix := make([]Message, messageIndex+1)
-	copy(prefix, src.messages[:messageIndex+1])
+	// Never carry a trailing unanswered user question into the fork: walk back
+	// over trailing user messages so the new session ends on the last actual
+	// response. The UI only offers Fork on assistant messages, so this normally
+	// no-ops; it also guards direct API callers passing a user-message index.
+	end := messageIndex
+	for end >= 0 && src.messages[end].Role == agentmsg.RoleUser {
+		end--
+	}
+	if end < 0 {
+		src.mu.Unlock()
+		return nil, fmt.Errorf("cannot fork before the first response")
+	}
+	// Recompute against the trimmed end: only a fork that still lands on the
+	// genuine last message may use Codex's server-side thread/fork.
+	atLastMessage := end == len(src.messages)-1
+	prefix := make([]Message, end+1)
+	copy(prefix, src.messages[:end+1])
 	worktreeName := src.worktreeName
 	workDir := src.workDir
 	srcThreadID := src.threadID

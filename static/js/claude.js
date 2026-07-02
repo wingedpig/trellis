@@ -6,7 +6,6 @@
     const inputEl = document.getElementById('claude-input');
     const sendBtn = document.getElementById('claude-send-btn');
     const cancelBtn = document.getElementById('claude-cancel-btn');
-    const resetBtn = document.getElementById('claude-reset-btn');
 
     let ws = null;
     let reconnectTimer = null;
@@ -1553,7 +1552,9 @@
         // Buttons go BEFORE the bubble in the DOM — flex-end right-aligns the
         // row, so the buttons appear to the left of the bubble.
         attachCopyButton(wrapper, function() { return text; });
-        if (typeof messageIndex === 'number') attachForkButton(wrapper, messageIndex);
+        // No fork button on user messages: forking at a question would carry an
+        // unanswered prompt into the new session. Fork is offered on assistant
+        // answers only (see the attachForkButton call in the assistant renderer).
         wrapper.appendChild(bubble);
         messagesEl.appendChild(wrapper);
     }
@@ -1599,9 +1600,11 @@
         if (input) input.value = '';
         if (idxEl) idxEl.value = String(messageIndex);
         if (subtitle) {
-            subtitle.textContent = 'The new session will contain the first ' +
-                (messageIndex + 1) + ' message' + (messageIndex === 0 ? '' : 's') +
-                ' of this conversation.';
+            // Fork is only offered on assistant answers now, so it always
+            // branches from a response — phrase it that way rather than as a
+            // bare message count.
+            subtitle.textContent = 'The new session branches from this answer, keeping the ' +
+                (messageIndex + 1) + ' messages up to and including it.';
         }
         var bs = bootstrap.Modal.getOrCreateInstance(modalEl);
         bs.show();
