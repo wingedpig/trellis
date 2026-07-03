@@ -80,6 +80,9 @@ type StreamEvent struct {
 	// control_request fields (permission prompts from --permission-prompt-tool stdio)
 	RequestID string          `json:"request_id,omitempty"`
 	Request   json.RawMessage `json:"request,omitempty"`
+	// control_response payload (CLI replies to control requests we send on
+	// stdin, e.g. interrupt and set_model)
+	Response json.RawMessage `json:"response,omitempty"`
 	// system init fields
 	SlashCommands []string `json:"slash_commands,omitempty"`
 	Skills        []string `json:"skills,omitempty"`
@@ -119,6 +122,33 @@ type stdinMessageInner struct {
 	Content []ContentBlock `json:"content"`
 }
 
+// stdinControlRequest is the JSON format for control requests sent to claude's
+// stdin (interrupt, set_model). The CLI acknowledges with a control_response
+// event carrying the same request_id.
+type stdinControlRequest struct {
+	Type      string            `json:"type"` // always "control_request"
+	RequestID string            `json:"request_id"`
+	Request   stdinControlInner `json:"request"`
+}
+
+type stdinControlInner struct {
+	Subtype string `json:"subtype"`
+	// Model is set for set_model requests: a model alias or full id. Omitted
+	// resets the CLI to its default model.
+	Model string `json:"model,omitempty"`
+}
+
+// Request-id prefixes for control requests we originate, so control_response
+// events can be routed back to the right fallback handling in readLoop.
+const (
+	interruptReqPrefix = "trellis-int-"
+	setModelReqPrefix  = "trellis-sm-"
+)
+
+// interruptTimeout is how long Interrupt waits for the CLI to abort the
+// in-flight turn before falling back to killing the process.
+const interruptTimeout = 10 * time.Second
+
 // SessionInfo is an exported, JSON-friendly summary of a session.
 type SessionInfo struct {
 	ID            string     `json:"id"`
@@ -151,6 +181,15 @@ type Session struct {
 	subscribers   map[chan StreamEvent]struct{}
 	started       bool
 	processGen    int // Generation counter to prevent stale readLoop cleanup
+	// turnGen increments on each Send. Interrupt's kill-fallback watchdog uses
+	// it to verify the turn it interrupted is still the one in flight, so it
+	// never kills the process out from under a newer turn.
+	turnGen int
+	// interruptRequested is true while a user-initiated interrupt is pending
+	// for the current turn. The result event of an interrupted turn reports
+	// is_error, which must not surface as an "error" inbox state — the user
+	// asked for the stop. Cleared at the start of each turn and on turn end.
+	interruptRequested bool
 	currentBlocks []ContentBlock
 	// Stream event accumulation (from --include-partial-messages)
 	hasStreamEvents    bool          // True once stream_event events are seen
@@ -167,15 +206,23 @@ type Session struct {
 	lastProcessCost float64 // last total_cost_usd seen from the current process
 	model           string  // most recent model id seen on this session
 	// modelOverride is a model alias (e.g. "opus", "sonnet") forced onto this
-	// session via the CLI's --model flag. Empty means the CLI default. Applied
-	// at process spawn, so changing it restarts the process.
+	// session. Empty means the CLI default. Applied via --model at process
+	// spawn; a running process is switched live with a set_model
+	// control_request so the process (and its background tasks) survives.
 	modelOverride string
 	// Cached from system init event
 	slashCommands []string
 	skills        []string
-	// Pending control_request event (permission prompt waiting for user response).
-	// Stored so reconnecting clients can re-display the prompt.
-	pendingControlRequest *StreamEvent
+	// Pending control_request events (permission prompts waiting for user
+	// response), in arrival order. Several can be outstanding at once —
+	// concurrent background agents each block on their own prompt — so this
+	// must not be a single slot: overwriting lost every prompt but the last,
+	// leaving those agents waiting forever. Entries are removed when the
+	// client answers (by request_id), when the CLI retracts one via
+	// control_cancel_request, or when the process exits (a dead process can
+	// never receive the response). NOT cleared on turn end: background-agent
+	// prompts outlive the turn that spawned them.
+	pendingControlRequests []*StreamEvent
 	// Inbox unread tracking. unread becomes true when this session transitions
 	// running → needs-you while no client is viewing it (viewerCount == 0).
 	// Cleared when a client opens the session WS or the session goes back to
@@ -918,11 +965,14 @@ func (s *Session) ModelOverride() string {
 	return s.modelOverride
 }
 
-// SetModel forces this session onto a model alias (e.g. "opus", "sonnet"),
-// passed to the claude CLI as --model on the next spawn. Because the override
-// only takes effect at process start, the running process is restarted; any
-// in-flight turn is aborted and the conversation resumes via --resume on the
-// next message. Pass "" to clear the override and fall back to the CLI default.
+// SetModel forces this session onto a model alias (e.g. "opus", "sonnet").
+// Pass "" to clear the override and fall back to the CLI default.
+//
+// A running process is switched live with a set_model control_request so the
+// process — and any background tasks it is tracking — survives; the alias is
+// also recorded so the next spawn passes it via --model. Only if the live
+// switch cannot be delivered (stdin write fails, or the CLI rejects it via a
+// control_response error) is the process restarted the old way.
 func (s *Session) SetModel(alias string) error {
 	if !IsValidModelAlias(alias) {
 		return fmt.Errorf("unknown model alias %q", alias)
@@ -933,33 +983,83 @@ func (s *Session) SetModel(alias string) error {
 		return nil
 	}
 	s.modelOverride = alias
-	// Restart the process so --model is applied. Mirrors MoveSession: cancel
-	// the context (kills the process) and reset run state; the next Send
-	// re-spawns via ensureProcess. Subscribers stay attached so connected
-	// clients keep their WebSocket.
+	running := s.stdin != nil
+	persist := s.persistFn
+	s.mu.Unlock()
+	if persist != nil {
+		persist()
+	}
+	if !running {
+		// No process; --model applies on the next spawn.
+		return nil
+	}
+	// The CLI accepts the same aliases as --model; an omitted model field
+	// resets to the default. A control_response error routes back through
+	// readLoop, which falls back to restartProcess.
+	req := stdinControlRequest{
+		Type:      "control_request",
+		RequestID: setModelReqPrefix + uuid.New().String(),
+		Request:   stdinControlInner{Subtype: "set_model", Model: alias},
+	}
+	if err := s.writeStdin(req); err != nil {
+		log.Printf("claude [%s]: set_model write failed, restarting process: %v", s.id, err)
+		s.restartProcess()
+	}
+	return nil
+}
+
+// restartProcess kills the running process and resets run state; the next
+// Send re-spawns via ensureProcess (resuming the conversation with --resume).
+// Subscribers stay attached so connected clients keep their WebSocket.
+func (s *Session) restartProcess() {
+	s.mu.Lock()
+	wasGenerating := s.generating
 	if s.cancel != nil {
 		s.cancel()
 	}
 	s.started = false
 	s.generating = false
+	s.interruptRequested = false
+	s.pendingControlRequests = nil
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
-	persist := s.persistFn
 	s.publishStateLocked()
 	s.mu.Unlock()
-	if persist != nil {
-		persist()
+	// See Cancel: clients only leave the generating state on a result event.
+	if wasGenerating {
+		s.fanOut(StreamEvent{Type: "result", Subtype: "process_restarted"})
 	}
-	return nil
 }
 
-// PendingControlRequest returns the pending control_request event, if any.
-// Used to re-display permission prompts to reconnecting clients.
-func (s *Session) PendingControlRequest() *StreamEvent {
+// PendingControlRequests returns the pending control_request events (oldest
+// first). Used to re-display permission prompts to reconnecting clients.
+func (s *Session) PendingControlRequests() []*StreamEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.pendingControlRequest
+	out := make([]*StreamEvent, len(s.pendingControlRequests))
+	copy(out, s.pendingControlRequests)
+	return out
+}
+
+// HasPendingControlRequest reports whether any permission prompt is waiting
+// for a user response.
+func (s *Session) HasPendingControlRequest() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.pendingControlRequests) > 0
+}
+
+// removePendingControlRequestLocked drops the pending prompt with the given
+// request_id. Caller must hold s.mu. Returns true if one was removed.
+func (s *Session) removePendingControlRequestLocked(requestID string) bool {
+	for i, p := range s.pendingControlRequests {
+		if p.RequestID == requestID {
+			s.pendingControlRequests = append(s.pendingControlRequests[:i], s.pendingControlRequests[i+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // publishStateLocked emits a session.state_changed event reflecting the
@@ -978,7 +1078,7 @@ func (s *Session) publishStateLocked() {
 		return
 	}
 	state := events.SessionStateRunning
-	if !s.generating || s.pendingControlRequest != nil {
+	if !s.generating || len(s.pendingControlRequests) > 0 {
 		state = events.SessionStateNeedsYou
 	}
 	if state == events.SessionStateNeedsYou &&
@@ -1011,7 +1111,7 @@ func (s *Session) publishStateLocked() {
 // reasonLocked derives the fine-grained inbox reason that refines the coarse
 // running/needs-you state for presentation. Caller must hold s.mu.
 func (s *Session) reasonLocked() string {
-	if s.pendingControlRequest != nil {
+	if len(s.pendingControlRequests) > 0 {
 		return events.ReasonNeedsApproval
 	}
 	if s.generating {
@@ -1180,12 +1280,18 @@ func (s *Session) EndView() {
 	}
 }
 
-// ClearPendingControlRequest clears the stored pending control_request.
-// Called after the client responds to the permission prompt.
-func (s *Session) ClearPendingControlRequest() {
+// ClearPendingControlRequest removes the pending prompt the client just
+// answered, identified by request_id. An empty id clears all pending prompts
+// (safety valve for malformed responses so the session can't stick in
+// needs_approval).
+func (s *Session) ClearPendingControlRequest(requestID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pendingControlRequest = nil
+	if requestID == "" {
+		s.pendingControlRequests = nil
+	} else {
+		s.removePendingControlRequestLocked(requestID)
+	}
 	s.publishStateLocked()
 }
 
@@ -1217,6 +1323,33 @@ func (s *Session) closeAllSubscribers() {
 		close(ch)
 	}
 	s.subscribers = make(map[chan StreamEvent]struct{})
+}
+
+// stderrTail forwards the CLI's stderr to trellis's own stderr while keeping
+// the last few KB, so an unexpected process exit can be logged together with
+// the CLI's final error output (API failures, node crashes, …).
+type stderrTail struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+const stderrTailMax = 4096
+
+func (t *stderrTail) Write(p []byte) (int, error) {
+	os.Stderr.Write(p)
+	t.mu.Lock()
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > stderrTailMax {
+		t.buf = t.buf[len(t.buf)-stderrTailMax:]
+	}
+	t.mu.Unlock()
+	return len(p), nil
+}
+
+func (t *stderrTail) Tail() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.TrimSpace(string(t.buf))
 }
 
 // fanOut sends an event to all subscribers.
@@ -1273,10 +1406,22 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 		args = append(args, "--model", modelOverride)
 	}
 
-	cmdCtx, cancel := context.WithCancel(ctx)
+	// The caller's ctx gates only the spawn attempt. The process context is
+	// deliberately NOT derived from it: callers pass request- or
+	// dispatch-scoped contexts (pair/checklist dispatch uses a short-timeout
+	// ctx), and exec.CommandContext SIGKILLs the child the moment its context
+	// is canceled — which killed sessions spawned through those paths and
+	// orphaned every background task the CLI was tracking. The process must
+	// live until an explicit kill path (Cancel, restartProcess, MoveSession,
+	// Trash/Delete, Shutdown) calls s.cancel.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, "claude", args...)
 	cmd.Dir = workDir
-	cmd.Stderr = os.Stderr
+	stderr := &stderrTail{}
+	cmd.Stderr = stderr
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
@@ -1304,13 +1449,13 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	s.lastProcessCost = 0
 	s.mu.Unlock()
 
-	go s.readLoop(stdoutPipe, cmd, gen)
+	go s.readLoop(stdoutPipe, cmd, gen, stderr)
 
 	return nil
 }
 
 // readLoop reads NDJSON events from claude's stdout continuously.
-func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
+func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *stderrTail) {
 	// bufio.Reader has no fixed token cap — unlike bufio.Scanner which dies
 	// with "token too long" on large events (big tool results, file contents).
 	reader := bufio.NewReaderSize(stdout, 1024*1024)
@@ -1410,13 +1555,31 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 
 		// Log truly unknown event types for debugging
 		switch event.Type {
-		case "system", "assistant", "result", "control_request", "stream_event", "user":
+		case "system", "assistant", "result", "control_request", "control_response", "control_cancel_request", "stream_event", "user":
 			// Known types
 		case "rate_limit_event":
 			// Emitted as rate limits are approached/hit; intentionally not
 			// surfaced in the UI (see claude.js handleStreamEvent).
 		default:
 			log.Printf("claude: unknown event type %q: %s", event.Type, line)
+		}
+
+		// Acknowledgements for control requests we sent (interrupt,
+		// set_model). Success needs no action — interrupts end via the turn's
+		// result event, model switches apply silently. A rejected set_model
+		// falls back to the restart path so --model applies on respawn.
+		if event.Type == "control_response" && event.Response != nil {
+			var resp struct {
+				Subtype   string `json:"subtype"`
+				RequestID string `json:"request_id"`
+				Error     string `json:"error"`
+			}
+			if json.Unmarshal(event.Response, &resp) == nil && resp.Subtype == "error" {
+				log.Printf("claude [%s]: control request %s rejected: %s", s.id, resp.RequestID, resp.Error)
+				if strings.HasPrefix(resp.RequestID, setModelReqPrefix) {
+					s.restartProcess()
+				}
+			}
 		}
 
 		// Accumulate content blocks from stream_event (--include-partial-messages)
@@ -1494,9 +1657,16 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 				s.lastProcessCost = event.Cost
 			}
 			s.generating = false
-			s.lastTurnError = event.IsError
+			// An interrupted turn reports is_error (error_during_execution),
+			// but the user asked for the stop — don't surface it as an error.
+			s.lastTurnError = event.IsError && !s.interruptRequested
+			s.interruptRequested = false
 			s.currentBlocks = nil
-			s.pendingControlRequest = nil
+			// Pending permission prompts deliberately survive turn end:
+			// background agents block on prompts long after the turn that
+			// spawned them completes. Clearing here silently killed those
+			// agents. Moot prompts are retracted by the CLI itself via
+			// control_cancel_request.
 			s.setActivityLocked("")
 			s.publishStateLocked()
 			persist := s.persistFn
@@ -1522,8 +1692,22 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 				s.currentBlocks = nil
 				s.persistMessage(msg)
 			}
-			s.pendingControlRequest = &eventCopy
+			// Replace any stale prompt with the same request_id, then append.
+			s.removePendingControlRequestLocked(eventCopy.RequestID)
+			s.pendingControlRequests = append(s.pendingControlRequests, &eventCopy)
 			s.publishStateLocked()
+			s.mu.Unlock()
+		}
+
+		// The CLI retracts a pending prompt that became moot (e.g. its turn
+		// was interrupted). Drop it so the session doesn't stick in
+		// needs_approval; the event also fans out so live clients can disable
+		// the prompt block.
+		if event.Type == "control_cancel_request" && event.RequestID != "" {
+			s.mu.Lock()
+			if s.removePendingControlRequestLocked(event.RequestID) {
+				s.publishStateLocked()
+			}
 			s.mu.Unlock()
 		}
 
@@ -1536,12 +1720,16 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 	}
 
 	// Process exited (or read errored) - wait for it and clean up.
-	cmd.Wait()
+	waitErr := cmd.Wait()
 
+	wasGenerating := false
+	cleanedUp := false
 	s.mu.Lock()
 	// Only clean up session state if we're still the current generation.
 	// A newer process may have already been started by ensureProcess.
 	if s.processGen == gen {
+		cleanedUp = true
+		wasGenerating = s.generating
 		// If the stream died mid-turn (no "result" event ever arrived), commit
 		// any accumulated in-progress blocks as a completed assistant message
 		// so reconnecting clients can still see what was generated. Include
@@ -1569,6 +1757,10 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		}
 		s.started = false
 		s.generating = false
+		s.interruptRequested = false
+		// A dead process can never receive permission responses; drop its
+		// pending prompts so the session doesn't stick in needs_approval.
+		s.pendingControlRequests = nil
 		s.stdin = nil
 		s.cmd = nil
 		s.cancel = nil
@@ -1576,6 +1768,31 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int) {
 		s.publishStateLocked()
 	}
 	s.mu.Unlock()
+
+	// Always log process exits with their cause. Explicit kill paths (Cancel,
+	// restartProcess, Move/Trash/Delete, Shutdown) show up as signal: killed;
+	// anything else here is the CLI dying on its own — the prime suspect when
+	// background tasks are later reported as orphaned — so make it visible.
+	exitDesc := "exit status 0"
+	if waitErr != nil {
+		exitDesc = waitErr.Error()
+	}
+	log.Printf("claude [%s]: process exited (%s, gen %d, mid-turn=%v, current=%v)",
+		s.id, exitDesc, gen, wasGenerating, cleanedUp)
+	// "signal: killed" is our own kill paths; anything else that isn't a
+	// clean exit deserves its stderr for diagnosis.
+	if waitErr != nil && exitDesc != "signal: killed" {
+		if tail := stderr.Tail(); tail != "" {
+			log.Printf("claude [%s]: stderr tail: %s", s.id, truncateForLog([]byte(tail), 1024))
+		}
+	}
+
+	// A turn that dies with the process never gets a result event, and the WS
+	// layer only emits "done" on result events — without this, connected
+	// clients sit on "generating" forever after a process crash.
+	if cleanedUp && wasGenerating {
+		s.fanOut(StreamEvent{Type: "result", Subtype: "process_exited", IsError: true})
+	}
 }
 
 // readLine reads a single newline-terminated line from r, returning the line
@@ -1862,6 +2079,8 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 		return fmt.Errorf("already generating")
 	}
 	s.generating = true
+	s.turnGen++
+	s.interruptRequested = false
 	s.currentBlocks = nil
 	s.hasStreamEvents = false
 	s.lastTurnError = false
@@ -1952,21 +2171,78 @@ func (s *Session) writeStdin(msg interface{}) error {
 	return err
 }
 
-// Cancel kills the running Claude process.
-// The process will be restarted on the next Send call.
+// Cancel kills the running Claude process. This is the hard stop: any
+// background tasks the CLI is tracking die with the process. Prefer Interrupt
+// for user-initiated "stop this turn" — it leaves the process alive. The
+// process will be restarted on the next Send call.
 func (s *Session) Cancel() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	wasGenerating := s.generating
 	if s.cancel != nil {
 		s.cancel()
 	}
 	s.generating = false
+	s.interruptRequested = false
+	s.pendingControlRequests = nil
 	s.started = false
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
 	s.setActivityLocked("")
 	s.publishStateLocked()
+	s.mu.Unlock()
+	// No result event ever arrives for a turn killed with the process, and the
+	// WS layer only emits "done" on result events — fan out a synthetic one so
+	// every connected client leaves the generating state.
+	if wasGenerating {
+		s.fanOut(StreamEvent{Type: "result", Subtype: "turn_cancelled"})
+	}
+}
+
+// Interrupt asks the running claude process to abort the in-flight turn via a
+// stream-json control_request. Unlike Cancel, the process — and any background
+// tasks the CLI is tracking — stays alive; only the current turn stops. The
+// aborted turn still emits a result event (subtype error_during_execution),
+// which ends the turn through the normal readLoop path.
+//
+// Returns true when an interrupt was dispatched; false when there was nothing
+// to interrupt (no process or no turn in flight) or the write failed and the
+// process was killed instead — either way the caller should treat the stop as
+// already complete.
+//
+// If the CLI hasn't honored the interrupt within interruptTimeout, the
+// process is killed as a fallback so the session can't get stuck generating.
+func (s *Session) Interrupt() bool {
+	s.mu.Lock()
+	if s.stdin == nil || !s.generating {
+		s.mu.Unlock()
+		return false
+	}
+	s.interruptRequested = true
+	turn := s.turnGen
+	s.mu.Unlock()
+
+	req := stdinControlRequest{
+		Type:      "control_request",
+		RequestID: interruptReqPrefix + uuid.New().String(),
+		Request:   stdinControlInner{Subtype: "interrupt"},
+	}
+	if err := s.writeStdin(req); err != nil {
+		log.Printf("claude [%s]: interrupt write failed, killing process: %v", s.id, err)
+		s.Cancel()
+		return false
+	}
+
+	time.AfterFunc(interruptTimeout, func() {
+		s.mu.Lock()
+		stuck := s.generating && s.turnGen == turn
+		s.mu.Unlock()
+		if stuck {
+			log.Printf("claude [%s]: interrupt not honored within %s; killing process", s.id, interruptTimeout)
+			s.Cancel()
+		}
+	})
+	return true
 }
 
 // ExportSession creates a transcript export for the given session.

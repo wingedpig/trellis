@@ -629,7 +629,15 @@ func (s *Session) EnsureProcess(ctx context.Context) error {
 	s.rpcGen = gen
 	s.mu.Unlock()
 
-	cmdCtx, cancel := context.WithCancel(ctx)
+	// The caller's ctx gates only the spawn attempt. The process context is
+	// deliberately NOT derived from it: pair/checklist dispatch passes
+	// short-timeout contexts, and exec.CommandContext kills the child the
+	// moment its context is canceled. The process must live until an explicit
+	// kill path calls s.cancel.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, "codex", "app-server")
 	cmd.Dir = workDir
 	cmd.Stderr = os.Stderr

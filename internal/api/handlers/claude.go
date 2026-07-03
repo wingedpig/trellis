@@ -153,8 +153,10 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 		Activity:                 session.CurrentActivity(),
 	})
 
-	// Re-send pending permission prompt if one was waiting when the client disconnected
-	if pending := session.PendingControlRequest(); pending != nil {
+	// Re-send pending permission prompts (oldest first) that were waiting
+	// when the client disconnected. Several can be outstanding at once when
+	// concurrent background agents each block on their own prompt.
+	for _, pending := range session.PendingControlRequests() {
 		writeJSON(serverMessage{Type: "stream", Event: pending})
 	}
 
@@ -270,8 +272,16 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 				}
 
 			case "permission_response":
-				// Forward permission response to claude's stdin
-				session.ClearPendingControlRequest()
+				// Forward permission response to claude's stdin, clearing
+				// only the prompt it answers — others may still be pending
+				// for concurrent background agents.
+				var resp struct {
+					Response struct {
+						RequestID string `json:"request_id"`
+					} `json:"response"`
+				}
+				_ = json.Unmarshal(msg.Data, &resp)
+				session.ClearPendingControlRequest(resp.Response.RequestID)
 				if msg.Data != nil {
 					if err := session.WriteStdinRaw(msg.Data); err != nil {
 						log.Printf("claude: permission response error: %v", err)
@@ -279,8 +289,15 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 				}
 
 			case "cancel":
-				session.Cancel()
-				writeJSON(serverMessage{Type: "done"})
+				// Interrupt the in-flight turn but keep the claude process —
+				// and any background tasks it is tracking — alive. The
+				// interrupted turn ends with a result event, which emits
+				// "done" through the subscriber goroutine above. Only when
+				// there was nothing to interrupt does the client need an
+				// immediate done to leave the generating state.
+				if !session.Interrupt() {
+					writeJSON(serverMessage{Type: "done", CostUSD: session.CostUSD(), Model: session.Model()})
+				}
 
 			case "reset":
 				session.Cancel()
@@ -406,9 +423,9 @@ func (h *ClaudeHandler) RenameSessionAPI(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SetModelAPI forces the session onto a model alias (passed to the claude CLI
-// as --model). This restarts the session's process; the conversation resumes
-// on the next message.
+// SetModelAPI forces the session onto a model alias. A running process is
+// switched live (set_model control_request); otherwise the alias applies via
+// --model on the next spawn.
 func (h *ClaudeHandler) SetModelAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["session"]

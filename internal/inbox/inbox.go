@@ -101,7 +101,7 @@ func (a *Aggregator) List() []SessionRow {
 			continue
 		}
 		state := events.SessionStateRunning
-		if !s.IsGenerating() || s.PendingControlRequest() != nil {
+		if !s.IsGenerating() || s.HasPendingControlRequest() {
 			state = events.SessionStateNeedsYou
 		}
 		ts := lastChange[info.ID]

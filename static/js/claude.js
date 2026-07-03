@@ -550,6 +550,18 @@
                     showPermissionPrompt(event.request_id, event.request);
                 }
                 break;
+            case 'control_cancel_request':
+                // The CLI retracted a pending permission prompt (e.g. its
+                // turn was interrupted). Disable the prompt so its buttons
+                // can't send an answer nothing is waiting for.
+                if (event.request_id) {
+                    var staleActions = messagesEl.querySelector(
+                        '.claude-permission[data-request-id="' + event.request_id + '"] .claude-permission-actions');
+                    if (staleActions) {
+                        staleActions.innerHTML = '<span class="claude-permission-denied"><i class="fa-solid fa-ban"></i> No longer needed</span>';
+                    }
+                }
+                break;
             case 'stream_event':
                 if (event.event) {
                     handleInnerStreamEvent(event.event);

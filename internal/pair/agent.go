@@ -56,7 +56,7 @@ func (a *Agents) LookupStatus(ref AgentRef) sessionStatus {
 			Exists:      true,
 			Trashed:     info.TrashedAt != nil,
 			DisplayName: s.DisplayName(),
-			Idle:        !s.IsGenerating() && s.PendingControlRequest() == nil,
+			Idle:        !s.IsGenerating() && !s.HasPendingControlRequest(),
 		}
 	case "codex":
 		if a.Codex == nil {
