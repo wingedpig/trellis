@@ -27,7 +27,10 @@ type ClaudePage struct {
     })();
 </script>
 
-<div id="claude-chat" class="claude-chat-container">
+<!-- data-agent/session/worktree let per-page scripts (pair.js, checklist.js)
+     identify their session from their own .page-container instead of window
+     globals, which go stale when the SPA swaps pages. -->
+<div id="claude-chat" class="claude-chat-container" data-agent="claude" data-session="{%s p.SessionID %}" data-worktree="{%s p.WorktreeName %}">
     <div id="claude-messages" class="claude-messages"></div>
     <div id="claude-input-area" class="claude-input-area">
         <div class="claude-input-row">

@@ -52,7 +52,18 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
     })();
 </script>
 
-<div id="codex-chat" class="codex-chat-container">
+<!-- data-agent/session/worktree let per-page scripts (pair.js, checklist.js)
+     identify their session from their own .page-container instead of window
+     globals, which go stale when the SPA swaps pages. -->
+<div id="codex-chat" class="codex-chat-container" data-agent="codex" data-session="`)
+//line views/codex.qtpl:32
+	qw422016.E().S(p.SessionID)
+//line views/codex.qtpl:32
+	qw422016.N().S(`" data-worktree="`)
+//line views/codex.qtpl:32
+	qw422016.E().S(p.WorktreeName)
+//line views/codex.qtpl:32
+	qw422016.N().S(`">
     <div id="codex-messages" class="codex-messages"></div>
     <div id="codex-input-area" class="codex-input-area">
         <div class="codex-input-row">
@@ -91,37 +102,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:67
+//line views/codex.qtpl:70
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:67
+//line views/codex.qtpl:70
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:68
+//line views/codex.qtpl:71
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:68
+//line views/codex.qtpl:71
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:69
+//line views/codex.qtpl:72
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:69
+//line views/codex.qtpl:72
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:70
+//line views/codex.qtpl:73
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:70
+//line views/codex.qtpl:73
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:71
+//line views/codex.qtpl:74
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:71
+//line views/codex.qtpl:74
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:71
+//line views/codex.qtpl:74
 	} else {
-//line views/codex.qtpl:71
+//line views/codex.qtpl:74
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:71
+//line views/codex.qtpl:74
 	}
-//line views/codex.qtpl:71
+//line views/codex.qtpl:74
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -414,36 +425,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:362
+//line views/codex.qtpl:365
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:362
+//line views/codex.qtpl:365
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 }
 
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 }
 
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 	return qs422016
-//line views/codex.qtpl:363
+//line views/codex.qtpl:366
 }

@@ -26,7 +26,10 @@ type CodexPage struct {
     })();
 </script>
 
-<div id="codex-chat" class="codex-chat-container">
+<!-- data-agent/session/worktree let per-page scripts (pair.js, checklist.js)
+     identify their session from their own .page-container instead of window
+     globals, which go stale when the SPA swaps pages. -->
+<div id="codex-chat" class="codex-chat-container" data-agent="codex" data-session="{%s p.SessionID %}" data-worktree="{%s p.WorktreeName %}">
     <div id="codex-messages" class="codex-messages"></div>
     <div id="codex-input-area" class="codex-input-area">
         <div class="codex-input-row">

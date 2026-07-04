@@ -16,7 +16,21 @@
 (function () {
   'use strict';
 
+  // The SPA (spa.js) swaps .page-container elements in and out of the DOM and
+  // re-executes this script for every freshly fetched session page. Everything
+  // this instance touches — its banner, its chat container, its identity —
+  // must be scoped to the container it was loaded in. Anything attached to
+  // document.body would survive navigation and leak onto other pages.
+  const pageContainer = document.currentScript && document.currentScript.closest('.page-container');
+
   function detectAgent() {
+    // Preferred source: data attributes stamped on the chat container by
+    // claude.qtpl / codex.qtpl. Unlike window.CLAUDE_SESSION / CODEX_SESSION,
+    // these can't go stale when the SPA swaps to another session's page.
+    const chat = pageContainer && pageContainer.querySelector('.claude-chat-container, .codex-chat-container');
+    if (chat && chat.dataset.session) {
+      return { agent: chat.dataset.agent, session: chat.dataset.session, worktree: chat.dataset.worktree };
+    }
     if (window.CLAUDE_SESSION) return { agent: 'claude', session: window.CLAUDE_SESSION, worktree: window.CLAUDE_WORKTREE };
     if (window.CODEX_SESSION) return { agent: 'codex', session: window.CODEX_SESSION, worktree: window.CODEX_WORKTREE };
     return null;
@@ -121,8 +135,9 @@
 
   function ensureBannerContainer() {
     if (bannerEl) return bannerEl;
-    // Blue-tinted, distinct from pair.js's amber banner. Sits above the pair
-    // banner (a run's review phase shows both at once).
+    // Blue-tinted, distinct from pair.js's amber banner. Inserted at the top
+    // of this page's container so the banner navigates in and out with the
+    // page, always above the pair banner if one is showing.
     bannerEl = el('div', {
       id: 'checklist-banner',
       style: 'position:sticky;top:0;z-index:1021;padding:10px 14px;' +
@@ -131,22 +146,24 @@
         'color:var(--bs-body-color, #222);' +
         'display:none;font-size:14px;'
     });
-    const pairBanner = document.getElementById('pair-banner');
-    if (pairBanner) document.body.insertBefore(bannerEl, pairBanner);
-    else document.body.insertBefore(bannerEl, document.body.firstChild);
+    const root = pageContainer || document.body;
+    const pairBanner = root.querySelector('#pair-banner');
+    if (pairBanner) root.insertBefore(bannerEl, pairBanner);
+    else root.insertBefore(bannerEl, root.firstChild);
     return bannerEl;
   }
 
   function findChatContainer() {
-    return document.querySelector('.claude-chat-container, .codex-chat-container');
+    return (pageContainer || document).querySelector('.claude-chat-container, .codex-chat-container');
   }
 
   // Shared with pair.js: shrink the chat container by the combined height of
-  // every session banner so the input strip stays on-screen.
+  // every session banner on this page so the input strip stays on-screen.
   function totalTrellisBannerHeight() {
+    const root = pageContainer || document;
     let h = 0;
-    ['checklist-banner', 'pair-banner'].forEach(function (id) {
-      const b = document.getElementById(id);
+    ['#checklist-banner', '#pair-banner'].forEach(function (sel) {
+      const b = root.querySelector(sel);
       if (b && b.style.display !== 'none') h += b.offsetHeight;
     });
     return h;
@@ -246,8 +263,10 @@
 
   let ws = null;
   let wsReconnectTimer = null;
+  let wsShutdown = false; // set when the SPA evicts this page; stops reconnects
 
   function connectWS() {
+    if (wsShutdown) return;
     if (ws) try { ws.close(); } catch (e) {}
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(proto + '://' + location.host + '/api/v1/checklist/ws?session_id=' + encodeURIComponent(me.session));
@@ -260,17 +279,32 @@
     };
     ws.onclose = () => {
       clearTimeout(wsReconnectTimer);
+      if (wsShutdown) return;
       wsReconnectTimer = setTimeout(connectWS, 3000);
     };
+  }
+
+  // When the SPA discards this page from its LRU cache the DOM is gone for
+  // good — shut the socket down so evicted instances don't pile up
+  // connections and reconnect timers in the background.
+  if (pageContainer) {
+    pageContainer.addEventListener('trellis:page-evicted', function () {
+      wsShutdown = true;
+      clearTimeout(wsReconnectTimer);
+      if (ws) try { ws.close(); } catch (e) {}
+    });
   }
 
   // ---------- Toolbar item ----------
 
   function injectToolbarButton() {
     // Anchor on the "Wrap up" item and append a matching dropdown-item to the
-    // session toolbar drop-up (see claude.qtpl / codex.qtpl).
-    const wrapUp = document.querySelector('[onclick*="showCommitModal(\'wrapup\')"]');
-    if (!wrapUp || document.getElementById('checklist-toolbar-btn')) return;
+    // session toolbar drop-up (see claude.qtpl / codex.qtpl). Scoped to this
+    // page's container so a cached page keeps its own button and a fresh page
+    // gets its own.
+    const root = pageContainer || document;
+    const wrapUp = root.querySelector('[onclick*="showCommitModal(\'wrapup\')"]');
+    if (!wrapUp || root.querySelector('#checklist-toolbar-btn')) return;
     const menu = wrapUp.closest('ul.dropdown-menu');
     if (!menu) return;
     const item = el('button', {

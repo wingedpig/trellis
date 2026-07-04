@@ -118,6 +118,12 @@ type Pair struct {
 	StoppedAt  *time.Time `json:"stopped_at,omitempty"`
 	StopReason StopReason `json:"stop_reason,omitempty"`
 
+	// Owner identifies the feature that created and drives this pair, e.g.
+	// "checklist" for a phased-checklist run's per-phase review pair. Empty
+	// for user-created pairs. The UI uses this to suppress the standalone
+	// pair banner when a higher-level banner already covers the state.
+	Owner string `json:"owner,omitempty"`
+
 	// Restart-resolvable flag: when a stopped pair could not have its
 	// participant sessions reconstructed on rehydration.
 	RestartUnresolvable bool `json:"restart_unresolvable,omitempty"`

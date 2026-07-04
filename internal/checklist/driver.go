@@ -522,6 +522,7 @@ func (c *RunRuntime) enterReview(phaseText string) {
 	rt, err := c.pairReg.Create(pair.CreateOptions{
 		Implementer: impl,
 		Reviewer:    rev,
+		Owner:       "checklist",
 		Config: pair.Config{
 			ReviewPrompt:       cfg.ReviewPrompt,
 			FeedbackPrompt:     cfg.FeedbackPrompt,

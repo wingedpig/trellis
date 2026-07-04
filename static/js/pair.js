@@ -14,7 +14,21 @@
 (function () {
   'use strict';
 
+  // The SPA (spa.js) swaps .page-container elements in and out of the DOM and
+  // re-executes this script for every freshly fetched session page. Everything
+  // this instance touches — its banner, its chat container, its identity —
+  // must be scoped to the container it was loaded in. Anything attached to
+  // document.body would survive navigation and leak onto other pages.
+  const pageContainer = document.currentScript && document.currentScript.closest('.page-container');
+
   function detectAgent() {
+    // Preferred source: data attributes stamped on the chat container by
+    // claude.qtpl / codex.qtpl. Unlike window.CLAUDE_SESSION / CODEX_SESSION,
+    // these can't go stale when the SPA swaps to another session's page.
+    const chat = pageContainer && pageContainer.querySelector('.claude-chat-container, .codex-chat-container');
+    if (chat && chat.dataset.session) {
+      return { agent: chat.dataset.agent, session: chat.dataset.session, worktree: chat.dataset.worktree };
+    }
     if (window.CLAUDE_SESSION) return { agent: 'claude', session: window.CLAUDE_SESSION, worktree: window.CLAUDE_WORKTREE };
     if (window.CODEX_SESSION) return { agent: 'codex', session: window.CODEX_SESSION, worktree: window.CODEX_WORKTREE };
     return null;
@@ -122,26 +136,31 @@
         'color:var(--bs-body-color, #222);' +
         'display:none;font-size:14px;'
     });
-    // Insert at the very top of the body so it spans the whole page.
-    document.body.insertBefore(bannerEl, document.body.firstChild);
+    // Insert at the top of this page's container so the banner navigates in
+    // and out with the page. The checklist banner (if any) stays above the
+    // pair banner regardless of which script renders first.
+    const root = pageContainer || document.body;
+    const checklistBanner = root.querySelector('#checklist-banner');
+    if (checklistBanner) checklistBanner.insertAdjacentElement('afterend', bannerEl);
+    else root.insertBefore(bannerEl, root.firstChild);
     return bannerEl;
   }
 
-  // findChatContainer returns the page's chat container, whose height needs
+  // findChatContainer returns this page's chat container, whose height needs
   // to shrink by the banner height to keep the input strip on-screen.
   function findChatContainer() {
-    return document.querySelector('.claude-chat-container, .codex-chat-container');
+    return (pageContainer || document).querySelector('.claude-chat-container, .codex-chat-container');
   }
 
   // totalTrellisBannerHeight sums the visible heights of every top-of-page
-  // session banner (pair + checklist). A checklist run's review phase is a
-  // pair, so both banners can be on-screen at once; the chat must shrink by
-  // their combined height. checklist.js runs the same computation, so
-  // whichever renders last still arrives at the correct total.
+  // session banner (pair + checklist) on this page. checklist.js runs the
+  // same computation, so whichever renders last still arrives at the correct
+  // total.
   function totalTrellisBannerHeight() {
+    const root = pageContainer || document;
     let h = 0;
-    ['checklist-banner', 'pair-banner'].forEach(function (id) {
-      const b = document.getElementById(id);
+    ['#checklist-banner', '#pair-banner'].forEach(function (sel) {
+      const b = root.querySelector(sel);
       if (b && b.style.display !== 'none') h += b.offsetHeight;
     });
     return h;
@@ -175,7 +194,13 @@
     const isParticipant = !!currentPair &&
       (currentPair.implementer.session_id === me.session ||
        currentPair.reviewer.session_id === me.session);
-    if (!currentPair || currentPair.state === 'stopped' || !isParticipant) {
+    // A checklist run drives its review phase through a pair it owns, and the
+    // checklist banner already reports that state — showing both would be
+    // redundant. Keep the pair banner hidden for checklist-owned pairs except
+    // when the pair needs the user (paused, or awaiting a relay confirm).
+    const hiddenChecklistDetail = !!currentPair && currentPair.owner === 'checklist' &&
+      currentPair.state !== 'paused' && currentPair.step !== 'confirm_relay';
+    if (!currentPair || currentPair.state === 'stopped' || !isParticipant || hiddenChecklistDetail) {
       banner.style.display = 'none';
       banner.innerHTML = '';
       applyChatContainerOffset();
@@ -246,6 +271,10 @@
   // current page if a different session is the target — otherwise we're
   // already in the right place.
   function followToActiveSession(p, ev) {
+    // Only the instance whose page is actually on-screen may navigate; the
+    // SPA keeps detached pages (and their scripts) alive in its cache, and a
+    // cached instance must not hijack whatever the user is looking at.
+    if (pageContainer && !pageContainer.isConnected) return;
     const dir = ev && ev.payload && ev.payload.direction;
     if (!dir) return;
     const target = dir === 'to_reviewer' ? p.reviewer : p.implementer;
@@ -261,8 +290,10 @@
 
   let ws = null;
   let wsReconnectTimer = null;
+  let wsShutdown = false; // set when the SPA evicts this page; stops reconnects
 
   function connectWS() {
+    if (wsShutdown) return;
     if (ws) try { ws.close(); } catch (e) {}
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(proto + '://' + location.host + '/api/v1/pair/ws?session_id=' + encodeURIComponent(me.session));
@@ -284,8 +315,20 @@
     };
     ws.onclose = () => {
       clearTimeout(wsReconnectTimer);
+      if (wsShutdown) return;
       wsReconnectTimer = setTimeout(connectWS, 3000);
     };
+  }
+
+  // When the SPA discards this page from its LRU cache the DOM is gone for
+  // good — shut the socket down so evicted instances don't pile up
+  // connections and reconnect timers in the background.
+  if (pageContainer) {
+    pageContainer.addEventListener('trellis:page-evicted', function () {
+      wsShutdown = true;
+      clearTimeout(wsReconnectTimer);
+      if (ws) try { ws.close(); } catch (e) {}
+    });
   }
 
   // ---------- Pair-for-Review button ----------
@@ -293,9 +336,11 @@
   function injectToolbarButton() {
     // The session toolbar is now a drop-up menu (see claude.qtpl / codex.qtpl).
     // Anchor on the "Wrap up" item and append a matching dropdown-item to the
-    // same menu.
-    const wrapUp = document.querySelector('[onclick*="showCommitModal(\'wrapup\')"]');
-    if (!wrapUp || document.getElementById('pair-toolbar-btn')) return;
+    // same menu. Scoped to this page's container so a cached page keeps its
+    // own button and a fresh page gets its own.
+    const root = pageContainer || document;
+    const wrapUp = root.querySelector('[onclick*="showCommitModal(\'wrapup\')"]');
+    if (!wrapUp || root.querySelector('#pair-toolbar-btn')) return;
     const menu = wrapUp.closest('ul.dropdown-menu');
     if (!menu) return;
     const item = el('button', {

@@ -46,6 +46,9 @@ type CreateOptions struct {
 	Reviewer    AgentRef
 	Config      Config
 	Kickoff     KickoffMode
+	// Owner marks a pair created and driven by another feature (e.g.
+	// "checklist"); empty for user-created pairs.
+	Owner string
 }
 
 // Create validates the options, persists the pair, registers it, and starts
@@ -68,6 +71,7 @@ func (r *Registry) Create(opts CreateOptions) (*PairRuntime, error) {
 	p := &Pair{
 		ID:          uuid.New().String(),
 		CreatedAt:   now,
+		Owner:       opts.Owner,
 		State:       StatePending,
 		Implementer: opts.Implementer,
 		Reviewer:    opts.Reviewer,
