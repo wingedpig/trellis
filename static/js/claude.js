@@ -74,8 +74,9 @@
         if (current && sel.value !== current) sel.value = current;
     }
 
-    // setModel forces the session onto a model alias. The server restarts the
-    // claude process so the change applies on the next turn.
+    // setModel forces the session onto a model alias. The server switches the
+    // running claude process live (set_model control request), so the change
+    // applies from the next message without a restart.
     function setModel(alias) {
         if (!alias || alias === modelOverride) return;
         var prev = modelOverride;
