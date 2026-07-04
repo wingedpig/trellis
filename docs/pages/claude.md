@@ -71,11 +71,14 @@ The Claude page provides a chat interface with:
 - **Input area** — Text input for sending messages to Claude
 - **Send button** — Submit your message
 - **Cancel button** — Stop Claude's current response (appears while generating)
-- **Reset button** — Start a new conversation within the same session
-- **Plan button** — View and edit the session's captured plan (appears once a plan exists, see [Plan Artifacts](#plan-artifacts))
-- **Save to Case button** — Save the session transcript to a case
-- **Commit button** — Make an intermediate commit against the worktree's open case (see [Commit](#commit-intermediate))
-- **Wrap Up button** — Archive the case and commit in one step (see [Wrap Up](#wrap-up))
+- **⋮ More actions menu** — A drop-up next to the input box collecting the session actions:
+  - **New conversation** — Start a fresh conversation within the same session
+  - **View plan** — View and edit the session's captured plan (appears once a plan exists, see [Plan Artifacts](#plan-artifacts))
+  - **Save to case** — Save the session transcript to a case
+  - **Commit** — Make an intermediate commit against the worktree's open case (see [Commit](#commit-intermediate))
+  - **Wrap up** — Archive the case and commit in one step (see [Wrap Up](#wrap-up))
+  - **Pair for review** — Wire this session to another for an automated review loop (see [Pair Review & Checklist Runs](/docs/pages/pairing/))
+  - **Start checklist run** — Drive this session and a reviewer through a multi-phase checklist (see [Pair Review & Checklist Runs](/docs/pages/pairing/))
 
 ### Keyboard Shortcuts
 
@@ -90,6 +93,15 @@ The Claude page provides a chat interface with:
 The footer shows the session's accumulated API cost and current context window usage, e.g. `$1.23 · 45K / 1M tokens (4%)`. The context window size is model-aware — 1M tokens for Opus 4.6+/Fable/Sonnet 4.6+, 200K for Haiku and older models — and the readout turns amber at 50% and red at 70%. Hover it for a breakdown of input, cache-read, and cache-write tokens plus the model and session cost.
 
 Cost accumulates across the whole session, including process restarts and `--resume`, and persists with the session. It is computed by the Claude CLI itself (API list prices — informational if you're on a subscription plan). Each session's cost also appears as a badge in the worktree home page session list, and machine-wide totals live on the [Usage page](/docs/pages/usage/).
+
+### Model Picker
+
+A model dropdown in the footer (Opus, Sonnet, Haiku, Fable) forces the session onto a model family. Switching is applied live to the running Claude process — no restart, so background tasks and pending permission prompts survive — and takes effect from your next message. The choice persists with the session and is re-applied (via `--model`) whenever the process respawns.
+
+Two things to know:
+
+- The picker reflects the forced model, or the model actually observed on the session's responses when no override is set.
+- After a live switch the model may still *introduce itself* by the old name if asked — its identity line was written into the system prompt when the process started. The switch is real regardless: every subsequent response is generated (and billed) by the model you picked, which is what the picker and the [Usage page](/docs/pages/usage/) report.
 
 ## Transcript Import/Export
 
@@ -143,6 +155,7 @@ The Wrap Up modal adds (on top of the Commit modal):
 - **Optional links** to attach to the case before archiving.
 - **Traces to include** — saved trace reports from the session.
 - **Related sessions to archive** — sessions from the *other* agent (Codex if this is Claude) that you want captured into the same case in one shot.
+- **Component chips** — the components touched by the work, derived deterministically from the changed file paths as soon as the modal opens. Click × to prune any before confirming; the surviving set is stored on the case summary and makes archived cases searchable by component.
 
 On confirm, the server:
 
@@ -160,9 +173,10 @@ After completion, you're redirected to the worktree home page.
 
 ## Codex parity
 
-Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), except [Plan Artifacts](#plan-artifacts), which rely on Claude Code's plan mode. The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
+Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), except [Plan Artifacts](#plan-artifacts), which rely on Claude Code's plan mode, and the [Model Picker](#model-picker), which is Claude-only. The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
 
 ## Related
 
+- [Pair Review & Checklist Runs](/docs/pages/pairing/) — Automated implementer/reviewer loops between two sessions
 - [Cases](/docs/pages/cases/) — Case lifecycle, commits timeline, generated summaries
 - [Terminal Page](/docs/pages/terminal/) — Claude sessions in the navigation picker

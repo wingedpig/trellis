@@ -12,6 +12,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 - Create and manage tmux sessions without manual layout management
 - Chat with Claude Code (or OpenAI Codex) directly in the web UI, with per-worktree sessions and transcript management
 - Watch every active AI session across every worktree in a floating session-inbox popup that highlights the one waiting on you
+- Pair two AI sessions into an automated implementer/reviewer loop, or run a checklist run that drives them through a multi-phase plan one reviewed phase at a time
 - Track work items (bugs, features, investigations) with cases that record notes, transcripts, trace reports, a per-commit timeline, and an auto-generated searchable summary
 - Run reverse proxies with path-based routing and TLS support to mirror production routing locally
 
@@ -161,6 +162,10 @@ Trace groups define which log viewers to search together. Workflow inputs are va
 Each worktree can have multiple Claude Code chat sessions directly in the Trellis web UI. Sessions persist across restarts, and transcripts can be saved to cases or imported from previous exports.
 
 Claude sessions appear in the navigation picker alongside terminals (`@main - Session 1` with a robot icon).
+
+A per-session model picker (Opus, Sonnet, Haiku, Fable) switches the running Claude process live — no restart, effective from the next message.
+
+Two sessions can also review each other's work automatically. A **paired review loop** relays an implementer session's output to a reviewer session and the critique back, until the reviewer replies `LGTM` (configurable) or a round cap is hit. A **checklist run** wraps that loop to execute a multi-phase plan: implement a phase, review it to convergence, advance to the next — pausing for you whenever a phase won't converge. Either side can be Claude or Codex, in any worktree.
 
 ### Cases
 

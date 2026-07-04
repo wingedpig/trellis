@@ -14,7 +14,8 @@ Trellis is a **local web app** that acts as a control panel for your development
 - **Worktrees as environments** — Each git worktree gets its own terminals, running processes, and logs
 - **Service supervision** — Run your app's components locally with automatic restart when binaries change
 - **Terminal & tmux management** — Trellis creates and manages tmux sessions for you
-- **Claude Code integration** — AI-assisted development with per-worktree chat sessions and transcript management
+- **Claude Code integration** — AI-assisted development with per-worktree chat sessions, transcript management, and a per-session model picker (Codex sessions get the same surfaces)
+- **Pair review & checklist runs** — Wire two AI sessions into an automated implementer/reviewer loop, or drive them through a multi-phase checklist one reviewed phase at a time
 - **Usage & cost tracking** — Daily, per-worktree, and per-session token usage and cost for Claude Code and Codex
 - **Cases** — Track units of work (bugs, features, investigations) with notes, links, transcripts, and trace reports
 - **Remote access** — SSH terminals and log streaming from staging/production in the same UI
@@ -38,6 +39,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 
 - [Terminal Page](/docs/pages/terminal/) - Main view: terminals, service logs, log viewers, remote windows
 - [Claude Page](/docs/pages/claude/) - AI-assisted development with Claude Code
+- [Pair Review & Checklist Runs](/docs/pages/pairing/) - Automated implementer/reviewer loops between two AI sessions
 - [Status Page](/docs/pages/status/) - Monitor and control services
 - [Worktrees Page](/docs/pages/worktrees/) - Manage git worktrees
 - [Cases Page](/docs/pages/cases/) - Track work items with a commit timeline, generated summary, transcripts, and traces

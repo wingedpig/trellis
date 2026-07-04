@@ -15,6 +15,10 @@ The main view—access local terminals (@), Claude sessions (@), service logs (#
 
 AI-assisted development with Claude Code. Create per-worktree chat sessions, save transcripts to cases, make intermediate commits or wrap up a case in one click, and continue previous conversations.
 
+## [Pair Review & Checklist Runs](/docs/pages/pairing/)
+
+Wire two AI sessions together: a paired review loop iterates implementer ↔ reviewer until the reviewer approves, and a checklist run drives a pair through a multi-phase plan — one phase implemented, reviewed, and advanced at a time.
+
 ## [Status](/docs/pages/status/)
 
 Monitor all configured services—see which are running or stopped, start/stop individual services, or control all services at once.
