@@ -96,7 +96,8 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
                 <label class="claude-skip-perms" id="claude-skip-perms" title="Auto-approve tool use — Claude stops asking permission. Deny rules in .claude/settings.json still apply.">
                     <input type="checkbox" id="claude-skip-perms-cb" onchange="claudeSetSkipPermissions(this.checked)"> auto-approve
                 </label>
-                <select id="claude-model-select" class="claude-model-select" title="Model — switches live, applies from your next message" onchange="claudeSetModel(this.value)">
+                <select id="claude-model-select" class="claude-model-select" title="Model — switches live, applies from your next message. Default = the model from your Claude Code settings." onchange="claudeSetModel(this.value)">
+                    <option value="">Default</option>
                     <option value="opus">Opus</option>
                     <option value="sonnet">Sonnet</option>
                     <option value="haiku">Haiku</option>
@@ -119,14 +120,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // commit / wrap-up on a cache-restored session would target whichever
 // session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:87
+//line views/claude.qtpl:88
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:87
+//line views/claude.qtpl:88
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:88
+//line views/claude.qtpl:89
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:88
+//line views/claude.qtpl:89
 	qw422016.N().S(`';
 
 function localShowSaveToCaseModal() {
@@ -315,37 +316,37 @@ if (container) {
 // (e.g. set after creating a new case via the wrap-up flow) survive the
 // SPA cache round-trip. Restore on page-entered.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:275
+//line views/claude.qtpl:276
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:275
+//line views/claude.qtpl:276
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:276
+//line views/claude.qtpl:277
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:276
+//line views/claude.qtpl:277
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/claude.qtpl:277
+//line views/claude.qtpl:278
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/claude.qtpl:277
+//line views/claude.qtpl:278
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/claude.qtpl:278
+//line views/claude.qtpl:279
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:278
+//line views/claude.qtpl:279
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/claude.qtpl:279
+//line views/claude.qtpl:280
 	if p.IsDefaultBranch {
-//line views/claude.qtpl:279
+//line views/claude.qtpl:280
 		qw422016.N().S(`true`)
-//line views/claude.qtpl:279
+//line views/claude.qtpl:280
 	} else {
-//line views/claude.qtpl:279
+//line views/claude.qtpl:280
 		qw422016.N().S(`false`)
-//line views/claude.qtpl:279
+//line views/claude.qtpl:280
 	}
-//line views/claude.qtpl:279
+//line views/claude.qtpl:280
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -501,36 +502,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:433
+//line views/claude.qtpl:434
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:433
+//line views/claude.qtpl:434
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 }
 
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 }
 
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 	return qs422016
-//line views/claude.qtpl:434
+//line views/claude.qtpl:435
 }

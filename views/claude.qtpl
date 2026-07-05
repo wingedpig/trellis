@@ -62,7 +62,8 @@ type ClaudePage struct {
                 <label class="claude-skip-perms" id="claude-skip-perms" title="Auto-approve tool use — Claude stops asking permission. Deny rules in .claude/settings.json still apply.">
                     <input type="checkbox" id="claude-skip-perms-cb" onchange="claudeSetSkipPermissions(this.checked)"> auto-approve
                 </label>
-                <select id="claude-model-select" class="claude-model-select" title="Model — switches live, applies from your next message" onchange="claudeSetModel(this.value)">
+                <select id="claude-model-select" class="claude-model-select" title="Model — switches live, applies from your next message. Default = the model from your Claude Code settings." onchange="claudeSetModel(this.value)">
+                    <option value="">Default</option>
                     <option value="opus">Opus</option>
                     <option value="sonnet">Sonnet</option>
                     <option value="haiku">Haiku</option>

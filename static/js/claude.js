@@ -66,12 +66,16 @@
     }
 
     // updateModelSelect reflects the current model in the footer dropdown:
-    // the explicit override if set, otherwise the alias of the running model.
+    // the explicit override if set, otherwise the alias of the running model,
+    // otherwise "Default" (value ''). A fresh session must show Default — the
+    // old code left the select on its first option ("Opus"), claiming a model
+    // the spawn wasn't actually going to force, while the CLI default from
+    // the user's settings.json (e.g. fable) applied.
     function updateModelSelect() {
         var sel = document.getElementById('claude-model-select');
         if (!sel) return;
         var current = modelOverride || aliasFromModelId(sessionModel);
-        if (current && sel.value !== current) sel.value = current;
+        if (sel.value !== current) sel.value = current;
     }
 
     // ---------- Auto-approve (skip permissions) toggle ----------
@@ -106,11 +110,12 @@
         });
     }
 
-    // setModel forces the session onto a model alias. The server switches the
-    // running claude process live (set_model control request), so the change
-    // applies from the next message without a restart.
+    // setModel forces the session onto a model alias, or clears the override
+    // (alias '') so the CLI default applies. The server switches the running
+    // claude process live (set_model control request), so the change applies
+    // from the next message without a restart.
     function setModel(alias) {
-        if (!alias || alias === modelOverride) return;
+        if (alias === modelOverride) return;
         var prev = modelOverride;
         modelOverride = alias;          // optimistic — picker stays on the new choice
         updateModelSelect();

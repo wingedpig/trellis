@@ -96,11 +96,11 @@ Cost accumulates across the whole session, including process restarts and `--res
 
 ### Model Picker
 
-A model dropdown in the footer (Opus, Sonnet, Haiku, Fable) forces the session onto a model family. Switching is applied live to the running Claude process — no restart, so background tasks and pending permission prompts survive — and takes effect from your next message. The choice persists with the session and is re-applied (via `--model`) whenever the process respawns.
+A model dropdown in the footer (Default, Opus, Sonnet, Haiku, Fable) forces the session onto a model family. Switching is applied live to the running Claude process — no restart, so background tasks and pending permission prompts survive — and takes effect from your next message. The choice persists with the session and is re-applied (via `--model`) whenever the process respawns.
 
 Two things to know:
 
-- The picker reflects the forced model, or the model actually observed on the session's responses when no override is set.
+- **Default** means no forced model: the session runs whatever your Claude Code settings (`~/.claude/settings.json` → `model`) resolve to. A fresh session starts on Default — if new sessions keep coming up on a model you don't expect, that settings default is what's choosing it. The picker reflects the forced model, or the model actually observed on the session's responses when no override is set.
 - After a live switch the model may still *introduce itself* by the old name if asked — its identity line was written into the system prompt when the process started. The switch is real regardless: every subsequent response is generated (and billed) by the model you picked, which is what the picker and the [Usage page](/docs/pages/usage/) report.
 
 ### Auto-Approve (Skip Permissions)
