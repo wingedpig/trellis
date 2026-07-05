@@ -23,6 +23,7 @@ type SessionRecord struct {
 	WorkDir      string     `json:"work_dir"`
 	CreatedAt    time.Time  `json:"created_at"`
 	TrashedAt    *time.Time `json:"trashed_at,omitempty"`
+	SkipPermissions bool    `json:"skip_permissions,omitempty"` // auto-approve toggle (approval "never" + full-access sandbox)
 }
 
 // loadRecords reads session records from disk.

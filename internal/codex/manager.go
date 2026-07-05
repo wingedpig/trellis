@@ -48,6 +48,10 @@ type SessionInfo struct {
 	LastUserInput time.Time  `json:"last_user_input,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	TrashedAt     *time.Time `json:"trashed_at,omitempty"`
+	// SkipPermissions is true when the session auto-approves (approval
+	// policy "never" + danger-full-access sandbox). Execpolicy "forbidden"
+	// rules still apply.
+	SkipPermissions bool `json:"skip_permissions,omitempty"`
 }
 
 // StreamEvent is a fan-out unit pushed to subscribers (the WebSocket bridge).
@@ -136,6 +140,15 @@ type Session struct {
 	// the JSON-RPC handler is parked on, so AnswerApproval can deliver the
 	// user's decision back to that handler.
 	approvalChans map[string]chan ApprovalDecision
+	// skipPermissions is true when the user toggled auto-approval on: every
+	// turn/start passes approvalPolicy "never" + sandboxPolicy
+	// dangerFullAccess, so the app-server stops asking. Execpolicy rules
+	// (~/.codex/rules/*.rules) with decision "forbidden" are still enforced —
+	// they are the guardrail this toggle relies on. Toggling OFF restarts the
+	// app-server process so the config-default policies reapply (a turn-level
+	// override sticks "for subsequent turns", so merely omitting it would
+	// leave the thread in never/full-access).
+	skipPermissions bool
 
 	// Persistence
 	persistFn    func()
@@ -160,11 +173,12 @@ func (s *Session) Info() SessionInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	info := SessionInfo{
-		ID:           s.id,
-		WorktreeName: s.worktreeName,
-		DisplayName:  s.displayName,
-		CreatedAt:    s.createdAt,
-		TrashedAt:    s.trashedAt,
+		ID:              s.id,
+		WorktreeName:    s.worktreeName,
+		DisplayName:     s.displayName,
+		CreatedAt:       s.createdAt,
+		TrashedAt:       s.trashedAt,
+		SkipPermissions: s.skipPermissions,
 	}
 	for i := len(s.messages) - 1; i >= 0; i-- {
 		if s.messages[i].Role == agentmsg.RoleUser {
@@ -805,6 +819,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	s.publishStateLocked()
 	rpc := s.rpc
 	threadID := s.threadID
+	skipPermissions := s.skipPermissions
 
 	userMsg := Message{
 		Role:      agentmsg.RoleUser,
@@ -833,7 +848,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	// turn/start returns synchronously (response carries turnId), but we also
 	// receive turn/started as a notification. We don't need the response —
 	// the notification path is authoritative for streaming.
-	if _, err := rpc.Call(ctx, "turn/start", turnStartParams{
+	params := turnStartParams{
 		ThreadID: threadID,
 		Cwd:      s.workDir,
 		Input: []UserInput{{
@@ -841,9 +856,45 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 			Text:         prompt,
 			TextElements: []interface{}{},
 		}},
-	}); err != nil {
+	}
+	if skipPermissions {
+		params.ApprovalPolicy = "never"
+		params.SandboxPolicy = &sandboxPolicy{Type: "dangerFullAccess"}
+	}
+	if _, err := rpc.Call(ctx, "turn/start", params); err != nil {
 		s.markNotGenerating()
 		return fmt.Errorf("turn/start: %w", err)
+	}
+	return nil
+}
+
+// SkipPermissions reports whether the auto-approve toggle is on.
+func (s *Session) SkipPermissions() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.skipPermissions
+}
+
+// SetSkipPermissions toggles auto-approval for this session. Turning it ON
+// needs no process action — the next turn/start carries the policy overrides.
+// Turning it OFF stops the app-server (the next Send respawns and resumes the
+// thread): a turn-level override persists "for subsequent turns", so a
+// restart is the reliable way to fall back to the user's configured policies.
+func (s *Session) SetSkipPermissions(skip bool) error {
+	s.mu.Lock()
+	if s.skipPermissions == skip {
+		s.mu.Unlock()
+		return nil
+	}
+	s.skipPermissions = skip
+	running := s.started
+	persist := s.persistFn
+	s.mu.Unlock()
+	if persist != nil {
+		persist()
+	}
+	if !skip && running {
+		s.shutdownProcess()
 	}
 	return nil
 }
@@ -1259,6 +1310,7 @@ func (m *Manager) loadFromDisk() {
 		s.workDir = rec.WorkDir
 		s.createdAt = rec.CreatedAt
 		s.trashedAt = rec.TrashedAt
+		s.skipPermissions = rec.SkipPermissions
 		s.persistFn = m.makePersistFn()
 		if m.messagesDir != "" {
 			s.messagesFile = filepath.Join(m.messagesDir, rec.ID+".jsonl")
@@ -1294,8 +1346,9 @@ func (m *Manager) persist() {
 			DisplayName:  s.displayName,
 			ThreadID:     s.threadID,
 			WorkDir:      s.workDir,
-			CreatedAt:    s.createdAt,
-			TrashedAt:    s.trashedAt,
+			CreatedAt:       s.createdAt,
+			TrashedAt:       s.trashedAt,
+			SkipPermissions: s.skipPermissions,
 		})
 		s.mu.Unlock()
 	}

@@ -71,6 +71,7 @@ type serverMessage struct {
 	CostUSD                  float64             `json:"cost_usd,omitempty"`
 	Model                    string              `json:"model,omitempty"`
 	ModelOverride            string              `json:"model_override,omitempty"`
+	SkipPermissions          bool                `json:"skip_permissions,omitempty"`
 	SlashCommands            []string            `json:"slash_commands,omitempty"`
 	Skills                   []string            `json:"skills,omitempty"`
 	Activity                 string              `json:"activity,omitempty"`
@@ -148,6 +149,7 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 		CostUSD:                  session.CostUSD(),
 		Model:                    session.Model(),
 		ModelOverride:            session.ModelOverride(),
+		SkipPermissions:          session.SkipPermissions(),
 		SlashCommands:            cmds,
 		Skills:                   skills,
 		Activity:                 session.CurrentActivity(),
@@ -444,6 +446,33 @@ func (h *ClaudeHandler) SetModelAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := session.SetModel(body.Model); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetPermissionsAPI toggles auto-approval (permission mode bypassPermissions)
+// for the session. A running process is switched live where the CLI allows
+// it; otherwise the process restarts with the right flags on the next turn.
+func (h *ClaudeHandler) SetPermissionsAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sessionID := vars["session"]
+
+	var body struct {
+		Skip bool `json:"skip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrInternalError, "invalid JSON: "+err.Error())
+		return
+	}
+
+	session := h.manager.GetSession(sessionID)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if err := session.SetSkipPermissions(body.Skip); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

@@ -25,6 +25,7 @@ type SessionRecord struct {
 	CostUSD      float64    `json:"cost_usd,omitempty"`        // accumulated API cost across the session's turns
 	Model        string     `json:"model,omitempty"`           // most recent model id seen
 	ModelOverride string    `json:"model_override,omitempty"`  // model alias forced via --model (e.g. "opus")
+	SkipPermissions bool    `json:"skip_permissions,omitempty"` // auto-approve toggle (permission mode bypassPermissions)
 }
 
 // loadRecords reads session records from disk.

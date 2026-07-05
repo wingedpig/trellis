@@ -211,6 +211,38 @@
         }
     }
 
+    // ---------- Auto-approve (skip permissions) toggle ----------
+
+    let skipPermissions = false;
+
+    function updateSkipPermsToggle() {
+        var label = document.getElementById('codex-skip-perms');
+        var cb = document.getElementById('codex-skip-perms-cb');
+        if (!label || !cb) return;
+        cb.checked = skipPermissions;
+        label.classList.toggle('active', skipPermissions);
+    }
+
+    // setSkipPermissions toggles auto-approval (approval policy "never" +
+    // danger-full-access sandbox). Execpolicy forbidden rules in
+    // ~/.codex/rules/ still apply.
+    function setSkipPermissions(on) {
+        var prev = skipPermissions;
+        skipPermissions = !!on;      // optimistic
+        updateSkipPermsToggle();
+        fetch('/api/v1/codex/sessions/' + encodeURIComponent(window.CODEX_SESSION) + '/permissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ skip: !!on })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+        }).catch(function (err) {
+            skipPermissions = prev;  // revert on failure
+            updateSkipPermsToggle();
+            alert('Failed to change auto-approve: ' + err);
+        });
+    }
+
     // ---------- Server messages ----------
     function handleServerMessage(msg) {
         switch (msg.type) {
@@ -229,6 +261,8 @@
                     tokenUsage = msg.token_usage;
                     renderContextUsage();
                 }
+                skipPermissions = !!msg.skip_permissions;
+                updateSkipPermsToggle();
                 break;
             case 'stream':
                 handleStreamEvent(msg.event);
@@ -1253,6 +1287,7 @@
     function bindCodexGlobals() {
         window.codexSend = localCodexSend;
         window.codexCancel = localCodexCancel;
+        window.codexSetSkipPermissions = setSkipPermissions;
     }
     bindCodexGlobals();
     var __codexPageContainer = inputEl ? inputEl.closest('.page-container') : null;

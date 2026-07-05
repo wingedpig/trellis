@@ -136,13 +136,17 @@ type stdinControlInner struct {
 	// Model is set for set_model requests: a model alias or full id. Omitted
 	// resets the CLI to its default model.
 	Model string `json:"model,omitempty"`
+	// Mode is set for set_permission_mode requests ("default",
+	// "bypassPermissions", ...).
+	Mode string `json:"mode,omitempty"`
 }
 
 // Request-id prefixes for control requests we originate, so control_response
 // events can be routed back to the right fallback handling in readLoop.
 const (
-	interruptReqPrefix = "trellis-int-"
-	setModelReqPrefix  = "trellis-sm-"
+	interruptReqPrefix   = "trellis-int-"
+	setModelReqPrefix    = "trellis-sm-"
+	setPermModeReqPrefix = "trellis-pm-"
 )
 
 // interruptTimeout is how long Interrupt waits for the CLI to abort the
@@ -159,6 +163,10 @@ type SessionInfo struct {
 	TrashedAt     *time.Time `json:"trashed_at,omitempty"`
 	CostUSD       float64    `json:"cost_usd,omitempty"`
 	Model         string     `json:"model,omitempty"`
+	// SkipPermissions is true when the session auto-approves tool calls
+	// (permission mode bypassPermissions). settings.json deny rules still
+	// apply — the CLI enforces them in every mode.
+	SkipPermissions bool `json:"skip_permissions,omitempty"`
 }
 
 // Session holds per-session Claude state with a long-running claude process.
@@ -210,6 +218,16 @@ type Session struct {
 	// spawn; a running process is switched live with a set_model
 	// control_request so the process (and its background tasks) survives.
 	modelOverride string
+	// skipPermissions is true when the user toggled auto-approval on: the
+	// session runs in permission mode bypassPermissions instead of default.
+	// Applied via --dangerously-skip-permissions at spawn; toggling a running
+	// session attempts a live set_permission_mode switch (toggling OFF always
+	// works live; toggling ON works live only on a process that was spawned
+	// with the flag — otherwise the CLI rejects it and the readLoop fallback
+	// restarts the process, which respawns with the flag). settings.json deny
+	// rules are enforced by the CLI in every mode, including bypass — they
+	// are the guardrail this toggle relies on.
+	skipPermissions bool
 	// Cached from system init event
 	slashCommands []string
 	skills        []string
@@ -269,13 +287,14 @@ func (s *Session) Info() SessionInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	info := SessionInfo{
-		ID:           s.id,
-		WorktreeName: s.worktreeName,
-		DisplayName:  s.displayName,
-		CreatedAt:    s.createdAt,
-		TrashedAt:    s.trashedAt,
-		CostUSD:      s.costUSD,
-		Model:        s.model,
+		ID:              s.id,
+		WorktreeName:    s.worktreeName,
+		DisplayName:     s.displayName,
+		CreatedAt:       s.createdAt,
+		TrashedAt:       s.trashedAt,
+		CostUSD:         s.costUSD,
+		Model:           s.model,
+		SkipPermissions: s.skipPermissions,
 	}
 	// Find the last user message timestamp
 	for i := len(s.messages) - 1; i >= 0; i-- {
@@ -356,11 +375,12 @@ func (m *Manager) loadFromDisk() {
 			workDir:      rec.WorkDir,
 			createdAt:     rec.CreatedAt,
 			trashedAt:     rec.TrashedAt,
-			costUSD:       rec.CostUSD,
-			model:         rec.Model,
-			modelOverride: rec.ModelOverride,
-			subscribers:   make(map[chan StreamEvent]struct{}),
-			manager:       m,
+			costUSD:         rec.CostUSD,
+			model:           rec.Model,
+			modelOverride:   rec.ModelOverride,
+			skipPermissions: rec.SkipPermissions,
+			subscribers:     make(map[chan StreamEvent]struct{}),
+			manager:         m,
 		}
 		s.persistFn = m.makePersistFn()
 		if m.messagesDir != "" {
@@ -413,11 +433,12 @@ func (m *Manager) persist() {
 			DisplayName:  s.displayName,
 			SessionID:    s.claudeSID,
 			WorkDir:      s.workDir,
-			CreatedAt:     s.createdAt,
-			TrashedAt:     s.trashedAt,
-			CostUSD:       s.costUSD,
-			Model:         s.model,
-			ModelOverride: s.modelOverride,
+			CreatedAt:        s.createdAt,
+			TrashedAt:        s.trashedAt,
+			CostUSD:          s.costUSD,
+			Model:            s.model,
+			ModelOverride:    s.modelOverride,
+			SkipPermissions:  s.skipPermissions,
 		})
 		s.mu.Unlock()
 	}
@@ -1008,6 +1029,51 @@ func (s *Session) SetModel(alias string) error {
 	return nil
 }
 
+// SkipPermissions reports whether the auto-approve toggle is on.
+func (s *Session) SkipPermissions() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.skipPermissions
+}
+
+// SetSkipPermissions toggles auto-approval (permission mode
+// bypassPermissions) for this session. A running process is switched live
+// with a set_permission_mode control_request where the CLI allows it —
+// toggling OFF is always live (process, background tasks, and pending
+// prompts survive; already-pending prompts still need answers, but new tool
+// calls stop prompting). Toggling ON is live only on a process spawned with
+// --dangerously-skip-permissions; otherwise the CLI rejects the switch and
+// the readLoop fallback restarts the process, which respawns with the flag.
+// The toggle persists with the session.
+func (s *Session) SetSkipPermissions(skip bool) error {
+	s.mu.Lock()
+	if s.skipPermissions == skip {
+		s.mu.Unlock()
+		return nil
+	}
+	s.skipPermissions = skip
+	running := s.stdin != nil
+	persist := s.persistFn
+	s.mu.Unlock()
+	if persist != nil {
+		persist()
+	}
+	if !running {
+		// No process; ensureProcess applies the mode on the next spawn.
+		return nil
+	}
+	req := stdinControlRequest{
+		Type:      "control_request",
+		RequestID: setPermModeReqPrefix + uuid.New().String(),
+		Request:   stdinControlInner{Subtype: "set_permission_mode", Mode: permissionMode(skip)},
+	}
+	if err := s.writeStdin(req); err != nil {
+		log.Printf("claude [%s]: set_permission_mode write failed, restarting process: %v", s.id, err)
+		s.restartProcess()
+	}
+	return nil
+}
+
 // restartProcess kills the running process and resets run state; the next
 // Send re-spawns via ensureProcess (resuming the conversation with --resume).
 // Subscribers stay attached so connected clients keep their WebSocket.
@@ -1383,6 +1449,7 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	workDir := s.workDir
 	resumeSID := s.claudeSID
 	modelOverride := s.modelOverride
+	skipPermissions := s.skipPermissions
 	gen := s.processGen + 1
 	s.processGen = gen
 	s.mu.Unlock()
@@ -1394,6 +1461,17 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 		"--permission-prompt-tool", "stdio",
 		"--permission-mode", "default",
 		"--include-partial-messages",
+	}
+	// The auto-approve toggle. The flag both starts the process in
+	// bypassPermissions (it wins over --permission-mode) and is the only way
+	// the CLI permits a later live set_permission_mode switch back INTO
+	// bypass after the user toggles off and on again. It is deliberately NOT
+	// passed when the toggle is off, so a prompts-on session can never end up
+	// bypassing through a Trellis bug — the CLI itself refuses. Deny rules
+	// from settings.json are enforced by the CLI in every mode, including
+	// bypass.
+	if skipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
 	}
 
 	// Resume a previous conversation if we have a Claude session ID
@@ -1452,6 +1530,14 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	go s.readLoop(stdoutPipe, cmd, gen, stderr)
 
 	return nil
+}
+
+// permissionMode maps the auto-approve toggle to a CLI permission mode.
+func permissionMode(skip bool) string {
+	if skip {
+		return "bypassPermissions"
+	}
+	return "default"
 }
 
 // readLoop reads NDJSON events from claude's stdout continuously.
@@ -1577,6 +1663,13 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *std
 			if json.Unmarshal(event.Response, &resp) == nil && resp.Subtype == "error" {
 				log.Printf("claude [%s]: control request %s rejected: %s", s.id, resp.RequestID, resp.Error)
 				if strings.HasPrefix(resp.RequestID, setModelReqPrefix) {
+					s.restartProcess()
+				}
+				// A rejected set_permission_mode means the live process is in
+				// the wrong mode (worst case: still bypassing when the user
+				// toggled auto-approve off). Restart; the respawn re-applies
+				// the persisted toggle from scratch.
+				if strings.HasPrefix(resp.RequestID, setPermModeReqPrefix) {
 					s.restartProcess()
 				}
 			}

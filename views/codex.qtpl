@@ -54,7 +54,12 @@ type CodexPage struct {
         </div>
         <div class="codex-input-footer">
             <div class="codex-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
-            <div id="codex-context-usage" class="codex-context-usage"></div>
+            <div class="codex-footer-right">
+                <label class="codex-skip-perms" id="codex-skip-perms" title="Auto-approve tool use — Codex stops asking approval and runs without a sandbox. Execpolicy forbidden rules in ~/.codex/rules/ still apply.">
+                    <input type="checkbox" id="codex-skip-perms-cb" onchange="codexSetSkipPermissions(this.checked)"> auto-approve
+                </label>
+                <div id="codex-context-usage" class="codex-context-usage"></div>
+            </div>
         </div>
     </div>
 </div>

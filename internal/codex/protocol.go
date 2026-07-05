@@ -85,6 +85,20 @@ type turnStartParams struct {
 	ThreadID string      `json:"threadId"`
 	Input    []UserInput `json:"input"`
 	Cwd      string      `json:"cwd,omitempty"`
+	// ApprovalPolicy / SandboxPolicy override the thread's policies "for this
+	// turn and subsequent turns" (per the app-server schema). Sent on every
+	// turn while the session's auto-approve toggle is on; omitted otherwise
+	// (omitted means "keep current", which is why toggling OFF restarts the
+	// process instead — see SetSkipPermissions).
+	ApprovalPolicy string         `json:"approvalPolicy,omitempty"`
+	SandboxPolicy  *sandboxPolicy `json:"sandboxPolicy,omitempty"`
+}
+
+// sandboxPolicy is the app-server SandboxPolicy union. Only the
+// dangerFullAccess variant is ever sent, so the extra per-variant fields
+// (networkAccess etc.) are omitted.
+type sandboxPolicy struct {
+	Type string `json:"type"` // e.g. "dangerFullAccess"
 }
 
 // UserInput is one item in the user's turn input. text_elements is required

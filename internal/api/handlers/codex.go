@@ -62,13 +62,14 @@ type codexClientMessage struct {
 
 // codexServerMessage is a message to the JS client.
 type codexServerMessage struct {
-	Type       string             `json:"type"`
-	Messages   []codex.Message    `json:"messages,omitempty"`
-	Event      *codex.StreamEvent `json:"event,omitempty"`
-	Generating bool               `json:"generating,omitempty"`
-	Message    string             `json:"message,omitempty"`
-	TokenUsage *codex.TokenUsage  `json:"token_usage,omitempty"`
-	Activity   string             `json:"activity,omitempty"`
+	Type            string             `json:"type"`
+	Messages        []codex.Message    `json:"messages,omitempty"`
+	Event           *codex.StreamEvent `json:"event,omitempty"`
+	Generating      bool               `json:"generating,omitempty"`
+	Message         string             `json:"message,omitempty"`
+	TokenUsage      *codex.TokenUsage  `json:"token_usage,omitempty"`
+	Activity        string             `json:"activity,omitempty"`
+	SkipPermissions bool               `json:"skip_permissions,omitempty"`
 }
 
 // WebSocket handles a chat WebSocket for a specific session.
@@ -125,11 +126,12 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 	// via /api/v1/codex/sessions/{id}/items/{itemId}/output.
 	usage := session.TokenUsage()
 	writeJSON(codexServerMessage{
-		Type:       "history",
-		Messages:   session.MessagesForWire(),
-		Generating: session.IsGenerating(),
-		TokenUsage: &usage,
-		Activity:   session.CurrentActivity(),
+		Type:            "history",
+		Messages:        session.MessagesForWire(),
+		Generating:      session.IsGenerating(),
+		TokenUsage:      &usage,
+		Activity:        session.CurrentActivity(),
+		SkipPermissions: session.SkipPermissions(),
 	})
 
 	// Re-send any pending approval prompts.
@@ -317,6 +319,29 @@ func (h *CodexHandler) RenameSessionAPI(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := h.manager.RenameSession(vars["session"], body.DisplayName); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetPermissionsAPI toggles auto-approval (approval policy "never" +
+// danger-full-access sandbox) for the session.
+func (h *CodexHandler) SetPermissionsAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	var body struct {
+		Skip bool `json:"skip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrInternalError, "invalid JSON: "+err.Error())
+		return
+	}
+	session := h.manager.GetSession(vars["session"])
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if err := session.SetSkipPermissions(body.Skip); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

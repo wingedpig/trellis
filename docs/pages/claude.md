@@ -103,6 +103,30 @@ Two things to know:
 - The picker reflects the forced model, or the model actually observed on the session's responses when no override is set.
 - After a live switch the model may still *introduce itself* by the old name if asked — its identity line was written into the system prompt when the process started. The switch is real regardless: every subsequent response is generated (and billed) by the model you picked, which is what the picker and the [Usage page](/docs/pages/usage/) report.
 
+### Auto-Approve (Skip Permissions)
+
+An **auto-approve** checkbox in the footer switches the session into Claude Code's `bypassPermissions` mode: tool calls stop raising permission prompts and run immediately. The label turns amber while it's on, and the setting persists with the session.
+
+Toggling is live where the CLI allows it: turning auto-approve **off** never restarts the process (background tasks survive, and any prompts that were already pending still need answers). Turning it **on** restarts the process once if it wasn't started bypass-capable — the conversation resumes automatically on your next message.
+
+**Pair this with hard guardrails.** `permissions.deny` rules in `~/.claude/settings.json` are enforced by the CLI in *every* mode, including bypass, and a denied call is refused silently without prompting. Use them (plus a `PreToolUse` hook, which also catches indirect invocations like `sh -c "ssh …"`) to make classes of commands — e.g. anything SSH-shaped when your production hosts are one passwordless hop away — impossible regardless of what the agent decides to run:
+
+```json
+{
+  "permissions": {
+    "deny": ["Bash(ssh)", "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(tailscale ssh:*)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "~/.claude/hooks/block-ssh.sh" }] }
+    ]
+  }
+}
+```
+
+The same toggle exists on the Codex page. There it sends approval policy `never` plus a danger-full-access sandbox on each turn; turning it off restarts the app-server so your configured policies reapply. The Codex guardrail equivalent is an execpolicy rules file — `prefix_rule(pattern = ["ssh"], decision = "forbidden", …)` in `~/.codex/rules/default.rules` — which Codex enforces even when approvals and the sandbox are fully bypassed.
+
 ## Transcript Import/Export
 
 ### Importing Transcripts
@@ -173,7 +197,7 @@ After completion, you're redirected to the worktree home page.
 
 ## Codex parity
 
-Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), except [Plan Artifacts](#plan-artifacts), which rely on Claude Code's plan mode, and the [Model Picker](#model-picker), which is Claude-only. The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
+Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), including [Auto-Approve](#auto-approve-skip-permissions), except [Plan Artifacts](#plan-artifacts), which rely on Claude Code's plan mode, and the [Model Picker](#model-picker), which is Claude-only. The shared modal in `static/js/wrapup.js` and the shared `commitToCase` server orchestrator are agent-agnostic; the only differences are the Save-to-Case button label and which transcript directory the snapshot lands in (`codex_transcripts/` instead of `transcripts/`).
 
 ## Related
 

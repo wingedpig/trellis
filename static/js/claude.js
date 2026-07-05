@@ -74,6 +74,38 @@
         if (current && sel.value !== current) sel.value = current;
     }
 
+    // ---------- Auto-approve (skip permissions) toggle ----------
+
+    let skipPermissions = false;
+
+    function updateSkipPermsToggle() {
+        var label = document.getElementById('claude-skip-perms');
+        var cb = document.getElementById('claude-skip-perms-cb');
+        if (!label || !cb) return;
+        cb.checked = skipPermissions;
+        label.classList.toggle('active', skipPermissions);
+    }
+
+    // setSkipPermissions toggles auto-approval (permission mode
+    // bypassPermissions). The server switches the running process live where
+    // the CLI allows it; deny rules in .claude/settings.json still apply.
+    function setSkipPermissions(on) {
+        var prev = skipPermissions;
+        skipPermissions = !!on;      // optimistic
+        updateSkipPermsToggle();
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(CLAUDE_SESSION) + '/permissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ skip: !!on })
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+        }).catch(function(err) {
+            skipPermissions = prev;  // revert on failure
+            updateSkipPermsToggle();
+            alert('Failed to change auto-approve: ' + err);
+        });
+    }
+
     // setModel forces the session onto a model alias. The server switches the
     // running claude process live (set_model control request), so the change
     // applies from the next message without a restart.
@@ -438,6 +470,8 @@
                 modelOverride = msg.model_override || '';
                 setSessionModel(msg.model);
                 updateModelSelect();
+                skipPermissions = !!msg.skip_permissions;
+                updateSkipPermsToggle();
                 if (msg.cost_usd) {
                     sessionCostUSD = msg.cost_usd;
                 }
@@ -2912,6 +2946,7 @@
         window.claudeCancel = localClaudeCancel;
         window.claudeReset = localClaudeReset;
         window.claudeSetModel = setModel;
+        window.claudeSetSkipPermissions = setSkipPermissions;
         window.claudeShowPlan = localClaudeShowPlan;
         window.claudePlanEdit = localClaudePlanEdit;
         window.claudePlanSave = localClaudePlanSave;

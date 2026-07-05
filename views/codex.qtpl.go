@@ -88,7 +88,12 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
         <div class="codex-input-footer">
             <div class="codex-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
-            <div id="codex-context-usage" class="codex-context-usage"></div>
+            <div class="codex-footer-right">
+                <label class="codex-skip-perms" id="codex-skip-perms" title="Auto-approve tool use — Codex stops asking approval and runs without a sandbox. Execpolicy forbidden rules in ~/.codex/rules/ still apply.">
+                    <input type="checkbox" id="codex-skip-perms-cb" onchange="codexSetSkipPermissions(this.checked)"> auto-approve
+                </label>
+                <div id="codex-context-usage" class="codex-context-usage"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -102,37 +107,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:70
+//line views/codex.qtpl:75
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:70
+//line views/codex.qtpl:75
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:71
+//line views/codex.qtpl:76
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:71
+//line views/codex.qtpl:76
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:72
+//line views/codex.qtpl:77
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:72
+//line views/codex.qtpl:77
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:73
+//line views/codex.qtpl:78
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:73
+//line views/codex.qtpl:78
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:74
+//line views/codex.qtpl:79
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:74
+//line views/codex.qtpl:79
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:74
+//line views/codex.qtpl:79
 	} else {
-//line views/codex.qtpl:74
+//line views/codex.qtpl:79
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:74
+//line views/codex.qtpl:79
 	}
-//line views/codex.qtpl:74
+//line views/codex.qtpl:79
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -425,36 +430,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:370
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:370
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 }
 
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 }
 
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 	return qs422016
-//line views/codex.qtpl:366
+//line views/codex.qtpl:371
 }

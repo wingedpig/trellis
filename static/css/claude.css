@@ -768,6 +768,22 @@ pre:hover .claude-code-copy {
     gap: 0.6rem;
 }
 
+.claude-skip-perms {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.72rem;
+    color: var(--trellis-text-muted);
+    cursor: pointer;
+    margin-bottom: 0;
+    user-select: none;
+    white-space: nowrap;
+}
+.claude-skip-perms.active {
+    color: #ffc107;
+    font-weight: 600;
+}
+
 .claude-model-select {
     font-size: 0.72rem;
     color: var(--bs-body-color);

@@ -762,6 +762,28 @@ pre:hover .codex-code-copy {
     color: var(--trellis-text-muted);
 }
 
+.codex-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.codex-skip-perms {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.72rem;
+    color: var(--trellis-text-muted);
+    cursor: pointer;
+    margin-bottom: 0;
+    user-select: none;
+    white-space: nowrap;
+}
+.codex-skip-perms.active {
+    color: #ffc107;
+    font-weight: 600;
+}
+
 .codex-context-usage {
     font-size: 0.75rem;
     color: var(--trellis-text-muted);
