@@ -124,6 +124,11 @@ func (p *InboxPage) StreamRender(qw422016 *qt422016.Writer) {
         .inbox-row.reason-needs_approval,
         .inbox-row.reason-error { border-left-color: var(--bs-danger, #dc3545); }
         .inbox-row.reason-needs_approval .inbox-name { font-weight: 600; }
+        /* A background agent still running keeps the row in the active list, but
+           with an amber accent so it reads as "working on its own", distinct
+           from a live turn's primary-coloured dot. */
+        .inbox-row.reason-background_agent { border-left-color: var(--bs-warning, #ffc107); }
+        .inbox-icon.background-agent { color: var(--bs-warning, #ffc107); }
         /* Gentle pulse to pull the eye toward a stalled approval. */
         @keyframes inbox-pulse {
             0%, 100% { opacity: 1; }
@@ -218,31 +223,31 @@ func (p *InboxPage) StreamRender(qw422016 *qt422016.Writer) {
 </body>
 </html>
 `)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 }
 
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 func (p *InboxPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	p.StreamRender(qw422016)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	qt422016.ReleaseWriter(qw422016)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 }
 
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 func (p *InboxPage) Render() string {
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	p.WriteRender(qb422016)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	qs422016 := string(qb422016.B)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 	return qs422016
-//line views/inbox.qtpl:198
+//line views/inbox.qtpl:203
 }

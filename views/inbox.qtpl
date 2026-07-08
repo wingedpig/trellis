@@ -102,6 +102,11 @@ type InboxPage struct{}
         .inbox-row.reason-needs_approval,
         .inbox-row.reason-error { border-left-color: var(--bs-danger, #dc3545); }
         .inbox-row.reason-needs_approval .inbox-name { font-weight: 600; }
+        /* A background agent still running keeps the row in the active list, but
+           with an amber accent so it reads as "working on its own", distinct
+           from a live turn's primary-coloured dot. */
+        .inbox-row.reason-background_agent { border-left-color: var(--bs-warning, #ffc107); }
+        .inbox-icon.background-agent { color: var(--bs-warning, #ffc107); }
         /* Gentle pulse to pull the eye toward a stalled approval. */
         @keyframes inbox-pulse {
             0%, 100% { opacity: 1; }

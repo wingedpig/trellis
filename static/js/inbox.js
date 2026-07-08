@@ -90,6 +90,12 @@
             warn.title = "Last turn ended in an error";
             return warn;
         }
+        if (reason === "background_agent") {
+            var bot = document.createElement("i");
+            bot.className = "fa-solid fa-robot inbox-icon background-agent";
+            bot.title = "A background agent is still working";
+            return bot;
+        }
         var dot = document.createElement("span");
         dot.className = "inbox-dot";
         return dot;

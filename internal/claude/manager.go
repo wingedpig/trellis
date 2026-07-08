@@ -103,6 +103,21 @@ type StreamEvent struct {
 	Activity string `json:"activity,omitempty"`
 	// Step is the subagent's running step count on "subagent_activity" events.
 	Step int `json:"step,omitempty"`
+	// Tasks is the full current set of background tasks (background agents and
+	// background shell jobs) on a system "background_tasks_changed" event. The
+	// CLI sends the complete list every time it changes, so len(Tasks) is
+	// authoritative: non-empty means work is running past the main turn's
+	// result; empty means everything the turn spawned has finished.
+	Tasks []BackgroundTask `json:"tasks,omitempty"`
+}
+
+// BackgroundTask describes one entry in a system "background_tasks_changed"
+// event. task_type is "local_agent" for a background subagent (the Agent/Task
+// tool) or "local_bash" for a backgrounded shell job.
+type BackgroundTask struct {
+	TaskID      string `json:"task_id"`
+	TaskType    string `json:"task_type"`
+	Description string `json:"description"`
 }
 
 // ParsedMessage is the message field from an assistant StreamEvent.
@@ -268,6 +283,14 @@ type Session struct {
 	// lastTurnError is true when the most recently completed turn ended in an
 	// error. Cleared on the next Send. Drives the inbox "error" reason.
 	lastTurnError bool
+	// backgroundTasks holds the CLI's current set of background tasks (background
+	// agents and shell jobs) as reported by the most recent system
+	// "background_tasks_changed" event. Non-empty keeps the session "running"
+	// (reason background_agent) even after the main turn's result, so it doesn't
+	// show as idle/done while a background agent is still working. Authoritative
+	// and self-clearing (the CLI sends [] when the last one finishes); also
+	// cleared on process restart/exit, since background tasks die with the CLI.
+	backgroundTasks []BackgroundTask
 	// Callback to persist after session ID is captured from init
 	persistFn    func()
 	messagesFile string // path for per-session message persistence
@@ -1106,6 +1129,7 @@ func (s *Session) restartProcess() {
 	s.generating = false
 	s.interruptRequested = false
 	s.pendingControlRequests = nil
+	s.backgroundTasks = nil
 	s.stdin = nil
 	s.cmd = nil
 	s.cancel = nil
@@ -1147,12 +1171,21 @@ func (s *Session) removePendingControlRequestLocked(requestID string) bool {
 	return false
 }
 
+// deriveStateLocked computes the coarse inbox state. Caller must hold s.mu.
+// The session is "running" when there is work in flight and nothing is waiting
+// on the user: a live turn (generating) OR a background agent/task still going
+// after the turn's result. A pending permission prompt always wins as
+// "needs_you" — it needs the user regardless of what else is running.
+func (s *Session) deriveStateLocked() string {
+	if len(s.pendingControlRequests) == 0 && (s.generating || len(s.backgroundTasks) > 0) {
+		return events.SessionStateRunning
+	}
+	return events.SessionStateNeedsYou
+}
+
 // publishStateLocked emits a session.state_changed event reflecting the
 // session's current derived state. Caller must hold s.mu. Safe no-op if no
 // event bus has been wired into the manager.
-//
-// State is "needs_you" whenever the agent is not actively generating OR a
-// permission prompt is pending. Otherwise "running".
 //
 // Side effects: updates s.unread and s.lastPublishedState based on the
 // running ↔ needs-you transition rule. unread is set when running →
@@ -1162,10 +1195,7 @@ func (s *Session) publishStateLocked() {
 	if s.manager == nil || s.manager.bus == nil {
 		return
 	}
-	state := events.SessionStateRunning
-	if !s.generating || len(s.pendingControlRequests) > 0 {
-		state = events.SessionStateNeedsYou
-	}
+	state := s.deriveStateLocked()
 	if state == events.SessionStateNeedsYou &&
 		s.lastPublishedState == events.SessionStateRunning &&
 		s.viewerCount == 0 {
@@ -1202,10 +1232,42 @@ func (s *Session) reasonLocked() string {
 	if s.generating {
 		return events.ReasonRunning
 	}
+	if len(s.backgroundTasks) > 0 {
+		return events.ReasonBackgroundAgent
+	}
 	if s.lastTurnError {
 		return events.ReasonError
 	}
 	return events.ReasonAwaitingInput
+}
+
+// backgroundTaskLabel builds a short activity line for a session whose main
+// turn is idle but which has background tasks running. Empty when there are
+// none (so the activity line clears).
+func backgroundTaskLabel(tasks []BackgroundTask) string {
+	switch len(tasks) {
+	case 0:
+		return ""
+	case 1:
+		if d := strings.TrimSpace(tasks[0].Description); d != "" {
+			return "Background agent: " + clip(d, 48)
+		}
+		return "Background agent working…"
+	default:
+		return fmt.Sprintf("%d background agents working…", len(tasks))
+	}
+}
+
+// setBackgroundTasksLocked records the CLI's current background-task set and
+// refreshes derived state. Caller must hold s.mu. When the main turn is idle it
+// also drives the activity line off the background work (a live turn's own
+// activity takes precedence, so it's left alone while generating).
+func (s *Session) setBackgroundTasksLocked(tasks []BackgroundTask) {
+	s.backgroundTasks = tasks
+	if !s.generating {
+		s.setActivityLocked(backgroundTaskLabel(tasks))
+	}
+	s.publishStateLocked()
 }
 
 // Reason returns the fine-grained inbox reason (presentation only).
@@ -1715,6 +1777,16 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *std
 			s.mu.Unlock()
 		}
 
+		// Background tasks (background agents and shell jobs) run past the main
+		// turn's result. The CLI reports the full current set on every change, so
+		// this keeps the session "running" while any are active instead of
+		// flipping to idle/done the moment the turn ends.
+		if event.Type == "system" && event.Subtype == "background_tasks_changed" {
+			s.mu.Lock()
+			s.setBackgroundTasksLocked(event.Tasks)
+			s.mu.Unlock()
+		}
+
 		// Log truly unknown event types for debugging
 		switch event.Type {
 		case "system", "assistant", "result", "control_request", "control_response", "control_cancel_request", "stream_event", "user":
@@ -1836,7 +1908,12 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *std
 			// spawned them completes. Clearing here silently killed those
 			// agents. Moot prompts are retracted by the CLI itself via
 			// control_cancel_request.
-			s.setActivityLocked("")
+			//
+			// Likewise, a background agent/task may still be running past this
+			// result: keep its activity line (and, via reasonLocked, the running
+			// state) instead of blanking to idle. It clears when the CLI reports
+			// the tasks finished (background_tasks_changed with []).
+			s.setActivityLocked(backgroundTaskLabel(s.backgroundTasks))
 			s.publishStateLocked()
 			persist := s.persistFn
 			s.mu.Unlock()
@@ -1928,8 +2005,10 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *std
 		s.generating = false
 		s.interruptRequested = false
 		// A dead process can never receive permission responses; drop its
-		// pending prompts so the session doesn't stick in needs_approval.
+		// pending prompts so the session doesn't stick in needs_approval. Its
+		// background tasks died with it too, so drop those (no [] event comes).
 		s.pendingControlRequests = nil
+		s.backgroundTasks = nil
 		s.stdin = nil
 		s.cmd = nil
 		s.cancel = nil
@@ -2353,6 +2432,7 @@ func (s *Session) Cancel() {
 	s.generating = false
 	s.interruptRequested = false
 	s.pendingControlRequests = nil
+	s.backgroundTasks = nil
 	s.started = false
 	s.stdin = nil
 	s.cmd = nil

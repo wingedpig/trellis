@@ -122,10 +122,11 @@ const (
 // EventSessionStateChanged. `reason` refines `state` for presentation only
 // (icon, urgency sort) and never affects ordering or transition detection.
 const (
-	ReasonRunning       = "running"        // a turn is actively in flight
-	ReasonAwaitingInput = "awaiting_input" // turn finished cleanly, your move
-	ReasonNeedsApproval = "needs_approval" // stalled on a permission/approval prompt
-	ReasonError         = "error"          // last turn ended in an error
+	ReasonRunning         = "running"          // a turn is actively in flight
+	ReasonAwaitingInput   = "awaiting_input"   // turn finished cleanly, your move
+	ReasonNeedsApproval   = "needs_approval"   // stalled on a permission/approval prompt
+	ReasonError           = "error"            // last turn ended in an error
+	ReasonBackgroundAgent = "background_agent" // main turn done, but a background agent/task is still running
 )
 
 // RestartTrigger indicates why a service was restarted.
