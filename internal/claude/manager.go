@@ -223,11 +223,18 @@ type Session struct {
 	// Applied via --dangerously-skip-permissions at spawn; toggling a running
 	// session attempts a live set_permission_mode switch (toggling OFF always
 	// works live; toggling ON works live only on a process that was spawned
-	// with the flag — otherwise the CLI rejects it and the readLoop fallback
-	// restarts the process, which respawns with the flag). settings.json deny
-	// rules are enforced by the CLI in every mode, including bypass — they
-	// are the guardrail this toggle relies on.
+	// with the flag — otherwise we restart so the respawn comes up with it).
+	// settings.json deny rules are enforced by the CLI in every mode, including
+	// bypass — they are the guardrail this toggle relies on.
 	skipPermissions bool
+	// processSkipPermissions records whether the currently running process was
+	// spawned with --dangerously-skip-permissions (i.e. is bypass-capable). It
+	// is what the live process supports, which can differ from skipPermissions
+	// after a toggle. SetSkipPermissions reads it to decide whether toggling ON
+	// can be a live set_permission_mode switch (the CLI only accepts the switch
+	// INTO bypass on a bypass-capable process) or must restart. Set at spawn in
+	// ensureProcess; only meaningful while a process is running (stdin != nil).
+	processSkipPermissions bool
 	// Cached from system init event
 	slashCommands []string
 	skills        []string
@@ -1053,6 +1060,7 @@ func (s *Session) SetSkipPermissions(skip bool) error {
 	}
 	s.skipPermissions = skip
 	running := s.stdin != nil
+	processBypassCapable := s.processSkipPermissions
 	persist := s.persistFn
 	s.mu.Unlock()
 	if persist != nil {
@@ -1060,6 +1068,17 @@ func (s *Session) SetSkipPermissions(skip bool) error {
 	}
 	if !running {
 		// No process; ensureProcess applies the mode on the next spawn.
+		return nil
+	}
+	// Toggling ON needs a bypass-capable process. The CLI refuses a live
+	// set_permission_mode → bypassPermissions on a process that wasn't spawned
+	// with --dangerously-skip-permissions, so when we already know this process
+	// wasn't, don't send a request we know will be rejected — restart straight
+	// away and let the respawn come up with the flag. (The readLoop rejection
+	// handler still restarts as a backstop if this read is ever stale.)
+	// Toggling OFF (→ default) is always accepted live, on any process.
+	if skip && !processBypassCapable {
+		s.restartProcess()
 		return nil
 	}
 	req := stdinControlRequest{
@@ -1450,9 +1469,29 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	resumeSID := s.claudeSID
 	modelOverride := s.modelOverride
 	skipPermissions := s.skipPermissions
+	msgs := make([]Message, len(s.messages))
+	copy(msgs, s.messages)
 	gen := s.processGen + 1
 	s.processGen = gen
 	s.mu.Unlock()
+
+	// Guarantee --resume has a valid target. The CLI aborts the turn with "No
+	// conversation found with session ID" if resumeSID's JSONL isn't on disk —
+	// which happens when a young session is restarted (e.g. the auto-approve
+	// toggle's respawn) before the CLI has flushed its own transcript. Rebuild
+	// from the messages we hold when the file is missing, so a restart never
+	// loses the resume. When the CLI's own (richest) transcript is present we
+	// keep it untouched.
+	if newSID := s.ensureResumeTarget(resumeSID, workDir, msgs); newSID != resumeSID {
+		resumeSID = newSID
+		s.mu.Lock()
+		s.claudeSID = newSID
+		persistFn := s.persistFn
+		s.mu.Unlock()
+		if persistFn != nil {
+			persistFn()
+		}
+	}
 
 	args := []string{
 		"--output-format", "stream-json",
@@ -1523,6 +1562,10 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	s.stdin = stdinPipe
 	s.cancel = cancel
 	s.started = true
+	// Record what this process can do live: only a process spawned with
+	// --dangerously-skip-permissions accepts a later set_permission_mode switch
+	// into bypass. SetSkipPermissions reads this to avoid a doomed round-trip.
+	s.processSkipPermissions = skipPermissions
 	// A fresh process reports total_cost_usd from zero again.
 	s.lastProcessCost = 0
 	s.mu.Unlock()
@@ -1530,6 +1573,39 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	go s.readLoop(stdoutPipe, cmd, gen, stderr)
 
 	return nil
+}
+
+// ensureResumeTarget returns the session ID ensureProcess should pass to
+// --resume, guaranteeing its JSONL exists on disk. The CLI reports "No
+// conversation found with session ID" and aborts the turn when the file is
+// absent — which happens when a session is restarted (notably the auto-approve
+// toggle's respawn) before the CLI has flushed its own transcript for a young
+// session. When the file is missing we rebuild it from the messages we hold so
+// --resume has a deterministic, full-history target; with no messages to
+// rebuild from we clear the ID and let the process start fresh. When the CLI's
+// own transcript is present (the common case) resumeSID is returned unchanged
+// so its richer history — tool results, thinking — is preserved. A returned
+// value different from resumeSID means the caller should persist it.
+func (s *Session) ensureResumeTarget(resumeSID, workDir string, msgs []Message) string {
+	if resumeSID == "" {
+		return ""
+	}
+	if projDir, err := CLIProjectDir(workDir); err == nil {
+		if _, statErr := os.Stat(filepath.Join(projDir, resumeSID+".jsonl")); statErr == nil {
+			return resumeSID // CLI's own transcript is on disk; keep it.
+		}
+	}
+	if len(msgs) == 0 {
+		log.Printf("claude [%s]: resume target %s missing and no messages, starting fresh", s.id, resumeSID)
+		return ""
+	}
+	newSID, err := WriteCLISessionFile(workDir, workDir, "", msgs)
+	if err != nil {
+		log.Printf("claude [%s]: resume target %s missing, rebuild failed: %v, starting fresh", s.id, resumeSID, err)
+		return ""
+	}
+	log.Printf("claude [%s]: resume target %s missing, rebuilt as %s (%d messages)", s.id, resumeSID, newSID, len(msgs))
+	return newSID
 }
 
 // permissionMode maps the auto-approve toggle to a CLI permission mode.
