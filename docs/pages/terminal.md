@@ -28,6 +28,21 @@ Claude sessions and local terminals both use the `@` prefix but are visually dis
 
 Press **Cmd+Backspace** to open the history picker, which shows your recently visited views in order. This lets you quickly toggle between two views.
 
+## Links Panel
+
+Press **Cmd/Ctrl+K** to open a standalone panel listing every configured link on its own — the same `terminal.links` entries the navigation picker interleaves with terminals and services, but shown together so you can scan and click them without filtering the picker. Click a link to open it; each link reuses a named browser tab, so re-opening the same link focuses its existing tab instead of piling up duplicates.
+
+The shortcut is active only when links are configured (otherwise `Cmd/Ctrl+K` falls through to the browser). The panel also appears as **Open links panel** in the Commands &amp; Shortcuts menu (`Cmd/Ctrl+H`). Define links under `terminal.links` in your config:
+
+```hjson
+terminal: {
+  links: [
+    { name: "Grafana", url: "https://grafana.example.com" }
+    { name: "Docs", url: "https://docs.example.com" }
+  ]
+}
+```
+
 ---
 
 ## Local Terminals (@)
@@ -121,6 +136,7 @@ The navigation picker also includes:
 |----------|--------|
 | Cmd/Ctrl+P | Open navigation picker |
 | Cmd/Ctrl+Backspace | Open history picker |
+| Cmd/Ctrl+K | Open links panel (when links are configured) |
 | Cmd/Ctrl+E | Toggle editor (VS Code) |
 | Cmd/Ctrl+L | Jump to service log |
 | Escape | Close picker / exit current mode |

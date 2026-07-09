@@ -255,6 +255,10 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                         <td>History picker (recent screens)</td>
                     </tr>
                     <tr>
+                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd></td>
+                        <td>Links panel</td>
+                    </tr>
+                    <tr>
                         <td><kbd>Cmd/Ctrl</kbd> + <kbd>L</kbd></td>
                         <td>Jump to log</td>
                     </tr>
@@ -921,6 +925,23 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
      its terminal-specific entries via TrellisShortcuts.register in the inline
      init script below. -->
 
+<!-- Links Panel Modal: a standalone list of the configured terminal.links,
+     each opening in its reusable named tab. Populated from initialLinks by
+     showLinksPanel(); opened with Cmd/Ctrl+K. -->
+<div class="modal fade" id="linksPanelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-link"></i> Links</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="list-group list-group-flush" id="linksPanelList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Log History Search Modal -->
 <div class="modal fade" id="historySearchModal" tabindex="-1">
     <div class="modal-dialog">
@@ -1157,21 +1178,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             window.location.href = this.value;
             return;
         } else if (isLink) {
-            const url = selectedOption.dataset.linkUrl;
-            const windowName = selectedOption.dataset.linkWindowName;
-            let win = linkWindows[windowName];
-            let reused = false;
-            if (win && !win.closed) {
-                try {
-                    win.location.href = url;
-                    win.focus();
-                    reused = true;
-                } catch (e) {}
-            }
-            if (!reused) {
-                win = window.open(url, windowName);
-                linkWindows[windowName] = win;
-            }
+            openLinkWindow(selectedOption.dataset.linkUrl, selectedOption.dataset.linkWindowName);
             $('#navSelect').val(null).trigger('change.select2');
             return;
         } else if (isService) {
@@ -2612,6 +2619,14 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             e.preventDefault();
             window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720');
         }
+        // Cmd/Ctrl+K to open the links panel (only when links are configured, so
+        // the key otherwise falls through to the browser).
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+            if (initialLinks && initialLinks.length > 0) {
+                e.preventDefault();
+                showLinksPanel();
+            }
+        }
 
         // Check custom shortcuts for any other keys
         handleCustomShortcut(e);
@@ -3057,9 +3072,76 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 if (cw && cw.style.display === 'none') { showCode(); } else { showTerminal(); }
             },
         });
+        TrellisShortcuts.register({
+            id: 'links-panel',
+            label: 'Open links panel',
+            keys: 'Cmd/Ctrl + K',
+            when: function() { return typeof initialLinks !== 'undefined' && initialLinks && initialLinks.length > 0; },
+            run: function() { showLinksPanel(); },
+        });
     }
     function showHelp() {
         if (window.TrellisShortcuts) { TrellisShortcuts.show(); }
+    }
+
+    // linkWindowName mirrors the picker's naming so a link always reuses the
+    // same tab whether opened from the picker or the links panel.
+    function linkWindowName(name) {
+        return 'trellis_link_' + String(name).replace(/[^a-zA-Z0-9]/g, '_');
+    }
+
+    // openLinkWindow opens (or re-focuses) a configured link in its named tab.
+    // Shared by the navigation picker and the links panel.
+    function openLinkWindow(url, windowName) {
+        var win = linkWindows[windowName];
+        if (win && !win.closed) {
+            try {
+                win.location.href = url;
+                win.focus();
+                return;
+            } catch (e) { /* cross-origin: fall through and reopen */ }
+        }
+        linkWindows[windowName] = window.open(url, windowName);
+    }
+
+    // showLinksPanel renders the standalone list of configured links and opens
+    // the modal. Each row opens its link (in the reusable named tab) and closes
+    // the panel. Empty state points at the config so it's discoverable.
+    function showLinksPanel() {
+        var list = document.getElementById('linksPanelList');
+        if (!list) return;
+        list.innerHTML = '';
+        if (!initialLinks || initialLinks.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'list-group-item text-muted small';
+            empty.textContent = 'No links configured. Add them under terminal.links in your Trellis config.';
+            list.appendChild(empty);
+        } else {
+            initialLinks.forEach(function(link) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'list-group-item list-group-item-action d-flex align-items-center gap-2';
+                var icon = document.createElement('i');
+                icon.className = 'fa-solid fa-arrow-up-right-from-square text-muted';
+                var name = document.createElement('span');
+                name.className = 'flex-grow-1 text-truncate';
+                name.textContent = link.name;
+                var url = document.createElement('small');
+                url.className = 'text-muted text-truncate';
+                url.style.maxWidth = '45%';
+                url.textContent = link.url;
+                btn.appendChild(icon);
+                btn.appendChild(name);
+                btn.appendChild(url);
+                btn.addEventListener('click', function() {
+                    openLinkWindow(link.url, linkWindowName(link.name));
+                    var m = bootstrap.Modal.getInstance(document.getElementById('linksPanelModal'));
+                    if (m) m.hide();
+                });
+                list.appendChild(btn);
+            });
+        }
+        new bootstrap.Modal(document.getElementById('linksPanelModal')).show();
     }
 
     function showWorkflowOutput(title, worktree) {

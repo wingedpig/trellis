@@ -577,6 +577,10 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
                         <td>History picker (recent screens)</td>
                     </tr>
                     <tr>
+                        <td><kbd>Cmd/Ctrl</kbd> + <kbd>K</kbd></td>
+                        <td>Links panel</td>
+                    </tr>
+                    <tr>
                         <td><kbd>Cmd/Ctrl</kbd> + <kbd>L</kbd></td>
                         <td>Jump to log</td>
                     </tr>
@@ -591,43 +595,43 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 `)
-//line views/terminal.qtpl:271
+//line views/terminal.qtpl:275
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:271
+//line views/terminal.qtpl:275
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 }
 
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 func (p *TerminalPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 }
 
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 func (p *TerminalPage) Render() string {
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 	return qs422016
-//line views/terminal.qtpl:272
+//line views/terminal.qtpl:276
 }
 
-//line views/terminal.qtpl:274
+//line views/terminal.qtpl:278
 func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:274
+//line views/terminal.qtpl:278
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -635,9 +639,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/terminal.qtpl:280
+//line views/terminal.qtpl:284
 	qw422016.E().S(p.Title)
-//line views/terminal.qtpl:280
+//line views/terminal.qtpl:284
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -669,32 +673,32 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             <div class="d-flex align-items-center gap-2 ms-3">
                 <select id="navSelect" class="form-select form-select-sm">
                     <option value="`)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.E().S(p.Session)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.N().S(`/`)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.E().S(p.Window)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.N().S(`" selected>@`)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.E().S(p.SessionDisplayName())
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.N().S(` - `)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.E().S(p.Window)
-//line views/terminal.qtpl:310
+//line views/terminal.qtpl:314
 	qw422016.N().S(`</option>
                 </select>
 
                 <div class="btn-group" role="group"`)
-//line views/terminal.qtpl:313
+//line views/terminal.qtpl:317
 	if p.ViewType != "local" {
-//line views/terminal.qtpl:313
+//line views/terminal.qtpl:317
 		qw422016.N().S(` style="display:none"`)
-//line views/terminal.qtpl:313
+//line views/terminal.qtpl:317
 	}
-//line views/terminal.qtpl:313
+//line views/terminal.qtpl:317
 	qw422016.N().S(`>
                     <button id="showTerminalBtn" class="btn btn-sm btn-terminal active" onclick="showTerminal()">
                         <i class="fa-solid fa-terminal"></i>
@@ -705,22 +709,22 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 </div>
 
                 <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;`)
-//line views/terminal.qtpl:322
+//line views/terminal.qtpl:326
 	if p.ViewType != "local" && p.ViewType != "output" {
-//line views/terminal.qtpl:322
+//line views/terminal.qtpl:326
 		qw422016.N().S(` display:none;`)
-//line views/terminal.qtpl:322
+//line views/terminal.qtpl:326
 	}
-//line views/terminal.qtpl:322
+//line views/terminal.qtpl:326
 	qw422016.N().S(`">
                     <option value="">Workflow...</option>
                 </select>
             </div>
 
             `)
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	StreamNavbarRightControls(qw422016, &p.BasePage, "btn btn-sm btn-terminal", "showHelp()", "Keyboard Shortcuts (Cmd/Ctrl+?)")
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S(`
         </div>
     </div>
@@ -911,21 +915,21 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         overflow: auto;
         /* Prevent iOS rubber-band bounce when scrolling past edges.
            `)
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S("`")
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S(`none`)
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S("`")
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S(` disables the element's own bounce; `)
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S("`")
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S(`contain`)
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S("`")
-//line views/terminal.qtpl:327
+//line views/terminal.qtpl:331
 	qw422016.N().S(` only blocks
            the chain to the parent. */
         overscroll-behavior: none;
@@ -1334,6 +1338,23 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
      its terminal-specific entries via TrellisShortcuts.register in the inline
      init script below. -->
 
+<!-- Links Panel Modal: a standalone list of the configured terminal.links,
+     each opening in its reusable named tab. Populated from initialLinks by
+     showLinksPanel(); opened with Cmd/Ctrl+K. -->
+<div class="modal fade" id="linksPanelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-link"></i> Links</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="list-group list-group-flush" id="linksPanelList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Log History Search Modal -->
 <div class="modal fade" id="historySearchModal" tabindex="-1">
     <div class="modal-dialog">
@@ -1450,9 +1471,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 `)
-//line views/terminal.qtpl:1039
+//line views/terminal.qtpl:1060
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "terminal")
-//line views/terminal.qtpl:1039
+//line views/terminal.qtpl:1060
 	qw422016.N().S(`
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1461,69 +1482,69 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="/static/js/shortcut_help.js"></script>
 <script>
     const initialSession = '`)
-//line views/terminal.qtpl:1046
+//line views/terminal.qtpl:1067
 	qw422016.E().S(JSAttr(p.Session))
-//line views/terminal.qtpl:1046
+//line views/terminal.qtpl:1067
 	qw422016.N().S(`';
     const initialWindow = '`)
-//line views/terminal.qtpl:1047
+//line views/terminal.qtpl:1068
 	qw422016.E().S(JSAttr(p.Window))
-//line views/terminal.qtpl:1047
+//line views/terminal.qtpl:1068
 	qw422016.N().S(`';
     const initialIsRemote = `)
-//line views/terminal.qtpl:1048
+//line views/terminal.qtpl:1069
 	qw422016.E().V(p.IsRemote)
-//line views/terminal.qtpl:1048
+//line views/terminal.qtpl:1069
 	qw422016.N().S(`;
     const initialViewType = '`)
-//line views/terminal.qtpl:1049
+//line views/terminal.qtpl:1070
 	qw422016.E().S(JSAttr(p.ViewType))
-//line views/terminal.qtpl:1049
+//line views/terminal.qtpl:1070
 	qw422016.N().S(`';
     const initialServiceName = '`)
-//line views/terminal.qtpl:1050
+//line views/terminal.qtpl:1071
 	qw422016.E().S(JSAttr(p.ServiceName))
-//line views/terminal.qtpl:1050
+//line views/terminal.qtpl:1071
 	qw422016.N().S(`';
     const initialLogViewerName = '`)
-//line views/terminal.qtpl:1051
+//line views/terminal.qtpl:1072
 	qw422016.E().S(JSAttr(p.LogViewerName))
-//line views/terminal.qtpl:1051
+//line views/terminal.qtpl:1072
 	qw422016.N().S(`';
     const initialWorktree = '`)
-//line views/terminal.qtpl:1052
+//line views/terminal.qtpl:1073
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/terminal.qtpl:1052
+//line views/terminal.qtpl:1073
 	qw422016.N().S(`';
     const projectName = '`)
-//line views/terminal.qtpl:1053
+//line views/terminal.qtpl:1074
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/terminal.qtpl:1053
+//line views/terminal.qtpl:1074
 	qw422016.N().S(`';
     const customShortcuts = `)
-//line views/terminal.qtpl:1054
+//line views/terminal.qtpl:1075
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:1054
+//line views/terminal.qtpl:1075
 	qw422016.N().S(`;
     const notificationSettings = `)
-//line views/terminal.qtpl:1055
+//line views/terminal.qtpl:1076
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:1055
+//line views/terminal.qtpl:1076
 	qw422016.N().S(`;
     const initialServices = `)
-//line views/terminal.qtpl:1056
+//line views/terminal.qtpl:1077
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:1056
+//line views/terminal.qtpl:1077
 	qw422016.N().S(`;
     const initialLinks = `)
-//line views/terminal.qtpl:1057
+//line views/terminal.qtpl:1078
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:1057
+//line views/terminal.qtpl:1078
 	qw422016.N().S(`;
     const initialLogViewers = `)
-//line views/terminal.qtpl:1058
+//line views/terminal.qtpl:1079
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:1058
+//line views/terminal.qtpl:1079
 	qw422016.N().S(`;
 
     // Map of terminalKey -> {term, fitAddon, ws, container, isRemote}
@@ -1542,9 +1563,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
     // Clear history if server was restarted (session ID changed)
     const currentSessionID = '`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.E().S(JSAttr(p.SessionID()))
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`';
     const storedSessionID = sessionStorage.getItem('trellis-session-id');
     if (storedSessionID !== currentSessionID) {
@@ -1630,21 +1651,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             window.location.href = this.value;
             return;
         } else if (isLink) {
-            const url = selectedOption.dataset.linkUrl;
-            const windowName = selectedOption.dataset.linkWindowName;
-            let win = linkWindows[windowName];
-            let reused = false;
-            if (win && !win.closed) {
-                try {
-                    win.location.href = url;
-                    win.focus();
-                    reused = true;
-                } catch (e) {}
-            }
-            if (!reused) {
-                win = window.open(url, windowName);
-                linkWindows[windowName] = win;
-            }
+            openLinkWindow(selectedOption.dataset.linkUrl, selectedOption.dataset.linkWindowName);
             $('#navSelect').val(null).trigger('change.select2');
             return;
         } else if (isService) {
@@ -3085,6 +3092,14 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             e.preventDefault();
             window.open('/inbox', 'trellis-inbox', 'popup=yes,width=420,height=720');
         }
+        // Cmd/Ctrl+K to open the links panel (only when links are configured, so
+        // the key otherwise falls through to the browser).
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+            if (initialLinks && initialLinks.length > 0) {
+                e.preventDefault();
+                showLinksPanel();
+            }
+        }
 
         // Check custom shortcuts for any other keys
         handleCustomShortcut(e);
@@ -3530,9 +3545,76 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 if (cw && cw.style.display === 'none') { showCode(); } else { showTerminal(); }
             },
         });
+        TrellisShortcuts.register({
+            id: 'links-panel',
+            label: 'Open links panel',
+            keys: 'Cmd/Ctrl + K',
+            when: function() { return typeof initialLinks !== 'undefined' && initialLinks && initialLinks.length > 0; },
+            run: function() { showLinksPanel(); },
+        });
     }
     function showHelp() {
         if (window.TrellisShortcuts) { TrellisShortcuts.show(); }
+    }
+
+    // linkWindowName mirrors the picker's naming so a link always reuses the
+    // same tab whether opened from the picker or the links panel.
+    function linkWindowName(name) {
+        return 'trellis_link_' + String(name).replace(/[^a-zA-Z0-9]/g, '_');
+    }
+
+    // openLinkWindow opens (or re-focuses) a configured link in its named tab.
+    // Shared by the navigation picker and the links panel.
+    function openLinkWindow(url, windowName) {
+        var win = linkWindows[windowName];
+        if (win && !win.closed) {
+            try {
+                win.location.href = url;
+                win.focus();
+                return;
+            } catch (e) { /* cross-origin: fall through and reopen */ }
+        }
+        linkWindows[windowName] = window.open(url, windowName);
+    }
+
+    // showLinksPanel renders the standalone list of configured links and opens
+    // the modal. Each row opens its link (in the reusable named tab) and closes
+    // the panel. Empty state points at the config so it's discoverable.
+    function showLinksPanel() {
+        var list = document.getElementById('linksPanelList');
+        if (!list) return;
+        list.innerHTML = '';
+        if (!initialLinks || initialLinks.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'list-group-item text-muted small';
+            empty.textContent = 'No links configured. Add them under terminal.links in your Trellis config.';
+            list.appendChild(empty);
+        } else {
+            initialLinks.forEach(function(link) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'list-group-item list-group-item-action d-flex align-items-center gap-2';
+                var icon = document.createElement('i');
+                icon.className = 'fa-solid fa-arrow-up-right-from-square text-muted';
+                var name = document.createElement('span');
+                name.className = 'flex-grow-1 text-truncate';
+                name.textContent = link.name;
+                var url = document.createElement('small');
+                url.className = 'text-muted text-truncate';
+                url.style.maxWidth = '45%';
+                url.textContent = link.url;
+                btn.appendChild(icon);
+                btn.appendChild(name);
+                btn.appendChild(url);
+                btn.addEventListener('click', function() {
+                    openLinkWindow(link.url, linkWindowName(link.name));
+                    var m = bootstrap.Modal.getInstance(document.getElementById('linksPanelModal'));
+                    if (m) m.hide();
+                });
+                list.appendChild(btn);
+            });
+        }
+        new bootstrap.Modal(document.getElementById('linksPanelModal')).show();
     }
 
     function showWorkflowOutput(title, worktree) {
@@ -3991,13 +4073,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         // Once the server has sent a terminal message (done/error) we stop
         // treating subsequent socket events as failures. iOS Safari fires
         // onerror when the socket is closed right after a normal `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`done`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`
         // — desktop browsers don't — which used to surface as a spurious
         // "WebSocket error" appended after a successful "✓ SUCCESS" render.
@@ -5577,13 +5659,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         throw new Error(`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`Invalid time format: ${input}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`);
     }
 
@@ -5619,63 +5701,63 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         try {
             // Build query URL
             let url = `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`/api/v1/logs/${encodeURIComponent(currentLogViewerName)}/history`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`?start=${encodeURIComponent(startTime)}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`&end=${encodeURIComponent(endTime)}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             if (grep) {
                 url += `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`&grep=${encodeURIComponent(grep)}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             }
             if (before > 0) {
                 url += `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`&before=${before}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             }
             if (after > 0) {
                 url += `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`&after=${after}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             }
 
@@ -5683,13 +5765,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`HTTP ${response.status}`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`);
             }
 
@@ -5726,13 +5808,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             // Update connection status
             const statusEl = document.getElementById('logviewer-status');
             statusEl.textContent = `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`${data.entries?.length || 0} results`)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
             statusEl.className = 'logviewer-connection-status text-info';
 
@@ -5773,36 +5855,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script src="/static/js/inbox_main_ws.js"></script>
 `)
-//line views/terminal.qtpl:5222
+//line views/terminal.qtpl:5304
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5222
+//line views/terminal.qtpl:5304
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 }
 
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 }
 
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 	return qs422016
-//line views/terminal.qtpl:5223
+//line views/terminal.qtpl:5305
 }

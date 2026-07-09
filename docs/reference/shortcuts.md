@@ -27,7 +27,7 @@ The menu lists:
 
 - **Open navigation picker** — same as `Cmd/Ctrl + P`
 - **Open history picker** — same as `Cmd/Ctrl + Backspace`. If no history has been recorded yet in the current tab session, an alert says so.
-- On the terminal page additionally: **Open workflow picker** (when a workflow selector is visible) and **Toggle Terminal / Code view** (when a local worktree is active)
+- On the terminal page additionally: **Open workflow picker** (when a workflow selector is visible), **Toggle Terminal / Code view** (when a local worktree is active), and **Open links panel** (when links are configured)
 - **Custom shortcuts** configured for the current worktree (each appears with the assigned key combo as a label)
 
 Custom shortcuts invoked from the menu run the same handler as the keyboard path, so the target screen is resolved and navigated to identically.
@@ -72,6 +72,10 @@ Quickly return to recently visited screens:
 
 Use arrow keys to navigate, Enter to select, Escape to cancel.
 
+## Links Panel (Cmd+K)
+
+On the terminal page, `Cmd/Ctrl + K` opens a standalone list of your configured external links (`terminal.links`) — the same entries the navigation picker shows with the `>` prefix, gathered in one place. Click a link to open it in a reusable named tab (re-opening focuses the existing tab rather than duplicating it). The shortcut is active only when links are configured.
+
 ## Claude Shortcuts
 
 When on the Claude chat page:
@@ -88,6 +92,7 @@ When focused on a terminal:
 
 | Shortcut | Action |
 |----------|--------|
+| `Cmd/Ctrl + K` | Open links panel (when links are configured) |
 | `Cmd/Ctrl + E` | Open VS Code editor for current worktree |
 | `Ctrl + Escape` | Return from editor iframe to terminal (same-origin only) |
 | `Shift + Enter` | Insert newline without executing command |
