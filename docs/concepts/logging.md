@@ -97,6 +97,35 @@ source: {
 }
 ```
 
+## Viewer Modes: Live vs. Explore
+
+Each log viewer opens in one of two modes, set via `mode` in its `log_viewers` entry:
+
+```hjson
+log_viewers: [
+  {
+    name: "nginx-access"
+    mode: "explore"
+    source: {
+      type: "file"
+      path: "/var/log/nginx"
+      current: "access.log"
+    }
+  }
+]
+```
+
+- **`live`** (default): opens tailing the source and following new entries — the existing behavior.
+- **`explore`**: for high-volume logs (nginx access logs and similar) where tailing every line isn't useful. Opening the viewer does not start the tail. Instead the server reads a static snapshot of the ~200 most recent lines directly from the end of the file (a byte-offset backward read), and the UI opens paused, with search and scrollback as the primary workflow. A **Go live** button in the header starts the tail and switches to streaming. Scrolling up to page back through history, and history search, work the same as in `live` mode.
+
+`explore` mode requires a source that supports backward reads — `file` and `ssh`. For `docker`, `kubernetes`, and `command` sources (which stream rather than expose a seekable byte offset), an `explore`-mode viewer falls back to starting the tail immediately but still opens paused, so the UI behaves consistently even though the tail is already running underneath.
+
+### Pausing and Auto-Pause
+
+Whichever mode a viewer is in, pausing is lossless and cheap: while a connection is paused (scrolled up, auto-paused, or in `explore` mode before going live) the server stops shipping individual log lines and instead sends a small stats frame every couple of seconds (missed-line count and current rate). On resume, the server replays the missed lines from an in-memory ring buffer of up to 2000 entries; if more were missed, the newest 2000 are shown with a "N lines skipped while paused" divider, and history search can still locate the rest.
+
+Followed viewers also auto-pause under load: if entries arrive faster than `log_viewer_settings.auto_pause_rate` (default 30 lines/sec), the UI drops out of following and shows a "High volume — following paused" banner rather than trying to render every line. A viewer that isn't accessed at all — no active watchers and no polling — is stopped after `log_viewer_settings.idle_timeout` (default 5m); one whose last watcher just disconnected is stopped sooner, after `log_viewer_settings.disconnect_grace` (default 30s). See [Configuration Reference](/docs/reference/config/#log_viewers) for the `mode`, `disconnect_grace`, and `auto_pause_rate` settings.
+
 ## Parsers
 
 ### JSON Parser

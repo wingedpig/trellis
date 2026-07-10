@@ -199,6 +199,12 @@ Trellis searches for configuration in this order:
     }
   ]
 
+  log_viewer_settings: {
+    idle_timeout: "5m"
+    disconnect_grace: "30s"
+    auto_pause_rate: 30
+  }
+
   services: [
     // Infrastructure (external binaries)
     {
@@ -624,6 +630,7 @@ terminal: {
 log_viewers: [
   {
     name: "nginx-logs"
+    mode: "live"                 // "live" (default) or "explore" — see Modes below
 
     source: {
       type: "ssh"                 // "file", "ssh", "command", "docker", "kubernetes"
@@ -665,18 +672,32 @@ log_viewers: [
 
 // Global log viewer settings
 log_viewer_settings: {
-  idle_timeout: "5m"              // Stop idle viewers after this duration
+  idle_timeout: "5m"              // Stop viewers not accessed at all after this duration ("0" disables)
+  disconnect_grace: "30s"         // Stop the tail this long after the last watcher disconnects ("0" disables)
+  auto_pause_rate: 30             // Lines/sec that triggers UI auto-pause in the browser (0 disables)
 }
 ```
+
+**Modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `live` (default) | Opening the viewer starts tailing the source immediately and follows new entries. |
+| `explore` | For high-volume logs (e.g. nginx access logs). Opening the viewer does not start the tail — the server loads a static snapshot of the ~200 most recent lines read directly from the end of the file (a byte-offset backward read), and the UI opens paused with search/scrollback as the primary workflow. A **Go live** button in the header starts the tail and switches to streaming. Scrolling up to page back through history, and history search, work the same as in `live` mode. |
+
+`explore` mode requires a source that supports backward reads — `file` and `ssh`. For `docker`, `kubernetes`, and `command` sources, an `explore`-mode viewer falls back to starting the tail immediately but still opens paused, so the UI behaves the same even though the tail is already running underneath. `mode` is validated at config load; the only accepted values are `"live"`, `"explore"`, or unset.
 
 **Log viewer defaults:**
 
 | Field | Default | Description |
 |-------|---------|-------------|
+| `mode` | `"live"` | `"live"` or `"explore"` — see Modes above |
 | `source.follow` | `true` | Follow log output in real-time |
 | `source.since` | `"1h"` | How far back to start reading when connecting |
 | `buffer.max_entries` | `10000` | Maximum entries to keep in memory |
-| `log_viewer_settings.idle_timeout` | `"5m"` | Stop idle viewers after this duration |
+| `log_viewer_settings.idle_timeout` | `"5m"` | Stop viewers that haven't been accessed at all in this long (`"0"` disables) |
+| `log_viewer_settings.disconnect_grace` | `"30s"` | Stop the tail this long after the last watcher (WebSocket subscriber) disconnects — e.g. when you navigate away from the page. Reconnecting within the grace period keeps the tail warm. REST API polling also counts as activity and keeps the tail alive. (`"0"` disables) |
+| `log_viewer_settings.auto_pause_rate` | `30` | Lines/sec above which the UI automatically drops out of following in the browser, to avoid rendering every line of a burst (`0` disables) |
 
 ```hjson
 ```

@@ -428,3 +428,174 @@ func TestBufferGetBeforeTimePerformance(t *testing.T) {
 		t.Errorf("GetBeforeTime took %v, expected < 100ms", elapsed)
 	}
 }
+
+func TestBufferGetLastAfterEmpty(t *testing.T) {
+	buf := NewBuffer(10)
+
+	entries, dropped := buf.GetLastAfter(0, 5)
+	if entries != nil {
+		t.Errorf("GetLastAfter on empty buffer returned %d entries, want nil", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+}
+
+func TestBufferGetLastAfterZero(t *testing.T) {
+	buf := NewBuffer(10)
+
+	for i := 0; i < 5; i++ {
+		buf.Add(LogEntry{Message: string(rune('A' + i))})
+	}
+
+	// afterSeq 0 should return everything, in chronological order.
+	entries, dropped := buf.GetLastAfter(0, 0)
+	if len(entries) != 5 {
+		t.Fatalf("GetLastAfter(0, 0) returned %d entries, want 5", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+
+	expected := []string{"A", "B", "C", "D", "E"}
+	for i, entry := range entries {
+		if entry.Message != expected[i] {
+			t.Errorf("Entry[%d].Message = %q, want %q", i, entry.Message, expected[i])
+		}
+	}
+}
+
+func TestBufferGetLastAfterMiddle(t *testing.T) {
+	buf := NewBuffer(10)
+
+	for i := 0; i < 5; i++ {
+		buf.Add(LogEntry{Message: string(rune('A' + i))})
+	}
+
+	// Sequences are 1..5; afterSeq=2 should return C(3), D(4), E(5).
+	entries, dropped := buf.GetLastAfter(2, 0)
+	if len(entries) != 3 {
+		t.Fatalf("GetLastAfter(2, 0) returned %d entries, want 3", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+
+	expected := []string{"C", "D", "E"}
+	for i, entry := range entries {
+		if entry.Message != expected[i] {
+			t.Errorf("Entry[%d].Message = %q, want %q", i, entry.Message, expected[i])
+		}
+	}
+}
+
+// TestBufferGetLastAfterLimit verifies that when more matching entries exist
+// than the limit, GetLastAfter keeps the newest ones (in chronological
+// order) and reports the rest as dropped.
+func TestBufferGetLastAfterLimit(t *testing.T) {
+	buf := NewBuffer(10)
+
+	for i := 0; i < 10; i++ {
+		buf.Add(LogEntry{Message: string(rune('A' + i))})
+	}
+
+	// Sequences are 1..10; with limit=3 we should keep the newest 3 (H, I, J)
+	// and drop the other 7 (A-G).
+	entries, dropped := buf.GetLastAfter(0, 3)
+	if len(entries) != 3 {
+		t.Fatalf("GetLastAfter(0, 3) returned %d entries, want 3", len(entries))
+	}
+	if dropped != 7 {
+		t.Errorf("dropped = %d, want 7", dropped)
+	}
+
+	expected := []string{"H", "I", "J"}
+	for i, entry := range entries {
+		if entry.Message != expected[i] {
+			t.Errorf("Entry[%d].Message = %q, want %q", i, entry.Message, expected[i])
+		}
+	}
+}
+
+func TestBufferGetLastAfterBeyondNewest(t *testing.T) {
+	buf := NewBuffer(10)
+
+	for i := 0; i < 5; i++ {
+		buf.Add(LogEntry{Message: string(rune('A' + i))})
+	}
+
+	// afterSeq equal to the newest sequence number: nothing qualifies.
+	entries, dropped := buf.GetLastAfter(5, 0)
+	if len(entries) != 0 {
+		t.Errorf("GetLastAfter(newest, 0) returned %d entries, want 0", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+
+	// afterSeq beyond the newest sequence number: still nothing.
+	entries, dropped = buf.GetLastAfter(100, 0)
+	if len(entries) != 0 {
+		t.Errorf("GetLastAfter(100, 0) returned %d entries, want 0", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+}
+
+// TestBufferGetLastAfterWrap exercises GetLastAfter on a buffer that has
+// wrapped (more entries added than its capacity).
+func TestBufferGetLastAfterWrap(t *testing.T) {
+	buf := NewBuffer(5)
+
+	// Add 8 entries to force wrap; buffer retains D(4)..H(8).
+	for i := 0; i < 8; i++ {
+		buf.Add(LogEntry{Message: string(rune('A' + i))})
+	}
+
+	// afterSeq=0 with no limit returns everything left in the buffer, in
+	// chronological order.
+	entries, dropped := buf.GetLastAfter(0, 0)
+	if len(entries) != 5 {
+		t.Fatalf("GetLastAfter(0, 0) returned %d entries, want 5", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+	expected := []string{"D", "E", "F", "G", "H"}
+	for i, entry := range entries {
+		if entry.Message != expected[i] {
+			t.Errorf("Entry[%d].Message = %q, want %q", i, entry.Message, expected[i])
+		}
+	}
+
+	// afterSeq=6 (F) should leave only G(7) and H(8).
+	entries, dropped = buf.GetLastAfter(6, 0)
+	if len(entries) != 2 {
+		t.Fatalf("GetLastAfter(6, 0) returned %d entries, want 2", len(entries))
+	}
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+	expectedTail := []string{"G", "H"}
+	for i, entry := range entries {
+		if entry.Message != expectedTail[i] {
+			t.Errorf("Entry[%d].Message = %q, want %q", i, entry.Message, expectedTail[i])
+		}
+	}
+
+	// With a limit smaller than what's available: afterSeq=0, limit=2 should
+	// keep the newest 2 (G, H) and drop the other 3 (D, E, F).
+	entries, dropped = buf.GetLastAfter(0, 2)
+	if len(entries) != 2 {
+		t.Fatalf("GetLastAfter(0, 2) returned %d entries, want 2", len(entries))
+	}
+	if dropped != 3 {
+		t.Errorf("dropped = %d, want 3", dropped)
+	}
+	for i, entry := range entries {
+		if entry.Message != expectedTail[i] {
+			t.Errorf("Entry[%d].Message = %q, want %q", i, entry.Message, expectedTail[i])
+		}
+	}
+}

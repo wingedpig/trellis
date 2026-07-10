@@ -63,6 +63,7 @@ func (v *Validator) Validate(cfg *Config) error {
 	v.validateDurations(cfg, errs)
 	v.validateCrossReferences(cfg, errs)
 	v.validateTraceGroups(cfg, errs)
+	v.validateLogViewers(cfg, errs)
 	v.validateProxy(cfg, errs)
 
 	if errs.IsEmpty() {
@@ -398,6 +399,33 @@ func (v *Validator) validateTraceGroups(cfg *Config, errs *ValidationError) {
 			errs.Add("trace.max_age", fmt.Sprintf("invalid duration format: %s", err))
 		} else if d < 0 {
 			errs.Add("trace.max_age", "must be positive")
+		}
+	}
+}
+
+func (v *Validator) validateLogViewers(cfg *Config, errs *ValidationError) {
+	for i, lv := range cfg.LogViewers {
+		if lv.Mode != "" && lv.Mode != "live" && lv.Mode != "explore" {
+			errs.Add(fmt.Sprintf("log_viewers[%d].mode", i),
+				fmt.Sprintf("invalid mode '%s', must be one of: live, explore", lv.Mode))
+		}
+	}
+
+	if cfg.LogViewerSettings.IdleTimeout != "" && cfg.LogViewerSettings.IdleTimeout != "0" {
+		d, err := time.ParseDuration(cfg.LogViewerSettings.IdleTimeout)
+		if err != nil {
+			errs.Add("log_viewer_settings.idle_timeout", fmt.Sprintf("invalid duration format: %s", err))
+		} else if d < 0 {
+			errs.Add("log_viewer_settings.idle_timeout", "must be positive")
+		}
+	}
+
+	if cfg.LogViewerSettings.DisconnectGrace != "" && cfg.LogViewerSettings.DisconnectGrace != "0" {
+		d, err := time.ParseDuration(cfg.LogViewerSettings.DisconnectGrace)
+		if err != nil {
+			errs.Add("log_viewer_settings.disconnect_grace", fmt.Sprintf("invalid duration format: %s", err))
+		} else if d < 0 {
+			errs.Add("log_viewer_settings.disconnect_grace", "must be positive")
 		}
 	}
 }

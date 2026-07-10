@@ -957,3 +957,106 @@ func TestManagerUpdateConfigs_OldBehaviorWithoutServiceViewers(t *testing.T) {
 	assert.Len(t, names, 1)
 	assert.Contains(t, names, "viewer-c")
 }
+
+// stopIdleViewers only considers viewers it believes are running (tracked in
+// monitorCancel), so these tests fake a "running" viewer by installing a
+// cancel func directly rather than going through the real Start path (which
+// would require a working log source).
+func newFakeRunningViewer(t *testing.T, manager *Manager, name string) (*Viewer, *bool) {
+	t.Helper()
+
+	require.NoError(t, manager.Initialize([]config.LogViewerConfig{
+		{
+			Name: name,
+			Source: config.LogSourceConfig{
+				Type: "file",
+				Path: "/var/log/test.log",
+			},
+			Parser: config.LogParserConfig{Type: "json"},
+		},
+	}))
+
+	viewer, ok := manager.Get(name)
+	require.True(t, ok)
+
+	cancelled := false
+	manager.monitorCancel[name] = func() { cancelled = true }
+
+	return viewer, &cancelled
+}
+
+func TestManagerStopIdleViewers_ActiveSubscriberNotStopped(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{
+		DisconnectGrace: "10ms",
+	})
+	viewer, cancelled := newFakeRunningViewer(t, manager, "test-viewer")
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+
+	time.Sleep(20 * time.Millisecond)
+	manager.stopIdleViewers()
+
+	assert.False(t, *cancelled, "viewer with an active subscriber should not be stopped")
+	_, stillTracked := manager.monitorCancel["test-viewer"]
+	assert.True(t, stillTracked, "viewer with an active subscriber should remain marked running")
+}
+
+func TestManagerStopIdleViewers_GraceElapsedStops(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{
+		DisconnectGrace: "10ms",
+	})
+	viewer, cancelled := newFakeRunningViewer(t, manager, "test-viewer")
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+	viewer.Unsubscribe(ch)
+
+	time.Sleep(30 * time.Millisecond)
+	manager.stopIdleViewers()
+
+	assert.True(t, *cancelled, "viewer whose last subscriber left beyond the grace period should be stopped")
+	_, stillTracked := manager.monitorCancel["test-viewer"]
+	assert.False(t, stillTracked, "stopped viewer should be removed from monitorCancel")
+}
+
+func TestManagerStopIdleViewers_RecentAccessBlocksGraceStop(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{
+		DisconnectGrace: "10ms",
+	})
+	viewer, cancelled := newFakeRunningViewer(t, manager, "test-viewer")
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+	viewer.Unsubscribe(ch)
+
+	// Let the disconnect grace period elapse...
+	time.Sleep(30 * time.Millisecond)
+	// ...but a fresh REST access (Touch) should reset LastAccessed and block
+	// the grace-based stop.
+	viewer.Touch()
+	manager.stopIdleViewers()
+
+	assert.False(t, *cancelled, "recent REST access should prevent the grace-based stop")
+	_, stillTracked := manager.monitorCancel["test-viewer"]
+	assert.True(t, stillTracked, "viewer touched within the grace window should remain marked running")
+}
+
+func TestManagerStopIdleViewers_GraceDisabled(t *testing.T) {
+	manager := NewManager(nil, config.LogViewerSettings{
+		DisconnectGrace: "0",
+		IdleTimeout:     "0",
+	})
+	viewer, cancelled := newFakeRunningViewer(t, manager, "test-viewer")
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+	viewer.Unsubscribe(ch)
+
+	time.Sleep(20 * time.Millisecond)
+	manager.stopIdleViewers()
+
+	assert.False(t, *cancelled, "disconnect_grace = 0 should disable the grace-based stop")
+	_, stillTracked := manager.monitorCancel["test-viewer"]
+	assert.True(t, stillTracked, "viewer should remain marked running when disconnect grace is disabled")
+}

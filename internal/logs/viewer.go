@@ -24,13 +24,20 @@ type Viewer struct {
 	deriver *Deriver
 	buffer  *Buffer
 
-	mu           sync.RWMutex
-	subscribers  map[chan<- LogEntry]struct{}
-	running      bool
-	cancel       context.CancelFunc
-	errCh        chan error
-	lastAccessed time.Time
+	mu            sync.RWMutex
+	subscribers   map[chan<- LogEntry]struct{}
+	running       bool
+	cancel        context.CancelFunc
+	errCh         chan error
+	lastAccessed  time.Time
+	lastEmptyAt   time.Time // when the subscriber count last dropped to zero
+	rateBuckets   [rateWindowSecs]int
+	rateBucketSec int64 // unix second of the newest bucket
 }
+
+// rateWindowSecs is the sliding window (in seconds) over which the ingest
+// rate is measured.
+const rateWindowSecs = 10
 
 // NewViewer creates a new log viewer.
 func NewViewer(cfg config.LogViewerConfig) (*Viewer, error) {
@@ -158,31 +165,38 @@ func (v *Viewer) SubscriberCount() int {
 
 // Status returns the viewer status.
 func (v *Viewer) Status() ViewerStatus {
+	// Rate() takes the write lock, so compute it before acquiring the read lock.
+	rate := v.Rate()
+
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	return ViewerStatus{
-		Name:         v.name,
-		Running:      v.running,
-		Source:       v.source.Status(),
-		BufferSize:   v.buffer.Size(),
-		BufferMax:    v.buffer.MaxSize(),
-		Subscribers:  len(v.subscribers),
-		OldestEntry:  v.buffer.OldestTimestamp(),
-		NewestEntry:  v.buffer.NewestTimestamp(),
+		Name:          v.name,
+		Mode:          v.cfg.GetMode(),
+		Running:       v.running,
+		Source:        v.source.Status(),
+		BufferSize:    v.buffer.Size(),
+		BufferMax:     v.buffer.MaxSize(),
+		Subscribers:   len(v.subscribers),
+		EntriesPerSec: rate,
+		OldestEntry:   v.buffer.OldestTimestamp(),
+		NewestEntry:   v.buffer.NewestTimestamp(),
 	}
 }
 
 // ViewerStatus represents the status of a log viewer.
 type ViewerStatus struct {
-	Name        string       `json:"name"`
-	Running     bool         `json:"running"`
-	Source      SourceStatus `json:"source"`
-	BufferSize  int          `json:"buffer_size"`
-	BufferMax   int          `json:"buffer_max"`
-	Subscribers int          `json:"subscribers"`
-	OldestEntry time.Time    `json:"oldest_entry,omitempty"`
-	NewestEntry time.Time    `json:"newest_entry,omitempty"`
+	Name          string       `json:"name"`
+	Mode          string       `json:"mode"`
+	Running       bool         `json:"running"`
+	Source        SourceStatus `json:"source"`
+	BufferSize    int          `json:"buffer_size"`
+	BufferMax     int          `json:"buffer_max"`
+	Subscribers   int          `json:"subscribers"`
+	EntriesPerSec float64      `json:"entries_per_sec"`
+	OldestEntry   time.Time    `json:"oldest_entry,omitempty"`
+	NewestEntry   time.Time    `json:"newest_entry,omitempty"`
 }
 
 // Subscribe adds a subscriber to receive new entries.
@@ -190,6 +204,7 @@ func (v *Viewer) Subscribe(ch chan<- LogEntry) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.subscribers[ch] = struct{}{}
+	v.lastEmptyAt = time.Time{}
 }
 
 // Unsubscribe removes a subscriber.
@@ -197,6 +212,28 @@ func (v *Viewer) Unsubscribe(ch chan<- LogEntry) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	delete(v.subscribers, ch)
+	if len(v.subscribers) == 0 {
+		v.lastEmptyAt = time.Now()
+	}
+}
+
+// LastSubscriberGone returns when the subscriber count last dropped to zero.
+// The zero time means either a subscriber is active or none ever connected.
+func (v *Viewer) LastSubscriberGone() time.Time {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if len(v.subscribers) > 0 {
+		return time.Time{}
+	}
+	return v.lastEmptyAt
+}
+
+// CanReadBackward reports whether the source supports byte-offset backward
+// reads (file and SSH sources). Explore-mode connections use this to serve
+// recent entries without starting the tail.
+func (v *Viewer) CanReadBackward() bool {
+	_, ok := v.source.(BackwardReader)
+	return ok
 }
 
 // GetEntries returns buffered entries matching the filter.
@@ -207,6 +244,13 @@ func (v *Viewer) GetEntries(filter *Filter, limit int) []LogEntry {
 // GetEntriesAfter returns entries after the given sequence number.
 func (v *Viewer) GetEntriesAfter(afterSeq uint64, limit int) []LogEntry {
 	return v.buffer.GetAfter(afterSeq, limit)
+}
+
+// GetLastEntriesAfter returns up to `limit` of the newest entries after the
+// given sequence number plus a count of older entries dropped by the cap.
+// Used for catch-up replay when a paused stream resumes.
+func (v *Viewer) GetLastEntriesAfter(afterSeq uint64, limit int) ([]LogEntry, int) {
+	return v.buffer.GetLastAfter(afterSeq, limit)
 }
 
 // GetEntriesBefore returns entries before the given sequence number (for scrollback).
@@ -494,8 +538,11 @@ func (v *Viewer) processLine(line string) {
 		v.deriver.Apply(&entry)
 	}
 
-	// Add to buffer
-	v.buffer.Add(entry)
+	// Add to buffer. Broadcast the returned copy — it carries the assigned
+	// sequence number, which subscribers rely on for dedup and replay.
+	entry = v.buffer.Add(entry)
+
+	v.countEntry(time.Now())
 
 	// Broadcast to subscribers
 	v.mu.RLock()
@@ -507,6 +554,51 @@ func (v *Viewer) processLine(line string) {
 		}
 	}
 	v.mu.RUnlock()
+}
+
+// countEntry records one ingested entry in the per-second rate buckets.
+func (v *Viewer) countEntry(now time.Time) {
+	sec := now.Unix()
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.advanceRateBuckets(sec)
+	v.rateBuckets[sec%rateWindowSecs]++
+}
+
+// advanceRateBuckets clears buckets for seconds that have passed since the
+// last update. Caller must hold v.mu.
+func (v *Viewer) advanceRateBuckets(sec int64) {
+	if v.rateBucketSec == 0 {
+		v.rateBucketSec = sec
+		return
+	}
+	gap := sec - v.rateBucketSec
+	if gap <= 0 {
+		return
+	}
+	if gap >= rateWindowSecs {
+		for i := range v.rateBuckets {
+			v.rateBuckets[i] = 0
+		}
+	} else {
+		for s := v.rateBucketSec + 1; s <= sec; s++ {
+			v.rateBuckets[s%rateWindowSecs] = 0
+		}
+	}
+	v.rateBucketSec = sec
+}
+
+// Rate returns the average entries/sec ingested over the sliding window.
+func (v *Viewer) Rate() float64 {
+	sec := time.Now().Unix()
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.advanceRateBuckets(sec)
+	total := 0
+	for _, n := range v.rateBuckets {
+		total += n
+	}
+	return float64(total) / float64(rateWindowSecs)
 }
 
 // CurrentSequence returns the current sequence number.

@@ -637,6 +637,81 @@ func TestValidator_Validate_ProxyConfig_Valid(t *testing.T) {
 	}
 }
 
+func TestValidator_Validate_LogViewerMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        string
+		errContains string
+	}{
+		{name: "empty mode is valid", mode: ""},
+		{name: "live mode is valid", mode: "live"},
+		{name: "explore mode is valid", mode: "explore"},
+		{name: "invalid mode", mode: "bogus", errContains: "log_viewers[0].mode"},
+	}
+
+	validator := NewValidator()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Version: "1.0",
+				Project: ProjectConfig{Name: "test"},
+				LogViewers: []LogViewerConfig{
+					{Name: "viewer1", Mode: tt.mode},
+				},
+			}
+			err := validator.Validate(cfg)
+			if tt.errContains != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidator_Validate_LogViewerSettingsDurations(t *testing.T) {
+	tests := []struct {
+		name        string
+		settings    LogViewerSettings
+		errContains string
+	}{
+		{name: "empty durations are valid", settings: LogViewerSettings{}},
+		{name: "idle_timeout 0 disables", settings: LogViewerSettings{IdleTimeout: "0"}},
+		{name: "disconnect_grace 0 disables", settings: LogViewerSettings{DisconnectGrace: "0"}},
+		{name: "valid idle_timeout", settings: LogViewerSettings{IdleTimeout: "5m"}},
+		{name: "valid disconnect_grace", settings: LogViewerSettings{DisconnectGrace: "30s"}},
+		{
+			name:        "invalid idle_timeout",
+			settings:    LogViewerSettings{IdleTimeout: "bogus"},
+			errContains: "log_viewer_settings.idle_timeout",
+		},
+		{
+			name:        "invalid disconnect_grace",
+			settings:    LogViewerSettings{DisconnectGrace: "bogus"},
+			errContains: "log_viewer_settings.disconnect_grace",
+		},
+	}
+
+	validator := NewValidator()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Version:           "1.0",
+				Project:           ProjectConfig{Name: "test"},
+				LogViewerSettings: tt.settings,
+			}
+			err := validator.Validate(cfg)
+			if tt.errContains != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestValidationError_Error(t *testing.T) {
 	err := &ValidationError{
 		Errors: []FieldError{

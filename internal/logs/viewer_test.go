@@ -703,3 +703,208 @@ func TestNewViewerWithSource_ProcessLine(t *testing.T) {
 		t.Errorf("Entry.Message = %q, want %q", entries[0].Message, "service error")
 	}
 }
+
+func TestViewerLastSubscriberGone_NoneEverConnected(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	if got := viewer.LastSubscriberGone(); !got.IsZero() {
+		t.Errorf("LastSubscriberGone() = %v, want zero time when no subscriber ever connected", got)
+	}
+}
+
+func TestViewerLastSubscriberGone_ActiveSubscriber(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+
+	if got := viewer.LastSubscriberGone(); !got.IsZero() {
+		t.Errorf("LastSubscriberGone() = %v, want zero time while a subscriber is active", got)
+	}
+}
+
+func TestViewerLastSubscriberGone_SetOnUnsubscribe(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+
+	before := time.Now()
+	viewer.Unsubscribe(ch)
+	after := time.Now()
+
+	got := viewer.LastSubscriberGone()
+	if got.IsZero() {
+		t.Fatal("LastSubscriberGone() is zero after the last subscriber unsubscribed")
+	}
+	if got.Before(before) || got.After(after) {
+		t.Errorf("LastSubscriberGone() = %v, want between %v and %v", got, before, after)
+	}
+}
+
+func TestViewerLastSubscriberGone_ClearedOnResubscribe(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	ch := make(chan LogEntry, 1)
+	viewer.Subscribe(ch)
+	viewer.Unsubscribe(ch)
+
+	if viewer.LastSubscriberGone().IsZero() {
+		t.Fatal("expected LastSubscriberGone() to be set after the subscriber unsubscribed")
+	}
+
+	ch2 := make(chan LogEntry, 1)
+	viewer.Subscribe(ch2)
+
+	if got := viewer.LastSubscriberGone(); !got.IsZero() {
+		t.Errorf("LastSubscriberGone() = %v, want zero time after a new subscriber connects", got)
+	}
+}
+
+func TestViewerCanReadBackward_FileSource(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	if !viewer.CanReadBackward() {
+		t.Error("CanReadBackward() = false for a file source, want true")
+	}
+}
+
+func TestViewerCanReadBackward_CommandSource(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "cmd-viewer",
+		Source: config.LogSourceConfig{
+			Type:    "command",
+			Command: []string{"echo", "test"},
+		},
+		Parser: config.LogParserConfig{
+			Type: "none",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	if viewer.CanReadBackward() {
+		t.Error("CanReadBackward() = true for a command source, want false")
+	}
+}
+
+func TestViewerRate_NoEntriesProcessed(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "json",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	if rate := viewer.Rate(); rate != 0 {
+		t.Errorf("Rate() = %v, want 0 for a viewer that processed nothing", rate)
+	}
+}
+
+func TestViewerRate_AfterProcessingLines(t *testing.T) {
+	cfg := config.LogViewerConfig{
+		Name: "test-viewer",
+		Source: config.LogSourceConfig{
+			Type: "file",
+			Path: "/var/log/test.log",
+		},
+		Parser: config.LogParserConfig{
+			Type: "none",
+		},
+	}
+
+	viewer, err := NewViewer(cfg)
+	if err != nil {
+		t.Fatalf("NewViewer failed: %v", err)
+	}
+
+	for i := 0; i < 20; i++ {
+		viewer.processLine("a log line")
+	}
+
+	if rate := viewer.Rate(); rate <= 0 {
+		t.Errorf("Rate() = %v, want > 0 after processing entries", rate)
+	}
+}

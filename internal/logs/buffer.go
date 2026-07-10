@@ -30,8 +30,11 @@ func NewBuffer(maxSize int) *Buffer {
 	}
 }
 
-// Add adds an entry to the buffer.
-func (b *Buffer) Add(entry LogEntry) {
+// Add adds an entry to the buffer and returns the stored entry with its
+// assigned sequence number. Callers that rebroadcast the entry must use the
+// returned copy — the parameter is passed by value, so the sequence
+// assignment is invisible to the caller's copy.
+func (b *Buffer) Add(entry LogEntry) LogEntry {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -45,6 +48,8 @@ func (b *Buffer) Add(entry LogEntry) {
 	if b.size < b.maxSize {
 		b.size++
 	}
+
+	return entry
 }
 
 // AddBatch adds multiple entries to the buffer.
@@ -171,6 +176,50 @@ func (b *Buffer) GetAfter(afterSeq uint64, limit int) []LogEntry {
 	}
 
 	return result
+}
+
+// GetLastAfter returns up to `limit` of the NEWEST entries with sequence
+// greater than afterSeq, in chronological order, plus a count of older
+// matching entries that were dropped because they exceeded the limit.
+// Used for catch-up replay after a paused stream resumes: the client wants
+// to land at the tail, so when more entries accumulated than the cap, the
+// oldest ones are skipped (and reported via dropped).
+// A limit of 0 means no limit.
+func (b *Buffer) GetLastAfter(afterSeq uint64, limit int) ([]LogEntry, int) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.size == 0 {
+		return nil, 0
+	}
+
+	start := b.head - b.size
+	if start < 0 {
+		start += b.maxSize
+	}
+
+	// Scan backward from the newest entry, collecting up to `limit` and
+	// counting the remainder.
+	var reversed []LogEntry
+	dropped := 0
+	for i := b.size - 1; i >= 0; i-- {
+		idx := (start + i) % b.maxSize
+		entry := b.entries[idx]
+		if entry.Sequence <= afterSeq {
+			break
+		}
+		if limit > 0 && len(reversed) >= limit {
+			dropped++
+			continue
+		}
+		reversed = append(reversed, entry)
+	}
+
+	result := make([]LogEntry, len(reversed))
+	for i, entry := range reversed {
+		result[len(reversed)-1-i] = entry
+	}
+	return result, dropped
 }
 
 // GetBefore returns entries before the given sequence number (for scrollback).

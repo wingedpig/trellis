@@ -99,6 +99,8 @@ type LayoutColumn struct {
 // LogViewerInfo represents a log viewer for the terminal picker.
 type LogViewerInfo struct {
 	Name           string         `json:"name"`
+	Mode           string         `json:"mode"`                 // "live" (tail + follow) or "explore" (search-first, no tail until requested)
+	AutoPauseRate  int            `json:"auto_pause_rate"`      // Lines/sec above which the UI auto-pauses following (0 = disabled)
 	Columns        []string       `json:"columns"`              // Columns to display (empty = default) - DEPRECATED
 	ColumnWidths   map[string]int `json:"column_widths"`        // Column widths in characters (0 = fill) - DEPRECATED
 	Layout         []LayoutColumn `json:"layout"`               // Full layout configuration
@@ -129,58 +131,58 @@ type TerminalWindowPage struct {
 
 // ShortcutsJSON streams the shortcuts as JSON for JavaScript (raw, unescaped).
 
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 func (p *TerminalWindowPage) StreamShortcutsJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	if len(p.Shortcuts) == 0 {
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 		qw422016.N().S(`[]`)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	} else {
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 		b, _ := json.Marshal(p.Shortcuts)
 
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 		qw422016.N().Z(b)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	}
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 }
 
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 func (p *TerminalWindowPage) WriteShortcutsJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 }
 
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 func (p *TerminalWindowPage) ShortcutsJSON() string {
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	p.WriteShortcutsJSON(qb422016)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 	return qs422016
-//line views/terminal.qtpl:108
+//line views/terminal.qtpl:110
 }
 
 // shortcutKeyDisplay formats a shortcut key like "cmd+l" as "<kbd>Cmd</kbd> + <kbd>L</kbd>".
 
-//line views/terminal.qtpl:111
+//line views/terminal.qtpl:113
 func streamshortcutKeyDisplay(qw422016 *qt422016.Writer, key string) {
-//line views/terminal.qtpl:111
+//line views/terminal.qtpl:113
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:113
+//line views/terminal.qtpl:115
 	parts := strings.Split(key, "+")
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
@@ -203,212 +205,212 @@ func streamshortcutKeyDisplay(qw422016 *qt422016.Writer, key string) {
 		}
 	}
 
-//line views/terminal.qtpl:134
+//line views/terminal.qtpl:136
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 	for i, part := range parts {
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 		if i > 0 {
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 			qw422016.N().S(` + `)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 		}
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 		qw422016.N().S(`<kbd>`)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 		qw422016.E().S(part)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 		qw422016.N().S(`</kbd>`)
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 	}
-//line views/terminal.qtpl:135
+//line views/terminal.qtpl:137
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 }
 
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 func writeshortcutKeyDisplay(qq422016 qtio422016.Writer, key string) {
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	streamshortcutKeyDisplay(qw422016, key)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 }
 
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 func shortcutKeyDisplay(key string) string {
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	writeshortcutKeyDisplay(qb422016, key)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 	return qs422016
-//line views/terminal.qtpl:136
+//line views/terminal.qtpl:138
 }
 
 // NotificationsJSON streams the notification settings as JSON for JavaScript.
 
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 func (p *TerminalWindowPage) StreamNotificationsJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	b, _ := json.Marshal(p.Notifications)
 
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 }
 
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 func (p *TerminalWindowPage) WriteNotificationsJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 }
 
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 func (p *TerminalWindowPage) NotificationsJSON() string {
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	p.WriteNotificationsJSON(qb422016)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 	return qs422016
-//line views/terminal.qtpl:139
+//line views/terminal.qtpl:141
 }
 
 // ServicesJSON streams the services list as JSON for JavaScript.
 
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 func (p *TerminalWindowPage) StreamServicesJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	b, _ := json.Marshal(p.Services)
 
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 }
 
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 func (p *TerminalWindowPage) WriteServicesJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 }
 
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 func (p *TerminalWindowPage) ServicesJSON() string {
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	p.WriteServicesJSON(qb422016)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 	return qs422016
-//line views/terminal.qtpl:142
+//line views/terminal.qtpl:144
 }
 
 // LinksJSON streams the links list as JSON for JavaScript.
 
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 func (p *TerminalWindowPage) StreamLinksJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	b, _ := json.Marshal(p.Links)
 
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 }
 
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 func (p *TerminalWindowPage) WriteLinksJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 }
 
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 func (p *TerminalWindowPage) LinksJSON() string {
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	p.WriteLinksJSON(qb422016)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 	return qs422016
-//line views/terminal.qtpl:145
+//line views/terminal.qtpl:147
 }
 
 // LogViewersJSON streams the log viewers list as JSON for JavaScript.
 
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 func (p *TerminalWindowPage) StreamLogViewersJSON(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	b, _ := json.Marshal(p.LogViewers)
 
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	qw422016.N().Z(b)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 }
 
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 func (p *TerminalWindowPage) WriteLogViewersJSON(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 }
 
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 func (p *TerminalWindowPage) LogViewersJSON() string {
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	p.WriteLogViewersJSON(qb422016)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 	return qs422016
-//line views/terminal.qtpl:148
+//line views/terminal.qtpl:150
 }
 
 // SessionDisplayName returns the branch name for display (e.g., "main", "demovideos")
 //
-//line views/terminal.qtpl:152
+//line views/terminal.qtpl:154
 func (p *TerminalWindowPage) SessionDisplayName() string {
 	if p.ProjectName == "" {
 		return p.Session
@@ -425,14 +427,14 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
 	return p.Session
 }
 
-//line views/terminal.qtpl:170
+//line views/terminal.qtpl:172
 func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:170
+//line views/terminal.qtpl:172
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:171
+//line views/terminal.qtpl:173
 	p.StreamHeader(qw422016)
-//line views/terminal.qtpl:171
+//line views/terminal.qtpl:173
 	qw422016.N().S(`
 <script>
 // Terminal pages aren't SPA-migrated yet: opt out so links cause full reload
@@ -453,9 +455,9 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
             </div>
             <div class="card-body p-0">
                 `)
-//line views/terminal.qtpl:190
+//line views/terminal.qtpl:192
 	if len(p.Terminals) > 0 {
-//line views/terminal.qtpl:190
+//line views/terminal.qtpl:192
 		qw422016.N().S(`
                 <table class="table table-dark table-hover mb-0">
                     <thead>
@@ -467,12 +469,12 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
                     </thead>
                     <tbody>
                         `)
-//line views/terminal.qtpl:200
+//line views/terminal.qtpl:202
 		for _, term := range p.Terminals {
-//line views/terminal.qtpl:200
+//line views/terminal.qtpl:202
 			qw422016.N().S(`
                         `)
-//line views/terminal.qtpl:202
+//line views/terminal.qtpl:204
 			var termURL string
 			if term.IsRemote {
 				termURL = "/terminal/remote/" + term.Window
@@ -480,78 +482,78 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
 				termURL = "/terminal/local/" + term.Worktree + "/" + term.Window
 			}
 
-//line views/terminal.qtpl:208
+//line views/terminal.qtpl:210
 			qw422016.N().S(`
                         <tr>
                             <td>
                                 <a href="`)
-//line views/terminal.qtpl:211
+//line views/terminal.qtpl:213
 			qw422016.E().S(termURL)
-//line views/terminal.qtpl:211
+//line views/terminal.qtpl:213
 			qw422016.N().S(`" class="text-decoration-none text-accent">
                                     `)
-//line views/terminal.qtpl:212
+//line views/terminal.qtpl:214
 			qw422016.E().S(term.Window)
-//line views/terminal.qtpl:212
+//line views/terminal.qtpl:214
 			qw422016.N().S(`
                                 </a>
                             </td>
                             <td>
                                 <small class="text-muted">
                                     `)
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 			if term.IsRemote {
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 				qw422016.N().S(`!`)
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 			} else {
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 				qw422016.N().S(`@`)
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 			}
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 			qw422016.E().S(term.Worktree)
-//line views/terminal.qtpl:217
+//line views/terminal.qtpl:219
 			qw422016.N().S(`
                                 </small>
                             </td>
                             <td>
                                 `)
-//line views/terminal.qtpl:221
+//line views/terminal.qtpl:223
 			if term.IsRemote {
-//line views/terminal.qtpl:221
+//line views/terminal.qtpl:223
 				qw422016.N().S(`
                                 <span class="badge bg-warning text-dark"><i class="fa-solid fa-globe"></i> Remote</span>
                                 `)
-//line views/terminal.qtpl:223
+//line views/terminal.qtpl:225
 			} else {
-//line views/terminal.qtpl:223
+//line views/terminal.qtpl:225
 				qw422016.N().S(`
                                 <span class="badge bg-secondary"><i class="fa-solid fa-terminal"></i> Local</span>
                                 `)
-//line views/terminal.qtpl:225
+//line views/terminal.qtpl:227
 			}
-//line views/terminal.qtpl:225
+//line views/terminal.qtpl:227
 			qw422016.N().S(`
                             </td>
                         </tr>
                         `)
-//line views/terminal.qtpl:228
+//line views/terminal.qtpl:230
 		}
-//line views/terminal.qtpl:228
+//line views/terminal.qtpl:230
 		qw422016.N().S(`
                     </tbody>
                 </table>
                 `)
-//line views/terminal.qtpl:231
+//line views/terminal.qtpl:233
 	} else {
-//line views/terminal.qtpl:231
+//line views/terminal.qtpl:233
 		qw422016.N().S(`
                 <div class="p-3 text-muted">No terminal sessions available</div>
                 `)
-//line views/terminal.qtpl:233
+//line views/terminal.qtpl:235
 	}
-//line views/terminal.qtpl:233
+//line views/terminal.qtpl:235
 	qw422016.N().S(`
             </div>
         </div>
@@ -595,43 +597,43 @@ func (p *TerminalPage) StreamRender(qw422016 *qt422016.Writer) {
 </div>
 
 `)
-//line views/terminal.qtpl:275
+//line views/terminal.qtpl:277
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:275
+//line views/terminal.qtpl:277
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 }
 
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 func (p *TerminalPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 }
 
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 func (p *TerminalPage) Render() string {
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 	return qs422016
-//line views/terminal.qtpl:276
+//line views/terminal.qtpl:278
 }
 
-//line views/terminal.qtpl:278
+//line views/terminal.qtpl:280
 func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/terminal.qtpl:278
+//line views/terminal.qtpl:280
 	qw422016.N().S(`
 <!DOCTYPE html>
 <html lang="en">
@@ -639,9 +641,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>`)
-//line views/terminal.qtpl:284
+//line views/terminal.qtpl:286
 	qw422016.E().S(p.Title)
-//line views/terminal.qtpl:284
+//line views/terminal.qtpl:286
 	qw422016.N().S(` - Trellis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -673,32 +675,32 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             <div class="d-flex align-items-center gap-2 ms-3">
                 <select id="navSelect" class="form-select form-select-sm">
                     <option value="`)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.E().S(p.Session)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.N().S(`/`)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.E().S(p.Window)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.N().S(`" selected>@`)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.E().S(p.SessionDisplayName())
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.N().S(` - `)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.E().S(p.Window)
-//line views/terminal.qtpl:314
+//line views/terminal.qtpl:316
 	qw422016.N().S(`</option>
                 </select>
 
                 <div class="btn-group" role="group"`)
-//line views/terminal.qtpl:317
+//line views/terminal.qtpl:319
 	if p.ViewType != "local" {
-//line views/terminal.qtpl:317
+//line views/terminal.qtpl:319
 		qw422016.N().S(` style="display:none"`)
-//line views/terminal.qtpl:317
+//line views/terminal.qtpl:319
 	}
-//line views/terminal.qtpl:317
+//line views/terminal.qtpl:319
 	qw422016.N().S(`>
                     <button id="showTerminalBtn" class="btn btn-sm btn-terminal active" onclick="showTerminal()">
                         <i class="fa-solid fa-terminal"></i>
@@ -709,22 +711,22 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 </div>
 
                 <select id="workflowSelect" class="form-select form-select-sm" style="width: 160px;`)
-//line views/terminal.qtpl:326
+//line views/terminal.qtpl:328
 	if p.ViewType != "local" && p.ViewType != "output" {
-//line views/terminal.qtpl:326
+//line views/terminal.qtpl:328
 		qw422016.N().S(` display:none;`)
-//line views/terminal.qtpl:326
+//line views/terminal.qtpl:328
 	}
-//line views/terminal.qtpl:326
+//line views/terminal.qtpl:328
 	qw422016.N().S(`">
                     <option value="">Workflow...</option>
                 </select>
             </div>
 
             `)
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	StreamNavbarRightControls(qw422016, &p.BasePage, "btn btn-sm btn-terminal", "showHelp()", "Keyboard Shortcuts (Cmd/Ctrl+?)")
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S(`
         </div>
     </div>
@@ -915,21 +917,21 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         overflow: auto;
         /* Prevent iOS rubber-band bounce when scrolling past edges.
            `)
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S("`")
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S(`none`)
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S("`")
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S(` disables the element's own bounce; `)
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S("`")
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S(`contain`)
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S("`")
-//line views/terminal.qtpl:331
+//line views/terminal.qtpl:333
 	qw422016.N().S(` only blocks
            the chain to the parent. */
         overscroll-behavior: none;
@@ -1032,6 +1034,21 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
     .logviewer-mode-dot.paused {
         background: #ffc107;
+    }
+    .logviewer-banner {
+        padding: 4px 12px;
+        background: rgba(255, 193, 7, 0.15);
+        border-bottom: 1px solid var(--trellis-input-border);
+        color: var(--bs-body-color);
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+    .logviewer-gap-notice {
+        padding: 4px 12px;
+        color: var(--bs-secondary-color);
+        font-size: 12px;
+        font-style: italic;
+        text-align: center;
     }
     .logviewer-newlines-btn {
         display: flex;
@@ -1323,6 +1340,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             </button>
         </div>
     </div>
+    <div id="logviewer-banner" class="logviewer-banner" style="display: none;"></div>
     <div id="logviewer-log" class="logviewer-log"></div>
     <div id="logviewer-expanded" class="logviewer-expanded" style="display: none;">
         <div class="logviewer-expanded-header">
@@ -1471,9 +1489,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 `)
-//line views/terminal.qtpl:1060
+//line views/terminal.qtpl:1078
 	StreamNavScript(qw422016, p.SessionID(), p.ShortcutsJSON(), "terminal")
-//line views/terminal.qtpl:1060
+//line views/terminal.qtpl:1078
 	qw422016.N().S(`
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1482,69 +1500,69 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 <script src="/static/js/shortcut_help.js"></script>
 <script>
     const initialSession = '`)
-//line views/terminal.qtpl:1067
+//line views/terminal.qtpl:1085
 	qw422016.E().S(JSAttr(p.Session))
-//line views/terminal.qtpl:1067
+//line views/terminal.qtpl:1085
 	qw422016.N().S(`';
     const initialWindow = '`)
-//line views/terminal.qtpl:1068
+//line views/terminal.qtpl:1086
 	qw422016.E().S(JSAttr(p.Window))
-//line views/terminal.qtpl:1068
+//line views/terminal.qtpl:1086
 	qw422016.N().S(`';
     const initialIsRemote = `)
-//line views/terminal.qtpl:1069
+//line views/terminal.qtpl:1087
 	qw422016.E().V(p.IsRemote)
-//line views/terminal.qtpl:1069
+//line views/terminal.qtpl:1087
 	qw422016.N().S(`;
     const initialViewType = '`)
-//line views/terminal.qtpl:1070
+//line views/terminal.qtpl:1088
 	qw422016.E().S(JSAttr(p.ViewType))
-//line views/terminal.qtpl:1070
+//line views/terminal.qtpl:1088
 	qw422016.N().S(`';
     const initialServiceName = '`)
-//line views/terminal.qtpl:1071
+//line views/terminal.qtpl:1089
 	qw422016.E().S(JSAttr(p.ServiceName))
-//line views/terminal.qtpl:1071
+//line views/terminal.qtpl:1089
 	qw422016.N().S(`';
     const initialLogViewerName = '`)
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1090
 	qw422016.E().S(JSAttr(p.LogViewerName))
-//line views/terminal.qtpl:1072
+//line views/terminal.qtpl:1090
 	qw422016.N().S(`';
     const initialWorktree = '`)
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1091
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/terminal.qtpl:1073
+//line views/terminal.qtpl:1091
 	qw422016.N().S(`';
     const projectName = '`)
-//line views/terminal.qtpl:1074
+//line views/terminal.qtpl:1092
 	qw422016.E().S(JSAttr(p.ProjectName))
-//line views/terminal.qtpl:1074
+//line views/terminal.qtpl:1092
 	qw422016.N().S(`';
     const customShortcuts = `)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1093
 	p.StreamShortcutsJSON(qw422016)
-//line views/terminal.qtpl:1075
+//line views/terminal.qtpl:1093
 	qw422016.N().S(`;
     const notificationSettings = `)
-//line views/terminal.qtpl:1076
+//line views/terminal.qtpl:1094
 	p.StreamNotificationsJSON(qw422016)
-//line views/terminal.qtpl:1076
+//line views/terminal.qtpl:1094
 	qw422016.N().S(`;
     const initialServices = `)
-//line views/terminal.qtpl:1077
+//line views/terminal.qtpl:1095
 	p.StreamServicesJSON(qw422016)
-//line views/terminal.qtpl:1077
+//line views/terminal.qtpl:1095
 	qw422016.N().S(`;
     const initialLinks = `)
-//line views/terminal.qtpl:1078
+//line views/terminal.qtpl:1096
 	p.StreamLinksJSON(qw422016)
-//line views/terminal.qtpl:1078
+//line views/terminal.qtpl:1096
 	qw422016.N().S(`;
     const initialLogViewers = `)
-//line views/terminal.qtpl:1079
+//line views/terminal.qtpl:1097
 	p.StreamLogViewersJSON(qw422016)
-//line views/terminal.qtpl:1079
+//line views/terminal.qtpl:1097
 	qw422016.N().S(`;
 
     // Map of terminalKey -> {term, fitAddon, ws, container, isRemote}
@@ -1563,9 +1581,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
     // Clear history if server was restarted (session ID changed)
     const currentSessionID = '`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.E().S(JSAttr(p.SessionID()))
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`';
     const storedSessionID = sessionStorage.getItem('trellis-session-id');
     if (storedSessionID !== currentSessionID) {
@@ -1765,6 +1783,12 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     let logViewerFileField = null;      // Parser's file field name for current log viewer
     let logViewerLineField = null;      // Parser's line field name for current log viewer
     let cachedWorktrees = null;         // Cached worktree list for log viewer "Open in Editor" picker
+    let logViewerNewestSeq = 0;         // Newest sequence received; sent as after_seq on resume so the server can replay what we missed
+    let logViewerExplore = false;       // Viewer is configured mode:"explore" (search-first, no tail until Go live)
+    let logViewerWentLive = false;      // Explore viewer has gone live at least once
+    let logViewerAutoPaused = false;    // Following was auto-paused because the volume crossed the threshold
+    let logViewerAutoPauseRate = 30;    // Lines/sec above which following auto-pauses (0 = disabled; from config)
+    let logViewerRateWindow = [];       // Recent [ms, count] samples of rendered entries, for auto-pause detection
 
     // Browser notifications
     let notificationsEnabled = false;
@@ -4073,13 +4097,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         // Once the server has sent a terminal message (done/error) we stop
         // treating subsequent socket events as failures. iOS Safari fires
         // onerror when the socket is closed right after a normal `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`done`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`
         // — desktop browsers don't — which used to surface as a spurious
         // "WebSocket error" appended after a successful "✓ SUCCESS" render.
@@ -4927,10 +4951,19 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         logViewerFileField = viewerConfig && viewerConfig.file_field || null;
         logViewerLineField = viewerConfig && viewerConfig.line_field || null;
 
-        // Reset log viewer state
+        // Reset log viewer state. Explore-mode viewers open paused: the
+        // server sends a recent snapshot instead of tailing, and streaming
+        // only starts when the user hits "Go live".
+        logViewerExplore = !!(viewerConfig && viewerConfig.mode === 'explore');
+        logViewerAutoPauseRate = (viewerConfig && typeof viewerConfig.auto_pause_rate === 'number')
+            ? viewerConfig.auto_pause_rate : 30;
         logViewerEntries = [];
         logViewerFilteredEntries = [];
-        logViewerFollowing = true;
+        logViewerFollowing = !logViewerExplore;
+        logViewerWentLive = !logViewerExplore;
+        logViewerAutoPaused = false;
+        logViewerRateWindow = [];
+        logViewerNewestSeq = 0;
         logViewerNewLinesCount = 0;
         logViewerFilter = '';
         logViewerSelectedEntry = null;
@@ -4939,6 +4972,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         logViewerHistoryCursor = null;
         logViewerLoadingMore = false;
         logViewerNoMoreEntries = false;
+        hideLogViewerBanner();
 
         // Restore timestamp format preference from localStorage
         const savedTimestampPref = localStorage.getItem('trellis-logviewer-timestamp-absolute');
@@ -5009,8 +5043,15 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         logViewerWs = new WebSocket(wsUrl);
 
         logViewerWs.onopen = function() {
-            document.getElementById('logviewer-status').textContent = 'connected';
-            document.getElementById('logviewer-status').className = 'logviewer-connection-status connected';
+            const statusEl = document.getElementById('logviewer-status');
+            if (logViewerExplore && !logViewerWentLive) {
+                statusEl.textContent = 'explore';
+            } else {
+                statusEl.textContent = 'connected';
+            }
+            statusEl.className = 'logviewer-connection-status connected';
+            // The resume-on-reconnect handshake happens when the server's
+            // status message arrives (it carries the sequence epoch check).
         };
 
         logViewerWs.onmessage = function(event) {
@@ -5019,7 +5060,42 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
                 // Handle different message types
                 if (data.type === 'status') {
-                    // Connection status message
+                    // Sequence numbers are per-viewer-instance. If the
+                    // server's current sequence is BEHIND our dedup horizon,
+                    // trellis (or this viewer) restarted and every new entry
+                    // would be wrongly dropped as "already seen". Start the
+                    // view fresh from the new epoch's init snapshot.
+                    if (logViewerNewestSeq > 0 && (data.sequence || 0) < logViewerNewestSeq) {
+                        logViewerNewestSeq = 0;
+                        resetLogViewerDisplay();
+                    }
+                    // A fresh connection starts paused on the server for
+                    // explore viewers, and after a reconnect the server
+                    // doesn't know our follow state. Resume explicitly;
+                    // after_seq (now epoch-validated) lets the server replay
+                    // anything missed while disconnected.
+                    if (logViewerFollowing) {
+                        sendLogViewerMsg({ type: 'resume', after_seq: logViewerNewestSeq });
+                    }
+                    return;
+                }
+
+                if (data.type === 'error') {
+                    console.error('Log viewer error:', data.error);
+                    return;
+                }
+
+                if (data.type === 'stats') {
+                    // While paused the server withholds entries and reports
+                    // how many we're missing instead.
+                    if (!logViewerFollowing) {
+                        logViewerNewLinesCount = data.new_count || 0;
+                        updateNewLinesButton();
+                        if (logViewerAutoPaused && data.rate !== undefined) {
+                            showLogViewerBanner('High volume (≈' + Math.round(data.rate) +
+                                ' lines/s) — following paused. Scroll position is holding still.');
+                        }
+                    }
                     return;
                 }
 
@@ -5051,16 +5127,38 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                                data.type === 'entry' ? [data.entry] :
                                [data]; // Fallback for direct entry
 
-                for (const entry of entries) {
-                    addLogViewerEntry(entry);
+                // Explore snapshots carry no sequence numbers, so the
+                // sequence dedup can't catch a reconnect re-sending the
+                // snapshot — replace the display instead of appending.
+                // (Must happen before the cursor below is stored: the reset
+                // clears scrollback bookkeeping.)
+                if (data.reason === 'init' && logViewerExplore && !logViewerWentLive) {
+                    resetLogViewerDisplay();
                 }
+
+                // Explore-mode initial snapshots carry a history cursor for
+                // scrolling back into rotated files.
+                if (data.next_cursor) {
+                    logViewerHistoryCursor = data.next_cursor;
+                }
+
+                // A resume replay may have been capped; note the gap before
+                // rendering the replayed tail.
+                if (data.reason === 'replay' && data.dropped > 0) {
+                    addLogViewerGapNotice(data.dropped);
+                }
+
+                // init/replay batches were requested by us — render them even
+                // if following is off (e.g. an explore-mode snapshot).
+                const forceRender = data.reason === 'init' || data.reason === 'replay';
+                addLogViewerEntries(entries, forceRender);
             } catch (e) {
                 // If not JSON, create a raw entry
-                addLogViewerEntry({
+                addLogViewerEntries([{
                     timestamp: new Date().toISOString(),
                     message: event.data,
                     raw: event.data
-                });
+                }], false);
             }
         };
 
@@ -5088,21 +5186,35 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         };
     }
 
-    function addLogViewerEntry(entry) {
-        // Add to entries array
-        logViewerEntries.push(entry);
+    function addLogViewerEntries(entries, forceRender) {
+        if (!entries || entries.length === 0) return;
 
-        // Track oldest sequence for load-more functionality
-        if (entry.sequence !== undefined) {
-            if (logViewerOldestSeq === null || entry.sequence < logViewerOldestSeq) {
-                logViewerOldestSeq = entry.sequence;
+        // Drop entries we've already seen (a reconnect's initial snapshot
+        // overlaps what was on screen before the connection dropped).
+        // Explore snapshots have sequence 0 and always pass.
+        entries = entries.filter(e => !(e.sequence > 0 && e.sequence <= logViewerNewestSeq));
+        if (entries.length === 0) return;
+
+        for (const entry of entries) {
+            logViewerEntries.push(entry);
+
+            // Track oldest/newest sequence: oldest drives scrollback from the
+            // in-memory buffer, newest is our resume/replay position.
+            // Sequence 0 means "not from the ring buffer" (history reads).
+            if (entry.sequence !== undefined && entry.sequence > 0) {
+                if (logViewerOldestSeq === null || entry.sequence < logViewerOldestSeq) {
+                    logViewerOldestSeq = entry.sequence;
+                }
+                if (entry.sequence > logViewerNewestSeq) {
+                    logViewerNewestSeq = entry.sequence;
+                }
             }
-        }
-        // Also track the oldest timestamp — used to fall through to the
-        // rotated history files once the in-memory buffer is exhausted.
-        if (entry.timestamp) {
-            if (!logViewerOldestTime || entry.timestamp < logViewerOldestTime) {
-                logViewerOldestTime = entry.timestamp;
+            // Also track the oldest timestamp — used to fall through to the
+            // rotated history files once the in-memory buffer is exhausted.
+            if (entry.timestamp) {
+                if (!logViewerOldestTime || entry.timestamp < logViewerOldestTime) {
+                    logViewerOldestTime = entry.timestamp;
+                }
             }
         }
 
@@ -5112,23 +5224,154 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         // and oldestSeq must track the oldest *rendered* sequence — not the
         // oldest in the cap-bounded backing array. Bumping it up here caused
         // scroll-back to ask the server for entries we already had on
-        // screen, producing duplicates.
+        // screen, producing duplicates. (Rendered rows are trimmed separately
+        // by trimLogViewerDom, which does update oldestSeq.)
         const maxEntries = 10000;
         if (logViewerEntries.length > maxEntries) {
             logViewerEntries = logViewerEntries.slice(-maxEntries);
         }
 
-        // Check if entry matches current filter
-        if (!logViewerFilter || matchesLogViewerFilter(entry, logViewerFilter)) {
-            logViewerFilteredEntries.push(entry);
+        const matching = logViewerFilter
+            ? entries.filter(e => matchesLogViewerFilter(e, logViewerFilter))
+            : entries;
+        if (matching.length === 0) return;
 
-            if (logViewerFollowing) {
-                renderLogViewerEntry(entry);
-                scrollLogViewerToBottom();
-            } else {
-                logViewerNewLinesCount++;
-                updateNewLinesButton();
+        // Only steady-state stream batches count toward the auto-pause rate;
+        // init snapshots and resume replays are one-shot catch-up bursts.
+        if (!forceRender) {
+            trackLogViewerRate(matching.length);
+        }
+
+        if (logViewerFollowing || forceRender) {
+            // Render the whole batch into a fragment: one DOM append and one
+            // scroll adjustment per batch instead of per line.
+            const logEl = document.getElementById('logviewer-log');
+            const wasEmpty = logEl.childElementCount === 0;
+            const fragment = document.createDocumentFragment();
+            for (const entry of matching) {
+                logViewerFilteredEntries.push(entry);
+                renderLogEntry(entry, {
+                    container: fragment,
+                    layout: logViewerLayout,
+                    fieldMap: logViewerFieldMap,
+                    formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
+                    onExpand: expandLogViewerEntry,
+                    entryIndex: logViewerFilteredEntries.length - 1
+                });
             }
+            logEl.appendChild(fragment);
+            // Don't trim or yank the scroll position while a paused reader
+            // has context on screen (e.g. a reconnect's init batch); explore
+            // snapshots do land at the bottom.
+            if (logViewerFollowing) {
+                trimLogViewerDom();
+            }
+            if (logViewerFollowing || (logViewerExplore && !logViewerWentLive) || wasEmpty) {
+                scrollLogViewerToBottom();
+            }
+        } else {
+            for (const entry of matching) {
+                logViewerFilteredEntries.push(entry);
+            }
+            logViewerNewLinesCount += matching.length;
+            updateNewLinesButton();
+        }
+    }
+
+    // trimLogViewerDom keeps the rendered row count bounded while following.
+    // Trimmed rows stay available: they're in the server's ring buffer, so
+    // scrolling back up reloads them via load_more.
+    function trimLogViewerDom() {
+        const MAX_DOM_ROWS = 4000;
+        const TRIM_TO = 3000;
+        const logEl = document.getElementById('logviewer-log');
+        if (logEl.childElementCount <= MAX_DOM_ROWS) return;
+
+        const removeCount = logEl.childElementCount - TRIM_TO;
+        let removedEntries = 0;
+        for (let i = 0; i < removeCount && logEl.firstElementChild; i++) {
+            if (logEl.firstElementChild.classList.contains('logviewer-entry')) {
+                removedEntries++;
+            }
+            logEl.removeChild(logEl.firstElementChild);
+        }
+
+        // Keep filteredEntries aligned with the DOM (both are trimmed from
+        // the front by the same number of entry rows).
+        if (removedEntries > 0) {
+            logViewerFilteredEntries = logViewerFilteredEntries.slice(removedEntries);
+        }
+
+        // Scrollback bookkeeping: the trimmed rows can be re-fetched, so the
+        // oldest rendered entry is the new scrollback anchor and any "no
+        // more history" conclusion is void. The history cursor from an
+        // earlier deep scroll no longer lines up either — the in-memory
+        // buffer stage will serve the trimmed region and re-establish it.
+        const first = logViewerFilteredEntries[0];
+        logViewerOldestSeq = (first && first.sequence > 0) ? first.sequence : null;
+        logViewerOldestTime = (first && first.timestamp) ? first.timestamp : null;
+        logViewerNoMoreEntries = false;
+        logViewerHistoryCursor = null;
+    }
+
+    // trackLogViewerRate watches how fast rendered entries arrive and
+    // auto-pauses following when the volume makes tailing useless.
+    function trackLogViewerRate(count) {
+        const now = Date.now();
+        logViewerRateWindow.push([now, count]);
+        while (logViewerRateWindow.length > 0 && logViewerRateWindow[0][0] < now - 3000) {
+            logViewerRateWindow.shift();
+        }
+        if (!logViewerAutoPauseRate || !logViewerFollowing) return;
+
+        const spanMs = now - logViewerRateWindow[0][0];
+        if (spanMs < 2000) return; // need a sustained window, not one burst
+        const total = logViewerRateWindow.reduce((sum, sample) => sum + sample[1], 0);
+        const rate = total / (spanMs / 1000);
+        if (rate > logViewerAutoPauseRate) {
+            logViewerAutoPaused = true;
+            setLogViewerFollowing(false);
+            showLogViewerBanner('High volume (≈' + Math.round(rate) +
+                ' lines/s) — following paused. Scroll position is holding still.');
+        }
+    }
+
+    // resetLogViewerDisplay clears rendered entries and scrollback
+    // bookkeeping (used when replacing an explore snapshot).
+    function resetLogViewerDisplay() {
+        logViewerEntries = [];
+        logViewerFilteredEntries = [];
+        logViewerOldestSeq = null;
+        logViewerOldestTime = null;
+        logViewerHistoryCursor = null;
+        logViewerNoMoreEntries = false;
+        document.getElementById('logviewer-log').innerHTML = '';
+    }
+
+    function showLogViewerBanner(text) {
+        const banner = document.getElementById('logviewer-banner');
+        banner.textContent = text;
+        banner.style.display = 'block';
+    }
+
+    function hideLogViewerBanner() {
+        const banner = document.getElementById('logviewer-banner');
+        if (banner) {
+            banner.style.display = 'none';
+        }
+    }
+
+    function addLogViewerGapNotice(count) {
+        const logEl = document.getElementById('logviewer-log');
+        const div = document.createElement('div');
+        div.className = 'logviewer-gap-notice';
+        div.textContent = '— ' + count.toLocaleString() + ' lines skipped while paused; use history search to view them —';
+        logEl.appendChild(div);
+    }
+
+    function sendLogViewerMsg(msg) {
+        if (logViewerWs && logViewerWs.readyState === WebSocket.OPEN) {
+            logViewerWs.send(JSON.stringify(msg));
         }
     }
 
@@ -5249,17 +5492,6 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     // Render key=value pairs from entry.fields for kvpairs column type
     // ========== Log Viewer Functions ==========
 
-    function renderLogViewerEntry(entry) {
-        renderLogEntry(entry, {
-            container: document.getElementById('logviewer-log'),
-            layout: logViewerLayout,
-            fieldMap: logViewerFieldMap,
-            formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
-            onExpand: expandLogViewerEntry,
-            entryIndex: logViewerFilteredEntries.length - 1
-        });
-    }
-
     function formatLogViewerTimestamp(timestamp) {
         return formatTimestamp(timestamp, logViewerTimestampAbsolute);
     }
@@ -5275,14 +5507,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         const isNearTop = logEl.scrollTop < 100;
 
         if (isAtBottom && !logViewerFollowing) {
-            // User scrolled back to bottom, resume following
-            logViewerFollowing = true;
-            logViewerNewLinesCount = 0;
-            updateLogViewerModeUI();
+            // User scrolled back to bottom: resume following — unless the
+            // pause was deliberate (auto-pause on volume, or an explore
+            // viewer that hasn't gone live). Those need an explicit click so
+            // the rendered snapshot doesn't turn into a firehose by itself.
+            if (!logViewerAutoPaused && !(logViewerExplore && !logViewerWentLive)) {
+                setLogViewerFollowing(true);
+            }
         } else if (!isAtBottom && logViewerFollowing) {
             // User scrolled up, pause following
-            logViewerFollowing = false;
-            updateLogViewerModeUI();
+            setLogViewerFollowing(false);
         }
 
         // Load more entries when scrolled near top
@@ -5290,6 +5524,39 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             (logViewerOldestSeq !== null || logViewerOldestTime !== null)) {
             loadMoreLogViewerEntries();
         }
+    }
+
+    // setLogViewerFollowing is the single place follow state changes. It
+    // keeps the server in sync: pause stops the stream server-side (entries
+    // are counted, not shipped), resume replays what was missed from the
+    // server's ring buffer via after_seq.
+    function setLogViewerFollowing(follow) {
+        if (logViewerFollowing === follow) return;
+        logViewerFollowing = follow;
+
+        if (follow) {
+            // Going live from an explore snapshot: the snapshot was read
+            // straight from the file (entries carry no sequence numbers) and
+            // the tail emits its own startup backlog, which would duplicate
+            // every rendered line. Start clean — the backlog repopulates the
+            // recent context within a moment.
+            if (logViewerExplore && !logViewerWentLive && logViewerNewestSeq === 0) {
+                resetLogViewerDisplay();
+            }
+            logViewerWentLive = true;
+            logViewerAutoPaused = false;
+            logViewerNewLinesCount = 0;
+            logViewerRateWindow = [];
+            hideLogViewerBanner();
+            sendLogViewerMsg({ type: 'resume', after_seq: logViewerNewestSeq });
+            // Render any stragglers that arrived while pausing, then let the
+            // server's replay batch bring us up to date.
+            rerenderLogViewer();
+            scrollLogViewerToBottom();
+        } else {
+            sendLogViewerMsg({ type: 'pause' });
+        }
+        updateLogViewerModeUI();
     }
 
     function loadMoreLogViewerEntries() {
@@ -5318,21 +5585,15 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     }
 
     function toggleLogViewerFollowing() {
-        logViewerFollowing = !logViewerFollowing;
-        if (logViewerFollowing) {
-            jumpToLatestLogs();
-        }
-        updateLogViewerModeUI();
+        setLogViewerFollowing(!logViewerFollowing);
     }
 
     function jumpToLatestLogs() {
-        logViewerFollowing = true;
-        logViewerNewLinesCount = 0;
-
-        // Re-render any entries that were added while paused
-        rerenderLogViewer();
-        scrollLogViewerToBottom();
-        updateLogViewerModeUI();
+        if (logViewerFollowing) {
+            scrollLogViewerToBottom();
+            return;
+        }
+        setLogViewerFollowing(true);
     }
 
     function updateLogViewerModeUI() {
@@ -5344,6 +5605,10 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         if (logViewerFollowing) {
             modeIndicator.textContent = 'Following';
             modeDot.className = 'logviewer-mode-dot';
+            newLinesBtn.style.display = 'none';
+        } else if (logViewerExplore && !logViewerWentLive) {
+            modeIndicator.textContent = 'Go live';
+            modeDot.className = 'logviewer-mode-dot paused';
             newLinesBtn.style.display = 'none';
         } else {
             modeIndicator.textContent = 'Paused';
@@ -5402,9 +5667,18 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         const tbody = document.getElementById('logviewer-log');
         tbody.innerHTML = '';
 
-        for (const entry of logViewerFilteredEntries) {
-            renderLogViewerEntry(entry);
-        }
+        const fragment = document.createDocumentFragment();
+        logViewerFilteredEntries.forEach((entry, index) => {
+            renderLogEntry(entry, {
+                container: fragment,
+                layout: logViewerLayout,
+                fieldMap: logViewerFieldMap,
+                formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
+                onExpand: expandLogViewerEntry,
+                entryIndex: index
+            });
+        });
+        tbody.appendChild(fragment);
 
         if (logViewerFollowing) {
             scrollLogViewerToBottom();
@@ -5549,6 +5823,10 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         currentLogViewerName = null;
         logViewerEntries = [];
         logViewerFilteredEntries = [];
+        logViewerNewestSeq = 0;
+        logViewerRateWindow = [];
+        logViewerAutoPaused = false;
+        hideLogViewerBanner();
     }
 
     function clearLogViewerLog() {
@@ -5659,13 +5937,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         }
 
         throw new Error(`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`Invalid time format: ${input}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`);
     }
 
@@ -5701,63 +5979,63 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
         try {
             // Build query URL
             let url = `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`/api/v1/logs/${encodeURIComponent(currentLogViewerName)}/history`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`?start=${encodeURIComponent(startTime)}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             url += `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`&end=${encodeURIComponent(endTime)}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             if (grep) {
                 url += `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`&grep=${encodeURIComponent(grep)}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             }
             if (before > 0) {
                 url += `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`&before=${before}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             }
             if (after > 0) {
                 url += `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`&after=${after}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             }
 
@@ -5765,13 +6043,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(text || `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`HTTP ${response.status}`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`);
             }
 
@@ -5808,13 +6086,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             // Update connection status
             const statusEl = document.getElementById('logviewer-status');
             statusEl.textContent = `)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`${data.entries?.length || 0} results`)
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S("`")
-//line views/terminal.qtpl:1096
+//line views/terminal.qtpl:1114
 	qw422016.N().S(`;
             statusEl.className = 'logviewer-connection-status text-info';
 
@@ -5855,36 +6133,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script src="/static/js/inbox_main_ws.js"></script>
 `)
-//line views/terminal.qtpl:5304
+//line views/terminal.qtpl:5582
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5304
+//line views/terminal.qtpl:5582
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 }
 
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 }
 
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 	return qs422016
-//line views/terminal.qtpl:5305
+//line views/terminal.qtpl:5583
 }

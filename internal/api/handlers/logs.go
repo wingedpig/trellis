@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -248,11 +247,14 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	viewer, err := h.manager.GetAndStart(name)
-	if err != nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+	// History reads come from rotated files on disk; they don't need the
+	// tail running (and shouldn't start one for explore-mode viewers).
+	viewer, ok := h.manager.Get(name)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "log viewer not found")
 		return
 	}
+	viewer.Touch()
 
 	// Parse query parameters
 	query := r.URL.Query()
@@ -417,11 +419,14 @@ func (h *LogHandler) ListRotatedFiles(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	viewer, err := h.manager.GetAndStart(name)
-	if err != nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+	// Rotated-file listing reads from disk; it doesn't need the tail
+	// running (and shouldn't start one for explore-mode viewers).
+	viewer, ok := h.manager.Get(name)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "log viewer not found")
 		return
 	}
+	viewer.Touch()
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -436,14 +441,52 @@ func (h *LogHandler) ListRotatedFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 // Stream handles WebSocket connections for streaming log entries.
+// Stream protocol tuning knobs.
+const (
+	// streamFlushInterval is how often batched entries are flushed to the
+	// client. Batching turns per-line WebSocket frames into a few frames
+	// per second regardless of log volume.
+	streamFlushInterval = 150 * time.Millisecond
+	// streamMaxBatch flushes early when this many entries are pending.
+	streamMaxBatch = 500
+	// streamStatsInterval is how often a paused connection receives a
+	// lightweight stats frame (missed count + rate) instead of entries.
+	streamStatsInterval = 2 * time.Second
+	// streamMaxReplay caps how many entries are replayed when a paused
+	// stream resumes. Anything older is dropped and reported via "dropped".
+	streamMaxReplay = 2000
+	// streamExploreInitial is how many recent entries an explore-mode
+	// connection loads up front via the backward reader.
+	streamExploreInitial = 200
+)
+
+// streamCtrl is a control message passed from the WebSocket read goroutine
+// to the streaming loop.
+type streamCtrl struct {
+	kind     string // "pause" or "resume"
+	afterSeq uint64 // resume: replay entries after this sequence
+}
+
 func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	viewer, err := h.manager.GetAndStart(name)
-	if err != nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+	viewer, ok := h.manager.Get(name)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "log viewer not found")
 		return
+	}
+
+	// Explore mode: don't start the tail; serve recent entries from the
+	// backward reader and only go live when the client asks. Sources
+	// without byte-offset backward reads (docker/k8s/command) fall back to
+	// live-but-paused, which does start the tail.
+	explore := viewer.Config().GetMode() == "explore" && viewer.CanReadBackward()
+	if !explore {
+		if _, err := h.manager.GetAndStart(name); err != nil {
+			WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+			return
+		}
 	}
 
 	// Upgrade to WebSocket
@@ -458,7 +501,6 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	filterStr := r.URL.Query().Get("filter")
 	var filter *logs.Filter
 	var filterMu sync.RWMutex
-	var paused atomic.Bool
 	if filterStr != "" {
 		var err error
 		filter, err = logs.ParseFilter(filterStr)
@@ -471,27 +513,80 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Channel for receiving entries
+	// Channel for receiving entries. In explore mode the subscription is
+	// deferred until the client goes live; Unsubscribe on a channel that was
+	// never subscribed is a no-op.
 	entryCh := make(chan logs.LogEntry, 1000)
-	viewer.Subscribe(entryCh)
+	subscribed := false
+	if !explore {
+		viewer.Subscribe(entryCh)
+		subscribed = true
+	}
 	defer viewer.Unsubscribe(entryCh)
+
+	// Whether the viewer's config asks for explore-style UI (even when the
+	// source forced the live-paused fallback).
+	exploreUI := viewer.Config().GetMode() == "explore"
 
 	// Send connection status
 	conn.WriteJSON(map[string]interface{}{
 		"type":      "status",
 		"viewer":    name,
 		"connected": true,
+		"mode":      viewer.Config().GetMode(),
+		"live":      !exploreUI,
 		"sequence":  viewer.CurrentSequence(),
 	})
 
-	// Send initial buffered entries (small batch, more loaded on scroll)
-	initialEntries := viewer.GetEntries(filter, 100)
-	if len(initialEntries) > 0 {
+	// lastSentSeq tracks the newest sequence handled while streaming; the
+	// stream loop skips anything at or below it so a resume replay can never
+	// duplicate entries already queued in entryCh.
+	var lastSentSeq uint64
+
+	// Send initial entries. reason:"init" tells the client to render them
+	// regardless of its follow state.
+	if explore {
+		initCtx, initCancel := context.WithTimeout(r.Context(), 30*time.Second)
+		entries, cursor, _, _, err := viewer.ReadEntriesBackward(initCtx, logs.BackwardCursor{Offset: -1}, streamExploreInitial, filter, time.Time{})
+		initCancel()
+		if err != nil {
+			log.Printf("logs[%s]: explore initial read failed: %v", name, err)
+		}
 		conn.WriteJSON(map[string]interface{}{
-			"type":    "entries",
-			"entries": initialEntries,
+			"type":        "entries",
+			"reason":      "init",
+			"entries":     entries,
+			"next_cursor": cursor,
 		})
+	} else {
+		initialEntries := viewer.GetEntries(filter, 100)
+		if len(initialEntries) > 0 {
+			conn.WriteJSON(map[string]interface{}{
+				"type":    "entries",
+				"reason":  "init",
+				"entries": initialEntries,
+			})
+			for _, e := range initialEntries {
+				if e.Sequence > lastSentSeq {
+					lastSentSeq = e.Sequence
+				}
+			}
+		}
 	}
+
+	// Paused streams drop entries after counting them; resume replays from
+	// the ring buffer. Explore connections start paused.
+	paused := exploreUI
+
+	// Control channel from the read goroutine to the stream loop. Pause and
+	// resume must be handled by the loop that owns the streaming state,
+	// otherwise replay and live sends race and the client sees duplicates.
+	ctrlCh := make(chan streamCtrl, 8)
+
+	// Closed when Stream returns, so the read goroutine never blocks on
+	// ctrlCh after the stream loop has exited.
+	loopExit := make(chan struct{})
+	defer close(loopExit)
 
 	// Mutex for WebSocket writes
 	var writeMu sync.Mutex
@@ -544,13 +639,14 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 			// Parse client message
 			var clientMsg struct {
-				Type          string              `json:"type"`
-				Query         string              `json:"query"`
-				SeekTS        string              `json:"timestamp"`
-				BeforeSeq     uint64              `json:"before_seq"`
-				BeforeTime    string              `json:"before_time"`
+				Type          string               `json:"type"`
+				Query         string               `json:"query"`
+				SeekTS        string               `json:"timestamp"`
+				AfterSeq      uint64               `json:"after_seq"`
+				BeforeSeq     uint64               `json:"before_seq"`
+				BeforeTime    string               `json:"before_time"`
 				HistoryCursor *logs.BackwardCursor `json:"history_cursor,omitempty"`
-				Limit         int                 `json:"limit"`
+				Limit         int                  `json:"limit"`
 			}
 			if err := json.Unmarshal(msg, &clientMsg); err != nil {
 				continue
@@ -580,11 +676,21 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 					filterMu.Unlock()
 				}
 			case "pause":
-				// Client wants to pause streaming
-				paused.Store(true)
+				// Client wants to pause streaming; handled by the stream
+				// loop, which owns the pause/replay state.
+				select {
+				case ctrlCh <- streamCtrl{kind: "pause"}:
+				case <-loopExit:
+					return
+				}
 			case "resume":
-				// Client wants to resume streaming
-				paused.Store(false)
+				// Client wants to resume streaming, replaying entries newer
+				// than after_seq from the ring buffer.
+				select {
+				case ctrlCh <- streamCtrl{kind: "resume", afterSeq: clientMsg.AfterSeq}:
+				case <-loopExit:
+					return
+				}
 			case "load_more":
 				// Client wants older entries (scrolled to top). Three-stage
 				// fallback:
@@ -683,7 +789,39 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Main loop - stream entries to client
+	// Main loop - stream entries to client in batches. Entries are
+	// coalesced and flushed every streamFlushInterval (or when the batch
+	// hits streamMaxBatch) so high-volume logs cost a few frames per second
+	// instead of a frame per line. While paused, matching entries are
+	// counted and dropped; a periodic stats frame keeps the client's "new
+	// lines" counter fresh without shipping the lines.
+	var pending []logs.LogEntry
+	pausedCount := 0   // matched entries dropped since pause
+	windowMatched := 0 // matched entries seen in the current stats window
+
+	flush := func() bool {
+		if len(pending) == 0 {
+			return true
+		}
+		writeMu.Lock()
+		err := conn.WriteJSON(map[string]interface{}{
+			"type":    "entries",
+			"entries": pending,
+		})
+		writeMu.Unlock()
+		pending = pending[:0]
+		if err != nil {
+			log.Printf("Log stream: write failed: %v", err)
+			return false
+		}
+		return true
+	}
+
+	flushTicker := time.NewTicker(streamFlushInterval)
+	defer flushTicker.Stop()
+	statsTicker := time.NewTicker(streamStatsInterval)
+	defer statsTicker.Stop()
+
 	for {
 		select {
 		case entry, ok := <-entryCh:
@@ -692,29 +830,154 @@ func (h *LogHandler) Stream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Skip sending if paused (entries are dropped while paused)
-			if paused.Load() {
-				continue
-			}
-
 			// Apply filter
 			filterMu.RLock()
 			currentFilter := filter
 			filterMu.RUnlock()
 			if currentFilter != nil && !currentFilter.Match(entry) {
+				if !paused && entry.Sequence > lastSentSeq {
+					lastSentSeq = entry.Sequence
+				}
+				continue
+			}
+			windowMatched++
+
+			// While paused, count and drop; the ring buffer keeps the
+			// entries for replay on resume.
+			if paused {
+				pausedCount++
 				continue
 			}
 
+			// Skip anything a replay already covered.
+			if entry.Sequence <= lastSentSeq {
+				continue
+			}
+			lastSentSeq = entry.Sequence
+
+			pending = append(pending, entry)
+			if len(pending) >= streamMaxBatch {
+				if !flush() {
+					return
+				}
+			}
+
+		case <-flushTicker.C:
+			if !flush() {
+				return
+			}
+
+		case <-statsTicker.C:
+			// A config reload replaces viewer objects in the manager. This
+			// connection would then be subscribed to the orphaned old viewer
+			// and stream nothing, forever. Close instead — the client
+			// reconnects within seconds and binds to the replacement (its
+			// status message carries the new sequence epoch).
+			if current, ok := h.manager.Get(name); !ok || current != viewer {
+				log.Printf("Log stream %s: viewer replaced or removed; closing stream for reconnect", name)
+				return
+			}
+
+			rate := float64(windowMatched) / streamStatsInterval.Seconds()
+			windowMatched = 0
+			if !paused || !subscribed {
+				continue
+			}
 			writeMu.Lock()
 			err := conn.WriteJSON(map[string]interface{}{
-				"type":  "entry",
-				"entry": entry,
+				"type":      "stats",
+				"new_count": pausedCount,
+				"rate":      rate,
 			})
 			writeMu.Unlock()
-
 			if err != nil {
-				log.Printf("Log stream: write failed: %v", err)
+				log.Printf("Log stream: stats write failed: %v", err)
 				return
+			}
+
+		case c := <-ctrlCh:
+			switch c.kind {
+			case "pause":
+				if !flush() {
+					return
+				}
+				if !paused {
+					paused = true
+					pausedCount = 0
+				}
+
+			case "resume":
+				// Going live may need to start the tail (explore mode) and
+				// subscribe this connection.
+				justSubscribed := false
+				if !subscribed {
+					if err := h.manager.EnsureStarted(name); err != nil {
+						writeMu.Lock()
+						conn.WriteJSON(map[string]interface{}{
+							"type":  "error",
+							"error": "failed to start log viewer: " + err.Error(),
+						})
+						writeMu.Unlock()
+						continue
+					}
+					viewer.Subscribe(entryCh)
+					subscribed = true
+					justSubscribed = true
+				}
+
+				// Replay what was missed while paused. The replay comes from
+				// the ring buffer; entries still queued in entryCh with
+				// sequences at or below the replay horizon are skipped by the
+				// lastSentSeq check above.
+				//
+				// A connection that just subscribed with no sequence horizon
+				// (explore go-live) still gets a small catch-up: the source
+				// may have emitted lines between EnsureStarted and Subscribe
+				// that only the ring buffer saw, and if the viewer was
+				// already running for another watcher the buffer holds the
+				// recent context the cleared client needs.
+				afterSeq := c.afterSeq
+				if lastSentSeq > afterSeq {
+					afterSeq = lastSentSeq
+				}
+				var replay []logs.LogEntry
+				dropped := 0
+				var raw []logs.LogEntry
+				if afterSeq > 0 {
+					raw, dropped = viewer.GetLastEntriesAfter(afterSeq, streamMaxReplay)
+				} else if justSubscribed {
+					raw, _ = viewer.GetLastEntriesAfter(0, streamExploreInitial)
+				}
+				if len(raw) > 0 {
+					filterMu.RLock()
+					currentFilter := filter
+					filterMu.RUnlock()
+					for _, e := range raw {
+						if e.Sequence > lastSentSeq {
+							lastSentSeq = e.Sequence
+						}
+						if currentFilter != nil && !currentFilter.Match(e) {
+							continue
+						}
+						replay = append(replay, e)
+					}
+				}
+
+				paused = false
+				pausedCount = 0
+
+				writeMu.Lock()
+				err := conn.WriteJSON(map[string]interface{}{
+					"type":    "entries",
+					"reason":  "replay",
+					"entries": replay,
+					"dropped": dropped,
+				})
+				writeMu.Unlock()
+				if err != nil {
+					log.Printf("Log stream: replay write failed: %v", err)
+					return
+				}
 			}
 
 		case <-done:

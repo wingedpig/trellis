@@ -370,10 +370,13 @@ func (h *PageHandler) buildLogViewerList() []views.LogViewerInfo {
 			continue
 		}
 		info := views.LogViewerInfo{
-			Name: name,
+			Name:          name,
+			Mode:          "live",
+			AutoPauseRate: h.logManager.AutoPauseRate(),
 		}
 		if viewer, ok := h.logManager.Get(name); ok {
 			cfg := viewer.Config()
+			info.Mode = cfg.GetMode()
 			info.Columns = cfg.GetColumns()
 			info.ColumnWidths = cfg.GetColumnWidths()
 			info.Layout = convertLayout(cfg.Layout)

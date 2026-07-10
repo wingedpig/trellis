@@ -25,6 +25,8 @@ type Manager struct {
 	serviceMonitorWg sync.WaitGroup                // wait group for service viewer monitor goroutines
 	ctx              context.Context               // parent context for starting viewers
 	idleTimeout      time.Duration                 // duration after which idle viewers are stopped
+	disconnectGrace  time.Duration                 // duration after the last subscriber leaves before the tail is stopped
+	autoPauseRate    int                           // lines/sec above which the UI auto-pauses following (0 = disabled)
 	cleanupCancel    context.CancelFunc            // cancel function for cleanup goroutine
 }
 
@@ -40,12 +42,32 @@ func NewManager(bus events.EventBus, settings config.LogViewerSettings) *Manager
 		idleTimeout = 0 // disabled
 	}
 
-	return &Manager{
-		viewers:       make(map[string]*Viewer),
-		bus:           bus,
-		monitorCancel: make(map[string]context.CancelFunc),
-		idleTimeout:   idleTimeout,
+	// Parse disconnect grace: how long a tail keeps running after its last
+	// watcher disconnects. Much shorter than the idle timeout because a
+	// high-volume tail with nobody watching is pure waste.
+	disconnectGrace := 30 * time.Second // default
+	if settings.DisconnectGrace != "" && settings.DisconnectGrace != "0" {
+		if d, err := time.ParseDuration(settings.DisconnectGrace); err == nil {
+			disconnectGrace = d
+		}
+	} else if settings.DisconnectGrace == "0" {
+		disconnectGrace = 0 // disabled
 	}
+
+	return &Manager{
+		viewers:         make(map[string]*Viewer),
+		bus:             bus,
+		monitorCancel:   make(map[string]context.CancelFunc),
+		idleTimeout:     idleTimeout,
+		disconnectGrace: disconnectGrace,
+		autoPauseRate:   settings.GetAutoPauseRate(),
+	}
+}
+
+// AutoPauseRate returns the configured auto-pause threshold in lines/sec
+// (0 = disabled).
+func (m *Manager) AutoPauseRate() int {
+	return m.autoPauseRate
 }
 
 // Initialize creates viewers from configuration.
@@ -121,12 +143,12 @@ func (m *Manager) Start(ctx context.Context) error {
 	defer m.mu.Unlock()
 	m.ctx = ctx
 
-	// Start cleanup goroutine if idle timeout is enabled
-	if m.idleTimeout > 0 {
+	// Start cleanup goroutine if idle timeout or disconnect grace is enabled
+	if m.idleTimeout > 0 || m.disconnectGrace > 0 {
 		cleanupCtx, cancel := context.WithCancel(ctx)
 		m.cleanupCancel = cancel
 		go m.cleanupLoop(cleanupCtx)
-		log.Printf("Log manager ready with %d viewers (lazy startup, idle timeout: %v)", len(m.viewers), m.idleTimeout)
+		log.Printf("Log manager ready with %d viewers (lazy startup, idle timeout: %v, disconnect grace: %v)", len(m.viewers), m.idleTimeout, m.disconnectGrace)
 	} else {
 		log.Printf("Log manager ready with %d viewers (lazy startup, no idle timeout)", len(m.viewers))
 	}
@@ -422,10 +444,16 @@ func (m *Manager) emitEvent(eventType string, payload map[string]any) {
 
 // cleanupLoop periodically checks for and stops idle viewers.
 func (m *Manager) cleanupLoop(ctx context.Context) {
-	// Check every minute (or half the idle timeout, whichever is smaller)
+	// Check every minute, or more often when the enabled timeouts are short.
 	interval := time.Minute
-	if m.idleTimeout < 2*time.Minute {
+	if m.idleTimeout > 0 && m.idleTimeout < 2*time.Minute {
 		interval = m.idleTimeout / 2
+	}
+	if m.disconnectGrace > 0 && m.disconnectGrace < interval {
+		interval = m.disconnectGrace
+	}
+	if interval < 5*time.Second {
+		interval = 5 * time.Second
 	}
 
 	ticker := time.NewTicker(interval)
@@ -441,8 +469,10 @@ func (m *Manager) cleanupLoop(ctx context.Context) {
 	}
 }
 
-// stopIdleViewers stops viewers that have been idle longer than the timeout
-// and have no active subscribers.
+// stopIdleViewers stops running viewers that have no active subscribers and
+// are past either the disconnect grace (measured from when the last watcher
+// left) or the idle timeout (measured from the last API access, for viewers
+// that were started but never streamed).
 func (m *Manager) stopIdleViewers() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -459,14 +489,32 @@ func (m *Manager) stopIdleViewers() {
 			continue
 		}
 
-		// Check if idle
-		lastAccessed := viewer.LastAccessed()
-		if lastAccessed.IsZero() || now.Sub(lastAccessed) < m.idleTimeout {
+		stop := false
+		reason := ""
+		if m.disconnectGrace > 0 {
+			// Require the last API access to also be older than the grace so
+			// REST polling (without a WebSocket subscription) keeps the tail
+			// alive.
+			gone := viewer.LastSubscriberGone()
+			accessed := viewer.LastAccessed()
+			if !gone.IsZero() && now.Sub(gone) >= m.disconnectGrace &&
+				(accessed.IsZero() || now.Sub(accessed) >= m.disconnectGrace) {
+				stop = true
+				reason = fmt.Sprintf("last watcher disconnected %v ago", now.Sub(gone).Round(time.Second))
+			}
+		}
+		if !stop && m.idleTimeout > 0 {
+			if lastAccessed := viewer.LastAccessed(); !lastAccessed.IsZero() && now.Sub(lastAccessed) >= m.idleTimeout {
+				stop = true
+				reason = fmt.Sprintf("last accessed %v ago", now.Sub(lastAccessed).Round(time.Second))
+			}
+		}
+		if !stop {
 			continue
 		}
 
 		// Stop the idle viewer
-		log.Printf("Stopping idle log viewer %s (last accessed: %v ago)", name, now.Sub(lastAccessed).Round(time.Second))
+		log.Printf("Stopping idle log viewer %s (%s)", name, reason)
 
 		// Cancel monitor goroutine
 		if cancel, ok := m.monitorCancel[name]; ok {

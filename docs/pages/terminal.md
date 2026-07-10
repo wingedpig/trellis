@@ -89,20 +89,26 @@ Service logs show the stdout/stderr output from your configured services.
 
 Log viewers stream logs from configured sources—local files, remote SSH connections, or custom commands.
 
-**Configuration:** Each log viewer is defined in the [`log_viewers`](/docs/reference/config/#log_viewers) array. Configure the source type (`file`, `ssh`, `command`), connection details, and logging options (parser, fields, history settings).
+**Configuration:** Each log viewer is defined in the [`log_viewers`](/docs/reference/config/#log_viewers) array. Configure the source type (`file`, `ssh`, `command`), connection details, and logging options (parser, fields, history settings). The `mode` field controls whether the viewer opens tailing (`live`, the default) or paused with a static snapshot for search/scrollback (`explore`) — see [Viewer Modes](/docs/concepts/logging/#viewer-modes-live-vs-explore).
 
 **Features:**
 - Real-time streaming via WebSocket
 - Structured log parsing
 - Filtering (same syntax as service logs)
 - Entry details panel
-- Following/paused modes
+- Following/paused modes, with automatic pausing on high-volume streams
 - History search for past log entries
+
+**Live vs. Explore:** `live` viewers (the default) start tailing the source as soon as you open them and follow new entries. `explore` viewers — meant for high-volume logs like nginx access logs — open paused with the last ~200 lines loaded from the end of the file, so search and scrollback are the primary workflow. Click **Go live** in the header to start the tail and switch to streaming.
+
+**Auto-pause:** If a followed viewer streams faster than the configured `auto_pause_rate` (default 30 lines/sec), it automatically drops out of following and shows a "High volume (≈N lines/s) — following paused" banner. New lines keep being counted while paused; click the **+N new lines** indicator or the **Following** button to resume.
+
+**Pausing is lossless:** whenever a viewer is paused — by scrolling up, by auto-pause, or in `explore` mode before going live — the server stops sending individual log lines and instead sends a small stats update every couple of seconds (count of missed lines and current rate). Resuming replays the missed lines from the server's in-memory buffer (up to 2000 entries); if more were missed, the newest 2000 are shown with a "N lines skipped while paused" divider, and history search can still find the rest. Entries otherwise stream in small batches (roughly every 150ms) rather than one message per line, and the view keeps about the last 4000 rows in the browser, trimming the oldest as new ones arrive; scrolling up past what's rendered reloads older rows from the server's buffer.
 
 **History Search:**
 Click the clock icon to search historical logs. Specify a time range and grep pattern to find past entries.
 
-**Connection:** Log viewers use WebSocket connections. The connection is closed when you switch to a different view. When you return to the same log viewer, it reconnects and resumes streaming.
+**Connection:** Log viewers use WebSocket connections. The connection is closed when you switch to a different view. When you return to the same log viewer, it reconnects and resumes streaming. The underlying tail keeps running briefly after the last viewer disconnects (`disconnect_grace`, default 30s) so quickly switching back and forth doesn't restart it; after the grace period with no watchers, the tail is stopped.
 
 ---
 

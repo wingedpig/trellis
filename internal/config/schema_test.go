@@ -304,3 +304,46 @@ func TestLogViewerApplyDefaults(t *testing.T) {
 		assert.Equal(t, "", cfg.Parser.File)
 	})
 }
+
+func intPtr(i int) *int {
+	return &i
+}
+
+func TestLogViewerSettingsGetAutoPauseRate(t *testing.T) {
+	tests := []struct {
+		name string
+		rate *int
+		want int
+	}{
+		{name: "nil defaults to 30", rate: nil, want: 30},
+		{name: "explicit zero disables", rate: intPtr(0), want: 0},
+		{name: "negative clamps to zero", rate: intPtr(-5), want: 0},
+		{name: "positive value passed through", rate: intPtr(50), want: 50},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := LogViewerSettings{AutoPauseRate: tt.rate}
+			assert.Equal(t, tt.want, s.GetAutoPauseRate())
+		})
+	}
+}
+
+func TestLogViewerConfigGetMode(t *testing.T) {
+	tests := []struct {
+		name string
+		mode string
+		want string
+	}{
+		{name: "empty defaults to live", mode: "", want: "live"},
+		{name: "explicit live", mode: "live", want: "live"},
+		{name: "explicit explore passed through", mode: "explore", want: "explore"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := LogViewerConfig{Mode: tt.mode}
+			assert.Equal(t, tt.want, c.GetMode())
+		})
+	}
+}

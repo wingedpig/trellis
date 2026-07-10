@@ -62,7 +62,20 @@ type LoggingDefaultsConfig struct {
 
 // LogViewerSettings configures log viewer behavior.
 type LogViewerSettings struct {
-	IdleTimeout string `json:"idle_timeout"` // Duration after which idle viewers are stopped (e.g., "5m", "0" to disable)
+	IdleTimeout     string `json:"idle_timeout"`     // Duration after which idle viewers are stopped (e.g., "5m", "0" to disable)
+	DisconnectGrace string `json:"disconnect_grace"` // Duration after the last watcher disconnects before the tail is stopped (e.g., "30s", "0" to disable)
+	AutoPauseRate   *int   `json:"auto_pause_rate"`  // Lines/sec above which the UI auto-pauses following (default 30, 0 to disable)
+}
+
+// GetAutoPauseRate returns the auto-pause threshold in lines/sec (0 = disabled).
+func (s *LogViewerSettings) GetAutoPauseRate() int {
+	if s.AutoPauseRate == nil {
+		return 30
+	}
+	if *s.AutoPauseRate < 0 {
+		return 0
+	}
+	return *s.AutoPauseRate
 }
 
 // ProjectConfig contains project metadata.
@@ -498,11 +511,20 @@ func splitCommand(cmd string) []string {
 // LogViewerConfig defines a log viewer configuration.
 type LogViewerConfig struct {
 	Name    string                     `json:"name"`
+	Mode    string                     `json:"mode"`   // "live" (default: tail and follow) or "explore" (open in search/scrollback mode, no tail until requested)
 	Source  LogSourceConfig            `json:"source"`
 	Parser  LogParserConfig            `json:"parser"`
 	Derive  map[string]DeriveConfig    `json:"derive"` // Derived fields computed from parsed fields
 	Layout  []LayoutColumnConfig       `json:"layout"` // Columns to display (in order)
 	Buffer  LogBufferConfig            `json:"buffer"`
+}
+
+// GetMode returns the viewer mode, defaulting to "live".
+func (c LogViewerConfig) GetMode() string {
+	if c.Mode == "" {
+		return "live"
+	}
+	return c.Mode
 }
 
 // LogSourceConfig defines where logs come from.

@@ -74,6 +74,8 @@ type LayoutColumn struct {
 // LogViewerInfo represents a log viewer for the terminal picker.
 type LogViewerInfo struct {
     Name           string         `json:"name"`
+    Mode           string         `json:"mode"`            // "live" (tail + follow) or "explore" (search-first, no tail until requested)
+    AutoPauseRate  int            `json:"auto_pause_rate"` // Lines/sec above which the UI auto-pauses following (0 = disabled)
     Columns        []string       `json:"columns"`         // Columns to display (empty = default) - DEPRECATED
     ColumnWidths   map[string]int `json:"column_widths"`   // Column widths in characters (0 = fill) - DEPRECATED
     Layout         []LayoutColumn `json:"layout"`          // Full layout configuration
@@ -620,6 +622,21 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     .logviewer-mode-dot.paused {
         background: #ffc107;
     }
+    .logviewer-banner {
+        padding: 4px 12px;
+        background: rgba(255, 193, 7, 0.15);
+        border-bottom: 1px solid var(--trellis-input-border);
+        color: var(--bs-body-color);
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+    .logviewer-gap-notice {
+        padding: 4px 12px;
+        color: var(--bs-secondary-color);
+        font-size: 12px;
+        font-style: italic;
+        text-align: center;
+    }
     .logviewer-newlines-btn {
         display: flex;
         align-items: center;
@@ -910,6 +927,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             </button>
         </div>
     </div>
+    <div id="logviewer-banner" class="logviewer-banner" style="display: none;"></div>
     <div id="logviewer-log" class="logviewer-log"></div>
     <div id="logviewer-expanded" class="logviewer-expanded" style="display: none;">
         <div class="logviewer-expanded-header">
@@ -1292,6 +1310,12 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     let logViewerFileField = null;      // Parser's file field name for current log viewer
     let logViewerLineField = null;      // Parser's line field name for current log viewer
     let cachedWorktrees = null;         // Cached worktree list for log viewer "Open in Editor" picker
+    let logViewerNewestSeq = 0;         // Newest sequence received; sent as after_seq on resume so the server can replay what we missed
+    let logViewerExplore = false;       // Viewer is configured mode:"explore" (search-first, no tail until Go live)
+    let logViewerWentLive = false;      // Explore viewer has gone live at least once
+    let logViewerAutoPaused = false;    // Following was auto-paused because the volume crossed the threshold
+    let logViewerAutoPauseRate = 30;    // Lines/sec above which following auto-pauses (0 = disabled; from config)
+    let logViewerRateWindow = [];       // Recent [ms, count] samples of rendered entries, for auto-pause detection
 
     // Browser notifications
     let notificationsEnabled = false;
@@ -4446,10 +4470,19 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         logViewerFileField = viewerConfig && viewerConfig.file_field || null;
         logViewerLineField = viewerConfig && viewerConfig.line_field || null;
 
-        // Reset log viewer state
+        // Reset log viewer state. Explore-mode viewers open paused: the
+        // server sends a recent snapshot instead of tailing, and streaming
+        // only starts when the user hits "Go live".
+        logViewerExplore = !!(viewerConfig && viewerConfig.mode === 'explore');
+        logViewerAutoPauseRate = (viewerConfig && typeof viewerConfig.auto_pause_rate === 'number')
+            ? viewerConfig.auto_pause_rate : 30;
         logViewerEntries = [];
         logViewerFilteredEntries = [];
-        logViewerFollowing = true;
+        logViewerFollowing = !logViewerExplore;
+        logViewerWentLive = !logViewerExplore;
+        logViewerAutoPaused = false;
+        logViewerRateWindow = [];
+        logViewerNewestSeq = 0;
         logViewerNewLinesCount = 0;
         logViewerFilter = '';
         logViewerSelectedEntry = null;
@@ -4458,6 +4491,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         logViewerHistoryCursor = null;
         logViewerLoadingMore = false;
         logViewerNoMoreEntries = false;
+        hideLogViewerBanner();
 
         // Restore timestamp format preference from localStorage
         const savedTimestampPref = localStorage.getItem('trellis-logviewer-timestamp-absolute');
@@ -4528,8 +4562,15 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         logViewerWs = new WebSocket(wsUrl);
 
         logViewerWs.onopen = function() {
-            document.getElementById('logviewer-status').textContent = 'connected';
-            document.getElementById('logviewer-status').className = 'logviewer-connection-status connected';
+            const statusEl = document.getElementById('logviewer-status');
+            if (logViewerExplore && !logViewerWentLive) {
+                statusEl.textContent = 'explore';
+            } else {
+                statusEl.textContent = 'connected';
+            }
+            statusEl.className = 'logviewer-connection-status connected';
+            // The resume-on-reconnect handshake happens when the server's
+            // status message arrives (it carries the sequence epoch check).
         };
 
         logViewerWs.onmessage = function(event) {
@@ -4538,7 +4579,42 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
 
                 // Handle different message types
                 if (data.type === 'status') {
-                    // Connection status message
+                    // Sequence numbers are per-viewer-instance. If the
+                    // server's current sequence is BEHIND our dedup horizon,
+                    // trellis (or this viewer) restarted and every new entry
+                    // would be wrongly dropped as "already seen". Start the
+                    // view fresh from the new epoch's init snapshot.
+                    if (logViewerNewestSeq > 0 && (data.sequence || 0) < logViewerNewestSeq) {
+                        logViewerNewestSeq = 0;
+                        resetLogViewerDisplay();
+                    }
+                    // A fresh connection starts paused on the server for
+                    // explore viewers, and after a reconnect the server
+                    // doesn't know our follow state. Resume explicitly;
+                    // after_seq (now epoch-validated) lets the server replay
+                    // anything missed while disconnected.
+                    if (logViewerFollowing) {
+                        sendLogViewerMsg({ type: 'resume', after_seq: logViewerNewestSeq });
+                    }
+                    return;
+                }
+
+                if (data.type === 'error') {
+                    console.error('Log viewer error:', data.error);
+                    return;
+                }
+
+                if (data.type === 'stats') {
+                    // While paused the server withholds entries and reports
+                    // how many we're missing instead.
+                    if (!logViewerFollowing) {
+                        logViewerNewLinesCount = data.new_count || 0;
+                        updateNewLinesButton();
+                        if (logViewerAutoPaused && data.rate !== undefined) {
+                            showLogViewerBanner('High volume (≈' + Math.round(data.rate) +
+                                ' lines/s) — following paused. Scroll position is holding still.');
+                        }
+                    }
                     return;
                 }
 
@@ -4570,16 +4646,38 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                                data.type === 'entry' ? [data.entry] :
                                [data]; // Fallback for direct entry
 
-                for (const entry of entries) {
-                    addLogViewerEntry(entry);
+                // Explore snapshots carry no sequence numbers, so the
+                // sequence dedup can't catch a reconnect re-sending the
+                // snapshot — replace the display instead of appending.
+                // (Must happen before the cursor below is stored: the reset
+                // clears scrollback bookkeeping.)
+                if (data.reason === 'init' && logViewerExplore && !logViewerWentLive) {
+                    resetLogViewerDisplay();
                 }
+
+                // Explore-mode initial snapshots carry a history cursor for
+                // scrolling back into rotated files.
+                if (data.next_cursor) {
+                    logViewerHistoryCursor = data.next_cursor;
+                }
+
+                // A resume replay may have been capped; note the gap before
+                // rendering the replayed tail.
+                if (data.reason === 'replay' && data.dropped > 0) {
+                    addLogViewerGapNotice(data.dropped);
+                }
+
+                // init/replay batches were requested by us — render them even
+                // if following is off (e.g. an explore-mode snapshot).
+                const forceRender = data.reason === 'init' || data.reason === 'replay';
+                addLogViewerEntries(entries, forceRender);
             } catch (e) {
                 // If not JSON, create a raw entry
-                addLogViewerEntry({
+                addLogViewerEntries([{
                     timestamp: new Date().toISOString(),
                     message: event.data,
                     raw: event.data
-                });
+                }], false);
             }
         };
 
@@ -4607,21 +4705,35 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         };
     }
 
-    function addLogViewerEntry(entry) {
-        // Add to entries array
-        logViewerEntries.push(entry);
+    function addLogViewerEntries(entries, forceRender) {
+        if (!entries || entries.length === 0) return;
 
-        // Track oldest sequence for load-more functionality
-        if (entry.sequence !== undefined) {
-            if (logViewerOldestSeq === null || entry.sequence < logViewerOldestSeq) {
-                logViewerOldestSeq = entry.sequence;
+        // Drop entries we've already seen (a reconnect's initial snapshot
+        // overlaps what was on screen before the connection dropped).
+        // Explore snapshots have sequence 0 and always pass.
+        entries = entries.filter(e => !(e.sequence > 0 && e.sequence <= logViewerNewestSeq));
+        if (entries.length === 0) return;
+
+        for (const entry of entries) {
+            logViewerEntries.push(entry);
+
+            // Track oldest/newest sequence: oldest drives scrollback from the
+            // in-memory buffer, newest is our resume/replay position.
+            // Sequence 0 means "not from the ring buffer" (history reads).
+            if (entry.sequence !== undefined && entry.sequence > 0) {
+                if (logViewerOldestSeq === null || entry.sequence < logViewerOldestSeq) {
+                    logViewerOldestSeq = entry.sequence;
+                }
+                if (entry.sequence > logViewerNewestSeq) {
+                    logViewerNewestSeq = entry.sequence;
+                }
             }
-        }
-        // Also track the oldest timestamp — used to fall through to the
-        // rotated history files once the in-memory buffer is exhausted.
-        if (entry.timestamp) {
-            if (!logViewerOldestTime || entry.timestamp < logViewerOldestTime) {
-                logViewerOldestTime = entry.timestamp;
+            // Also track the oldest timestamp — used to fall through to the
+            // rotated history files once the in-memory buffer is exhausted.
+            if (entry.timestamp) {
+                if (!logViewerOldestTime || entry.timestamp < logViewerOldestTime) {
+                    logViewerOldestTime = entry.timestamp;
+                }
             }
         }
 
@@ -4631,23 +4743,154 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         // and oldestSeq must track the oldest *rendered* sequence — not the
         // oldest in the cap-bounded backing array. Bumping it up here caused
         // scroll-back to ask the server for entries we already had on
-        // screen, producing duplicates.
+        // screen, producing duplicates. (Rendered rows are trimmed separately
+        // by trimLogViewerDom, which does update oldestSeq.)
         const maxEntries = 10000;
         if (logViewerEntries.length > maxEntries) {
             logViewerEntries = logViewerEntries.slice(-maxEntries);
         }
 
-        // Check if entry matches current filter
-        if (!logViewerFilter || matchesLogViewerFilter(entry, logViewerFilter)) {
-            logViewerFilteredEntries.push(entry);
+        const matching = logViewerFilter
+            ? entries.filter(e => matchesLogViewerFilter(e, logViewerFilter))
+            : entries;
+        if (matching.length === 0) return;
 
-            if (logViewerFollowing) {
-                renderLogViewerEntry(entry);
-                scrollLogViewerToBottom();
-            } else {
-                logViewerNewLinesCount++;
-                updateNewLinesButton();
+        // Only steady-state stream batches count toward the auto-pause rate;
+        // init snapshots and resume replays are one-shot catch-up bursts.
+        if (!forceRender) {
+            trackLogViewerRate(matching.length);
+        }
+
+        if (logViewerFollowing || forceRender) {
+            // Render the whole batch into a fragment: one DOM append and one
+            // scroll adjustment per batch instead of per line.
+            const logEl = document.getElementById('logviewer-log');
+            const wasEmpty = logEl.childElementCount === 0;
+            const fragment = document.createDocumentFragment();
+            for (const entry of matching) {
+                logViewerFilteredEntries.push(entry);
+                renderLogEntry(entry, {
+                    container: fragment,
+                    layout: logViewerLayout,
+                    fieldMap: logViewerFieldMap,
+                    formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
+                    onExpand: expandLogViewerEntry,
+                    entryIndex: logViewerFilteredEntries.length - 1
+                });
             }
+            logEl.appendChild(fragment);
+            // Don't trim or yank the scroll position while a paused reader
+            // has context on screen (e.g. a reconnect's init batch); explore
+            // snapshots do land at the bottom.
+            if (logViewerFollowing) {
+                trimLogViewerDom();
+            }
+            if (logViewerFollowing || (logViewerExplore && !logViewerWentLive) || wasEmpty) {
+                scrollLogViewerToBottom();
+            }
+        } else {
+            for (const entry of matching) {
+                logViewerFilteredEntries.push(entry);
+            }
+            logViewerNewLinesCount += matching.length;
+            updateNewLinesButton();
+        }
+    }
+
+    // trimLogViewerDom keeps the rendered row count bounded while following.
+    // Trimmed rows stay available: they're in the server's ring buffer, so
+    // scrolling back up reloads them via load_more.
+    function trimLogViewerDom() {
+        const MAX_DOM_ROWS = 4000;
+        const TRIM_TO = 3000;
+        const logEl = document.getElementById('logviewer-log');
+        if (logEl.childElementCount <= MAX_DOM_ROWS) return;
+
+        const removeCount = logEl.childElementCount - TRIM_TO;
+        let removedEntries = 0;
+        for (let i = 0; i < removeCount && logEl.firstElementChild; i++) {
+            if (logEl.firstElementChild.classList.contains('logviewer-entry')) {
+                removedEntries++;
+            }
+            logEl.removeChild(logEl.firstElementChild);
+        }
+
+        // Keep filteredEntries aligned with the DOM (both are trimmed from
+        // the front by the same number of entry rows).
+        if (removedEntries > 0) {
+            logViewerFilteredEntries = logViewerFilteredEntries.slice(removedEntries);
+        }
+
+        // Scrollback bookkeeping: the trimmed rows can be re-fetched, so the
+        // oldest rendered entry is the new scrollback anchor and any "no
+        // more history" conclusion is void. The history cursor from an
+        // earlier deep scroll no longer lines up either — the in-memory
+        // buffer stage will serve the trimmed region and re-establish it.
+        const first = logViewerFilteredEntries[0];
+        logViewerOldestSeq = (first && first.sequence > 0) ? first.sequence : null;
+        logViewerOldestTime = (first && first.timestamp) ? first.timestamp : null;
+        logViewerNoMoreEntries = false;
+        logViewerHistoryCursor = null;
+    }
+
+    // trackLogViewerRate watches how fast rendered entries arrive and
+    // auto-pauses following when the volume makes tailing useless.
+    function trackLogViewerRate(count) {
+        const now = Date.now();
+        logViewerRateWindow.push([now, count]);
+        while (logViewerRateWindow.length > 0 && logViewerRateWindow[0][0] < now - 3000) {
+            logViewerRateWindow.shift();
+        }
+        if (!logViewerAutoPauseRate || !logViewerFollowing) return;
+
+        const spanMs = now - logViewerRateWindow[0][0];
+        if (spanMs < 2000) return; // need a sustained window, not one burst
+        const total = logViewerRateWindow.reduce((sum, sample) => sum + sample[1], 0);
+        const rate = total / (spanMs / 1000);
+        if (rate > logViewerAutoPauseRate) {
+            logViewerAutoPaused = true;
+            setLogViewerFollowing(false);
+            showLogViewerBanner('High volume (≈' + Math.round(rate) +
+                ' lines/s) — following paused. Scroll position is holding still.');
+        }
+    }
+
+    // resetLogViewerDisplay clears rendered entries and scrollback
+    // bookkeeping (used when replacing an explore snapshot).
+    function resetLogViewerDisplay() {
+        logViewerEntries = [];
+        logViewerFilteredEntries = [];
+        logViewerOldestSeq = null;
+        logViewerOldestTime = null;
+        logViewerHistoryCursor = null;
+        logViewerNoMoreEntries = false;
+        document.getElementById('logviewer-log').innerHTML = '';
+    }
+
+    function showLogViewerBanner(text) {
+        const banner = document.getElementById('logviewer-banner');
+        banner.textContent = text;
+        banner.style.display = 'block';
+    }
+
+    function hideLogViewerBanner() {
+        const banner = document.getElementById('logviewer-banner');
+        if (banner) {
+            banner.style.display = 'none';
+        }
+    }
+
+    function addLogViewerGapNotice(count) {
+        const logEl = document.getElementById('logviewer-log');
+        const div = document.createElement('div');
+        div.className = 'logviewer-gap-notice';
+        div.textContent = '— ' + count.toLocaleString() + ' lines skipped while paused; use history search to view them —';
+        logEl.appendChild(div);
+    }
+
+    function sendLogViewerMsg(msg) {
+        if (logViewerWs && logViewerWs.readyState === WebSocket.OPEN) {
+            logViewerWs.send(JSON.stringify(msg));
         }
     }
 
@@ -4768,17 +5011,6 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     // Render key=value pairs from entry.fields for kvpairs column type
     // ========== Log Viewer Functions ==========
 
-    function renderLogViewerEntry(entry) {
-        renderLogEntry(entry, {
-            container: document.getElementById('logviewer-log'),
-            layout: logViewerLayout,
-            fieldMap: logViewerFieldMap,
-            formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
-            onExpand: expandLogViewerEntry,
-            entryIndex: logViewerFilteredEntries.length - 1
-        });
-    }
-
     function formatLogViewerTimestamp(timestamp) {
         return formatTimestamp(timestamp, logViewerTimestampAbsolute);
     }
@@ -4794,14 +5026,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         const isNearTop = logEl.scrollTop < 100;
 
         if (isAtBottom && !logViewerFollowing) {
-            // User scrolled back to bottom, resume following
-            logViewerFollowing = true;
-            logViewerNewLinesCount = 0;
-            updateLogViewerModeUI();
+            // User scrolled back to bottom: resume following — unless the
+            // pause was deliberate (auto-pause on volume, or an explore
+            // viewer that hasn't gone live). Those need an explicit click so
+            // the rendered snapshot doesn't turn into a firehose by itself.
+            if (!logViewerAutoPaused && !(logViewerExplore && !logViewerWentLive)) {
+                setLogViewerFollowing(true);
+            }
         } else if (!isAtBottom && logViewerFollowing) {
             // User scrolled up, pause following
-            logViewerFollowing = false;
-            updateLogViewerModeUI();
+            setLogViewerFollowing(false);
         }
 
         // Load more entries when scrolled near top
@@ -4809,6 +5043,39 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             (logViewerOldestSeq !== null || logViewerOldestTime !== null)) {
             loadMoreLogViewerEntries();
         }
+    }
+
+    // setLogViewerFollowing is the single place follow state changes. It
+    // keeps the server in sync: pause stops the stream server-side (entries
+    // are counted, not shipped), resume replays what was missed from the
+    // server's ring buffer via after_seq.
+    function setLogViewerFollowing(follow) {
+        if (logViewerFollowing === follow) return;
+        logViewerFollowing = follow;
+
+        if (follow) {
+            // Going live from an explore snapshot: the snapshot was read
+            // straight from the file (entries carry no sequence numbers) and
+            // the tail emits its own startup backlog, which would duplicate
+            // every rendered line. Start clean — the backlog repopulates the
+            // recent context within a moment.
+            if (logViewerExplore && !logViewerWentLive && logViewerNewestSeq === 0) {
+                resetLogViewerDisplay();
+            }
+            logViewerWentLive = true;
+            logViewerAutoPaused = false;
+            logViewerNewLinesCount = 0;
+            logViewerRateWindow = [];
+            hideLogViewerBanner();
+            sendLogViewerMsg({ type: 'resume', after_seq: logViewerNewestSeq });
+            // Render any stragglers that arrived while pausing, then let the
+            // server's replay batch bring us up to date.
+            rerenderLogViewer();
+            scrollLogViewerToBottom();
+        } else {
+            sendLogViewerMsg({ type: 'pause' });
+        }
+        updateLogViewerModeUI();
     }
 
     function loadMoreLogViewerEntries() {
@@ -4837,21 +5104,15 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     }
 
     function toggleLogViewerFollowing() {
-        logViewerFollowing = !logViewerFollowing;
-        if (logViewerFollowing) {
-            jumpToLatestLogs();
-        }
-        updateLogViewerModeUI();
+        setLogViewerFollowing(!logViewerFollowing);
     }
 
     function jumpToLatestLogs() {
-        logViewerFollowing = true;
-        logViewerNewLinesCount = 0;
-
-        // Re-render any entries that were added while paused
-        rerenderLogViewer();
-        scrollLogViewerToBottom();
-        updateLogViewerModeUI();
+        if (logViewerFollowing) {
+            scrollLogViewerToBottom();
+            return;
+        }
+        setLogViewerFollowing(true);
     }
 
     function updateLogViewerModeUI() {
@@ -4863,6 +5124,10 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         if (logViewerFollowing) {
             modeIndicator.textContent = 'Following';
             modeDot.className = 'logviewer-mode-dot';
+            newLinesBtn.style.display = 'none';
+        } else if (logViewerExplore && !logViewerWentLive) {
+            modeIndicator.textContent = 'Go live';
+            modeDot.className = 'logviewer-mode-dot paused';
             newLinesBtn.style.display = 'none';
         } else {
             modeIndicator.textContent = 'Paused';
@@ -4921,9 +5186,18 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         const tbody = document.getElementById('logviewer-log');
         tbody.innerHTML = '';
 
-        for (const entry of logViewerFilteredEntries) {
-            renderLogViewerEntry(entry);
-        }
+        const fragment = document.createDocumentFragment();
+        logViewerFilteredEntries.forEach((entry, index) => {
+            renderLogEntry(entry, {
+                container: fragment,
+                layout: logViewerLayout,
+                fieldMap: logViewerFieldMap,
+                formatTs: (ts) => formatTimestamp(ts, logViewerTimestampAbsolute),
+                onExpand: expandLogViewerEntry,
+                entryIndex: index
+            });
+        });
+        tbody.appendChild(fragment);
 
         if (logViewerFollowing) {
             scrollLogViewerToBottom();
@@ -5068,6 +5342,10 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         currentLogViewerName = null;
         logViewerEntries = [];
         logViewerFilteredEntries = [];
+        logViewerNewestSeq = 0;
+        logViewerRateWindow = [];
+        logViewerAutoPaused = false;
+        hideLogViewerBanner();
     }
 
     function clearLogViewerLog() {
