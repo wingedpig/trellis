@@ -37,6 +37,7 @@ var pricingTable = []struct {
 
 	// OpenAI (Codex CLI) — codex variants (e.g. gpt-5.5-codex) fall through
 	// to their base-version entry via substring match.
+	{"gpt-5.6-sol", modelPricing{5, 0.5, 30}},  // flat across reasoning tiers
 	{"gpt-5.5-pro", modelPricing{30, 30, 180}}, // no cached rate offered
 	{"gpt-5.5", modelPricing{5, 0.5, 30}},
 	{"gpt-5.4-pro", modelPricing{30, 30, 180}},

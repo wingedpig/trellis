@@ -70,6 +70,12 @@ type codexServerMessage struct {
 	TokenUsage      *codex.TokenUsage  `json:"token_usage,omitempty"`
 	Activity        string             `json:"activity,omitempty"`
 	SkipPermissions bool               `json:"skip_permissions,omitempty"`
+	// Model / Effort echo the session's model override ("" = config default);
+	// ModelOptions is the picker catalog. All three ride the initial "history"
+	// message only.
+	Model        string              `json:"model,omitempty"`
+	Effort       string              `json:"effort,omitempty"`
+	ModelOptions []codex.ModelOption `json:"model_options,omitempty"`
 }
 
 // WebSocket handles a chat WebSocket for a specific session.
@@ -125,6 +131,7 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 	// Truncated items carry markers; the client fetches full content lazily
 	// via /api/v1/codex/sessions/{id}/items/{itemId}/output.
 	usage := session.TokenUsage()
+	model, effort := session.ModelOverride()
 	writeJSON(codexServerMessage{
 		Type:            "history",
 		Messages:        session.MessagesForWire(),
@@ -132,6 +139,9 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 		TokenUsage:      &usage,
 		Activity:        session.CurrentActivity(),
 		SkipPermissions: session.SkipPermissions(),
+		Model:           model,
+		Effort:          effort,
+		ModelOptions:    codex.ModelOptions,
 	})
 
 	// Re-send any pending approval prompts.
@@ -341,6 +351,32 @@ func (h *CodexHandler) SetPermissionsAPI(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := session.SetSkipPermissions(body.Skip); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetModelAPI forces the session onto a model / reasoning-effort combination
+// from codex.ModelOptions, or clears the override (empty model) to fall back
+// to the codex config default. A running app-server picks the override up on
+// the next turn; clearing restarts the process.
+func (h *CodexHandler) SetModelAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	var body struct {
+		Model  string `json:"model"`
+		Effort string `json:"effort"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrInternalError, "invalid JSON: "+err.Error())
+		return
+	}
+	session := h.manager.GetSession(vars["session"])
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if err := session.SetModel(body.Model, body.Effort); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

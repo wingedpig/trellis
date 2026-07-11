@@ -52,6 +52,11 @@ type SessionInfo struct {
 	// policy "never" + danger-full-access sandbox). Execpolicy "forbidden"
 	// rules still apply.
 	SkipPermissions bool `json:"skip_permissions,omitempty"`
+	// Model / Effort are the forced model override, or "" for the codex
+	// config default. Effort may be "" even when Model is set (model's
+	// default reasoning effort).
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 }
 
 // StreamEvent is a fan-out unit pushed to subscribers (the WebSocket bridge).
@@ -149,6 +154,12 @@ type Session struct {
 	// override sticks "for subsequent turns", so merely omitting it would
 	// leave the thread in never/full-access).
 	skipPermissions bool
+	// model / effort force a model (and optionally a reasoning effort) via a
+	// turn/start override on every turn, "" = codex config default. Clearing
+	// the override restarts the app-server for the same reason as
+	// skipPermissions above.
+	model  string
+	effort string
 
 	// Persistence
 	persistFn    func()
@@ -179,6 +190,8 @@ func (s *Session) Info() SessionInfo {
 		CreatedAt:       s.createdAt,
 		TrashedAt:       s.trashedAt,
 		SkipPermissions: s.skipPermissions,
+		Model:           s.model,
+		Effort:          s.effort,
 	}
 	for i := len(s.messages) - 1; i >= 0; i-- {
 		if s.messages[i].Role == agentmsg.RoleUser {
@@ -820,6 +833,7 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	rpc := s.rpc
 	threadID := s.threadID
 	skipPermissions := s.skipPermissions
+	model, effort := s.model, s.effort
 
 	userMsg := Message{
 		Role:      agentmsg.RoleUser,
@@ -861,9 +875,98 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 		params.ApprovalPolicy = "never"
 		params.SandboxPolicy = &sandboxPolicy{Type: "dangerFullAccess"}
 	}
+	if model != "" {
+		params.Model = model
+		params.Effort = effort
+	}
 	if _, err := rpc.Call(ctx, "turn/start", params); err != nil {
 		s.markNotGenerating()
 		return fmt.Errorf("turn/start: %w", err)
+	}
+	return nil
+}
+
+// ModelOption is one model + reasoning-effort combination offered in the UI
+// picker. Effort "" means the model's default effort.
+type ModelOption struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort,omitempty"`
+	Label  string `json:"label"`
+}
+
+// ModelOptions are the model choices offered in the UI picker, sent to the
+// client on connect. GPT-5.6 Sol gets the full reasoning spread; older models
+// are offered at their default effort. Efforts must be ones the model
+// advertises (codex model/list) — an unknown effort (or a model the codex
+// binary is too old for, e.g. gpt-5.6-sol before 0.144) isn't rejected
+// anywhere: the API call fails upstream and the turn completes instantly with
+// zero items. Max and Ultra are Sol's top efforts — what ChatGPT brands "Sol
+// Pro"; codex has no "pro" effort value.
+var ModelOptions = []ModelOption{
+	{Model: "gpt-5.6-sol", Effort: "medium", Label: "GPT-5.6 Sol Medium"},
+	{Model: "gpt-5.6-sol", Effort: "high", Label: "GPT-5.6 Sol High"},
+	{Model: "gpt-5.6-sol", Effort: "xhigh", Label: "GPT-5.6 Sol Extra High"},
+	{Model: "gpt-5.6-sol", Effort: "max", Label: "GPT-5.6 Sol Max"},
+	{Model: "gpt-5.6-sol", Effort: "ultra", Label: "GPT-5.6 Sol Ultra"},
+	{Model: "gpt-5.5", Label: "GPT-5.5"},
+	{Model: "gpt-5.4", Label: "GPT-5.4"},
+	{Model: "gpt-5.4-mini", Label: "GPT-5.4 Mini"},
+	{Model: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark"},
+}
+
+// IsValidModelOption reports whether the model/effort pair is one trellis is
+// willing to send in a turn/start override. The empty pair (config default)
+// is also valid.
+func IsValidModelOption(model, effort string) bool {
+	if model == "" && effort == "" {
+		return true
+	}
+	for _, o := range ModelOptions {
+		if o.Model == model && o.Effort == effort {
+			return true
+		}
+	}
+	return false
+}
+
+// ModelOverride returns the forced model/effort pair, or "", "" for the codex
+// config default.
+func (s *Session) ModelOverride() (model, effort string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.model, s.effort
+}
+
+// SetModel forces this session onto a model (and optionally a reasoning
+// effort). Pass "", "" to clear the override and fall back to the codex
+// config default.
+//
+// Setting an override needs no process action — the next turn/start carries
+// model/effort, which the app-server applies "for this turn and subsequent
+// turns", so a running process (and its thread) survives. Clearing the
+// override stops the app-server (the next Send respawns and resumes the
+// thread): merely omitting the fields would leave the thread on the
+// previously-forced model. Same pattern as SetSkipPermissions.
+func (s *Session) SetModel(model, effort string) error {
+	if !IsValidModelOption(model, effort) {
+		return fmt.Errorf("unknown model option %q (effort %q)", model, effort)
+	}
+	s.mu.Lock()
+	if s.model == model && s.effort == effort {
+		s.mu.Unlock()
+		return nil
+	}
+	cleared := model == "" && s.model != ""
+	s.model = model
+	s.effort = effort
+	running := s.started
+	persist := s.persistFn
+	s.mu.Unlock()
+	if persist != nil {
+		persist()
+	}
+	if cleared && running {
+		s.shutdownProcess()
 	}
 	return nil
 }
@@ -976,8 +1079,18 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 	case "turn/completed":
 		var p turnEvent
 		_ = json.Unmarshal(params, &p)
-		s.commitTurn(p.Turn.ID, "")
-		s.fanOut(StreamEvent{Type: "turn_completed", ThreadID: p.ThreadID, TurnID: p.Turn.ID})
+		if s.commitTurn(p.Turn.ID, "") {
+			s.fanOut(StreamEvent{Type: "turn_completed", ThreadID: p.ThreadID, TurnID: p.Turn.ID})
+		} else {
+			// A "completed" turn with zero items means the upstream model call
+			// was dropped — e.g. the API rejected the model/effort (a too-old
+			// codex binary for the model, or an effort the model doesn't
+			// advertise). The app-server logs the rejection to stderr but still
+			// reports turn/completed, which renders as a silent hang. Surface
+			// it as a failure instead.
+			s.fanOut(StreamEvent{Type: "turn_failed", ThreadID: p.ThreadID, TurnID: p.Turn.ID,
+				Error: "Codex completed the turn without producing any output. This usually means the model or reasoning effort was rejected upstream — check the session's model setting and that the codex CLI is new enough for it."})
+		}
 
 	case "turn/failed":
 		var p turnEvent
@@ -1212,10 +1325,13 @@ func (s *Session) appendItemOutput(itemID, delta string) {
 }
 
 // commitTurn finalizes the current turn — appends an assistant Message
-// containing the accumulated items, and clears the accumulator.
-func (s *Session) commitTurn(turnID, errMsg string) {
+// containing the accumulated items, and clears the accumulator. Returns
+// whether the turn produced any items; a "successful" turn with none is a
+// silent upstream failure the caller should surface (see turn/completed).
+func (s *Session) commitTurn(turnID, errMsg string) (hadItems bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	hadItems = len(s.currentOrder) > 0
 	if len(s.currentOrder) > 0 {
 		items := make([]Item, 0, len(s.currentOrder))
 		for _, id := range s.currentOrder {
@@ -1236,9 +1352,12 @@ func (s *Session) commitTurn(turnID, errMsg string) {
 	s.currentOrder = nil
 	s.currentTurnID = ""
 	s.generating = false
-	s.lastTurnError = errMsg != ""
+	// An empty "completed" turn is an upstream failure (see caller), so it
+	// counts as an error for the inbox reason too.
+	s.lastTurnError = errMsg != "" || !hadItems
 	s.setActivityLocked("")
 	s.publishStateLocked()
+	return hadItems
 }
 
 // approvalChans needs to be on Session; declared here to keep the struct
@@ -1311,6 +1430,15 @@ func (m *Manager) loadFromDisk() {
 		s.createdAt = rec.CreatedAt
 		s.trashedAt = rec.TrashedAt
 		s.skipPermissions = rec.SkipPermissions
+		s.model = rec.Model
+		s.effort = rec.Effort
+		// Drop persisted overrides that are no longer in the catalog (e.g. an
+		// effort a newer catalog removed) — sending them makes every turn fail.
+		if !IsValidModelOption(s.model, s.effort) {
+			log.Printf("codex: session %s had stale model override %q/%q, clearing", rec.ID, s.model, s.effort)
+			s.model = ""
+			s.effort = ""
+		}
 		s.persistFn = m.makePersistFn()
 		if m.messagesDir != "" {
 			s.messagesFile = filepath.Join(m.messagesDir, rec.ID+".jsonl")
@@ -1349,6 +1477,8 @@ func (m *Manager) persist() {
 			CreatedAt:       s.createdAt,
 			TrashedAt:       s.trashedAt,
 			SkipPermissions: s.skipPermissions,
+			Model:           s.model,
+			Effort:          s.effort,
 		})
 		s.mu.Unlock()
 	}

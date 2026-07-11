@@ -89,6 +89,11 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
         <div class="codex-input-footer">
             <div class="codex-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
             <div class="codex-footer-right">
+                <!-- Options beyond Default are filled in by codex.js from the
+                     model_options catalog on the WS history message. -->
+                <select id="codex-model-select" class="codex-model-select" title="Model — applies from your next message. Default = the model from your ~/.codex/config.toml." onchange="codexSetModel(this.value)">
+                    <option value="">Default</option>
+                </select>
                 <label class="codex-skip-perms" id="codex-skip-perms" title="Auto-approve tool use — Codex stops asking approval and runs without a sandbox. Execpolicy forbidden rules in ~/.codex/rules/ still apply.">
                     <input type="checkbox" id="codex-skip-perms-cb" onchange="codexSetSkipPermissions(this.checked)"> auto-approve
                 </label>
@@ -107,37 +112,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:75
+//line views/codex.qtpl:80
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:75
+//line views/codex.qtpl:80
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:76
+//line views/codex.qtpl:81
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:76
+//line views/codex.qtpl:81
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:77
+//line views/codex.qtpl:82
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:77
+//line views/codex.qtpl:82
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:78
+//line views/codex.qtpl:83
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:78
+//line views/codex.qtpl:83
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:79
+//line views/codex.qtpl:84
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:79
+//line views/codex.qtpl:84
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:79
+//line views/codex.qtpl:84
 	} else {
-//line views/codex.qtpl:79
+//line views/codex.qtpl:84
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:79
+//line views/codex.qtpl:84
 	}
-//line views/codex.qtpl:79
+//line views/codex.qtpl:84
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -430,36 +435,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:370
+//line views/codex.qtpl:375
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:370
+//line views/codex.qtpl:375
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 }
 
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 }
 
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 	return qs422016
-//line views/codex.qtpl:371
+//line views/codex.qtpl:376
 }

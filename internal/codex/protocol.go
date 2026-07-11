@@ -92,6 +92,13 @@ type turnStartParams struct {
 	// process instead — see SetSkipPermissions).
 	ApprovalPolicy string         `json:"approvalPolicy,omitempty"`
 	SandboxPolicy  *sandboxPolicy `json:"sandboxPolicy,omitempty"`
+	// Model / Effort override the thread's model and reasoning effort with the
+	// same "this turn and subsequent turns" semantics. Sent on every turn while
+	// the session has a model override; omitted otherwise (omitted means "keep
+	// current", which is why clearing the override restarts the process — see
+	// SetModel).
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 }
 
 // sandboxPolicy is the app-server SandboxPolicy union. Only the

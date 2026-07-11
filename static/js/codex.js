@@ -243,6 +243,55 @@
         });
     }
 
+    // ---------- Model picker ----------
+
+    let modelOverride = '';   // 'model|effort' encoding, '' = config default
+
+    // encodeModelValue packs a catalog entry into the select's option value.
+    function encodeModelValue(model, effort) {
+        return effort ? model + '|' + effort : (model || '');
+    }
+
+    // populateModelSelect fills the picker from the server's catalog (sent on
+    // the WS history message) and preselects the session's current override.
+    function populateModelSelect(options) {
+        var sel = document.getElementById('codex-model-select');
+        if (!sel) return;
+        if (options && options.length) {
+            sel.innerHTML = '<option value="">Default</option>';
+            options.forEach(function (o) {
+                var opt = document.createElement('option');
+                opt.value = encodeModelValue(o.model, o.effort);
+                opt.textContent = o.label;
+                sel.appendChild(opt);
+            });
+        }
+        sel.value = modelOverride;
+        if (sel.value !== modelOverride) sel.value = '';  // unknown override — show Default
+    }
+
+    // setModel forces the session onto a model/effort combination, or clears
+    // the override (''). A running turn keeps its model; the change applies
+    // from the next message.
+    function setModel(value) {
+        if (value === modelOverride) return;
+        var prev = modelOverride;
+        modelOverride = value;       // optimistic — picker stays on the new choice
+        var parts = (value || '').split('|');
+        fetch('/api/v1/codex/sessions/' + encodeURIComponent(window.CODEX_SESSION) + '/model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: parts[0] || '', effort: parts[1] || '' })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+        }).catch(function (err) {
+            modelOverride = prev;    // revert on failure
+            var sel = document.getElementById('codex-model-select');
+            if (sel) sel.value = prev;
+            alert('Failed to change model: ' + err);
+        });
+    }
+
     // ---------- Server messages ----------
     function handleServerMessage(msg) {
         switch (msg.type) {
@@ -263,6 +312,8 @@
                 }
                 skipPermissions = !!msg.skip_permissions;
                 updateSkipPermsToggle();
+                modelOverride = encodeModelValue(msg.model || '', msg.effort || '');
+                populateModelSelect(msg.model_options);
                 break;
             case 'stream':
                 handleStreamEvent(msg.event);
@@ -1019,6 +1070,10 @@
         sendBtn.style.display = generating ? 'none' : '';
         cancelBtn.style.display = generating ? '' : 'none';
         inputEl.disabled = false;
+        // Clearing the model override restarts the app-server, which would
+        // abort the in-flight turn — lock the picker while generating.
+        var modelSel = document.getElementById('codex-model-select');
+        if (modelSel) modelSel.disabled = generating;
         if (generating) {
             if (!turnStartedAt) turnStartedAt = Date.now();
             startRunningTicker();
@@ -1288,6 +1343,7 @@
         window.codexSend = localCodexSend;
         window.codexCancel = localCodexCancel;
         window.codexSetSkipPermissions = setSkipPermissions;
+        window.codexSetModel = setModel;
     }
     bindCodexGlobals();
     var __codexPageContainer = inputEl ? inputEl.closest('.page-container') : null;

@@ -353,6 +353,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/codex/{worktree}/sessions", codexHandler.CreateSessionAPI).Methods("POST")
 		api.HandleFunc("/codex/sessions/{session}", codexHandler.RenameSessionAPI).Methods("PATCH")
 		api.HandleFunc("/codex/sessions/{session}/permissions", codexHandler.SetPermissionsAPI).Methods("POST")
+		api.HandleFunc("/codex/sessions/{session}/model", codexHandler.SetModelAPI).Methods("POST")
 		api.HandleFunc("/codex/sessions/{session}", codexHandler.DeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/codex/sessions/{session}/ws", codexHandler.WebSocket).Methods("GET")
 		api.HandleFunc("/codex/sessions/{session}/export", codexHandler.ExportSessionAPI).Methods("GET")

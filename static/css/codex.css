@@ -784,6 +784,20 @@ pre:hover .codex-code-copy {
     font-weight: 600;
 }
 
+.codex-model-select {
+    font-size: 0.72rem;
+    color: var(--bs-body-color);
+    background: var(--trellis-input-bg);
+    border: 1px solid var(--trellis-input-border, var(--trellis-card-border));
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.35rem;
+    cursor: pointer;
+}
+.codex-model-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .codex-context-usage {
     font-size: 0.75rem;
     color: var(--trellis-text-muted);

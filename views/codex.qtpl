@@ -55,6 +55,11 @@ type CodexPage struct {
         <div class="codex-input-footer">
             <div class="codex-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
             <div class="codex-footer-right">
+                <!-- Options beyond Default are filled in by codex.js from the
+                     model_options catalog on the WS history message. -->
+                <select id="codex-model-select" class="codex-model-select" title="Model — applies from your next message. Default = the model from your ~/.codex/config.toml." onchange="codexSetModel(this.value)">
+                    <option value="">Default</option>
+                </select>
                 <label class="codex-skip-perms" id="codex-skip-perms" title="Auto-approve tool use — Codex stops asking approval and runs without a sandbox. Execpolicy forbidden rules in ~/.codex/rules/ still apply.">
                     <input type="checkbox" id="codex-skip-perms-cb" onchange="codexSetSkipPermissions(this.checked)"> auto-approve
                 </label>
