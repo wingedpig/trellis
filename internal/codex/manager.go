@@ -1102,6 +1102,7 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 	case "item/started":
 		var p itemEvent
 		_ = json.Unmarshal(params, &p)
+		normalizeItem(&p.Item)
 		s.recordItem(p.Item)
 		s.noteItemActivity(p.Item)
 		ev := StreamEvent{Type: "item_started", ThreadID: p.ThreadID, TurnID: p.TurnID, ItemID: p.Item.ID, Item: itemPtr(p.Item)}
@@ -1110,6 +1111,7 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 	case "item/completed":
 		var p itemEvent
 		_ = json.Unmarshal(params, &p)
+		normalizeItem(&p.Item)
 		s.recordItem(p.Item)
 		ev := StreamEvent{Type: "item_completed", ThreadID: p.ThreadID, TurnID: p.TurnID, ItemID: p.Item.ID, Item: itemPtr(p.Item)}
 		s.fanOut(ev)
@@ -1117,8 +1119,23 @@ func (s *Session) handleNotification(method string, params json.RawMessage) {
 	case "item/agentMessage/delta":
 		var p agentMessageDelta
 		_ = json.Unmarshal(params, &p)
-		s.appendItemText(p.ItemID, p.Delta)
+		s.appendItemText(p.ItemID, "agentMessage", p.Delta)
 		s.fanOut(StreamEvent{Type: "agent_message_delta", ThreadID: p.ThreadID, TurnID: p.TurnID, ItemID: p.ItemID, Delta: p.Delta})
+
+	case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
+		var p reasoningDelta
+		_ = json.Unmarshal(params, &p)
+		s.appendItemText(p.ItemID, "reasoning", p.Delta)
+		s.fanOut(StreamEvent{Type: "reasoning_delta", ThreadID: p.ThreadID, TurnID: p.TurnID, ItemID: p.ItemID, Delta: p.Delta})
+
+	case "item/reasoning/summaryPartAdded":
+		// A new summary section begins; separate it from the previous one so
+		// sections don't run together. The first part (empty item) adds nothing.
+		var p reasoningDelta
+		_ = json.Unmarshal(params, &p)
+		if s.appendReasoningBreak(p.ItemID) {
+			s.fanOut(StreamEvent{Type: "reasoning_delta", ThreadID: p.ThreadID, TurnID: p.TurnID, ItemID: p.ItemID, Delta: "\n\n"})
+		}
 
 	case "item/commandExecution/outputDelta":
 		var p commandExecutionOutputDelta
@@ -1247,6 +1264,29 @@ func (s *Session) AnswerApproval(requestID string, decision string) error {
 // recordItem stores or updates an item in the current turn's accumulator.
 // Skips "userMessage" items — those are echoes of the user's input which
 // we've already persisted in Send.
+// normalizeItem folds Codex wire fields into the fields Trellis persists and
+// renders. Reasoning items carry summary/content string arrays (no `text`);
+// command executions carry their final output as `aggregatedOutput` (no
+// `output`). Idempotent — safe to call on already-normalized items.
+func normalizeItem(it *Item) {
+	if it.Text == "" && (len(it.Summary) > 0 || len(it.Content) > 0) {
+		parts := make([]string, 0, len(it.Summary)+len(it.Content))
+		for _, p := range append(append([]string{}, it.Summary...), it.Content...) {
+			if strings.TrimSpace(p) != "" {
+				parts = append(parts, p)
+			}
+		}
+		it.Text = strings.Join(parts, "\n\n")
+	}
+	it.Summary, it.Content = nil, nil
+	if it.AggregatedOutput != "" {
+		// Authoritative over any outputDelta accumulation, which can miss
+		// chunks (recordItem's merge prefers a non-empty incoming Output).
+		it.Output = it.AggregatedOutput
+		it.AggregatedOutput = ""
+	}
+}
+
 func (s *Session) recordItem(it Item) {
 	if it.ID == "" || it.Type == "userMessage" {
 		return
@@ -1294,7 +1334,7 @@ func (s *Session) recordItem(it Item) {
 	}
 }
 
-func (s *Session) appendItemText(itemID, delta string) {
+func (s *Session) appendItemText(itemID, itemType, delta string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.currentItems == nil {
@@ -1302,11 +1342,27 @@ func (s *Session) appendItemText(itemID, delta string) {
 	}
 	it, ok := s.currentItems[itemID]
 	if !ok {
-		it = &Item{ID: itemID, Type: "agent_message"}
+		it = &Item{ID: itemID, Type: itemType}
 		s.currentItems[itemID] = it
 		s.currentOrder = append(s.currentOrder, itemID)
 	}
 	it.Text += delta
+}
+
+// appendReasoningBreak inserts a paragraph break before a new reasoning
+// summary section. Returns false (no break needed) when the item has no
+// text yet — i.e. this is the first section.
+func (s *Session) appendReasoningBreak(itemID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok := s.currentItems[itemID]
+	if !ok || it.Text == "" {
+		return false
+	}
+	if !strings.HasSuffix(it.Text, "\n\n") {
+		it.Text += "\n\n"
+	}
+	return true
 }
 
 func (s *Session) appendItemOutput(itemID, delta string) {
@@ -1317,7 +1373,7 @@ func (s *Session) appendItemOutput(itemID, delta string) {
 	}
 	it, ok := s.currentItems[itemID]
 	if !ok {
-		it = &Item{ID: itemID, Type: "command_execution"}
+		it = &Item{ID: itemID, Type: "commandExecution"}
 		s.currentItems[itemID] = it
 		s.currentOrder = append(s.currentOrder, itemID)
 	}
@@ -1336,17 +1392,25 @@ func (s *Session) commitTurn(turnID, errMsg string) (hadItems bool) {
 		items := make([]Item, 0, len(s.currentOrder))
 		for _, id := range s.currentOrder {
 			if it, ok := s.currentItems[id]; ok && it != nil {
+				// Encrypted-only reasoning (no summary text) renders as an
+				// empty collapsed panel — drop it from history entirely.
+				// It still counts toward hadItems: the turn did real work.
+				if it.Type == "reasoning" && strings.TrimSpace(it.Text) == "" {
+					continue
+				}
 				items = append(items, *it)
 			}
 		}
-		msg := Message{
-			Role:      agentmsg.RoleAssistant,
-			Items:     items,
-			Timestamp: time.Now(),
-			TurnID:    turnID,
+		if len(items) > 0 {
+			msg := Message{
+				Role:      agentmsg.RoleAssistant,
+				Items:     items,
+				Timestamp: time.Now(),
+				TurnID:    turnID,
+			}
+			s.messages = append(s.messages, msg)
+			s.persistMessage(msg)
 		}
-		s.messages = append(s.messages, msg)
-		s.persistMessage(msg)
 	}
 	s.currentItems = nil
 	s.currentOrder = nil

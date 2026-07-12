@@ -170,10 +170,22 @@ type Item struct {
 	Status string `json:"status,omitempty"`
 	Text   string `json:"text,omitempty"`
 
+	// Reasoning items have no `text` on the wire — the app-server sends
+	// summary/content string arrays instead. normalizeItem folds these into
+	// Text and clears them, so they never appear in persisted messages.
+	Summary []string `json:"summary,omitempty"`
+	Content []string `json:"content,omitempty"`
+
 	// Tool / command-execution fields
 	Command  json.RawMessage `json:"command,omitempty"`
 	Output   string          `json:"output,omitempty"`
 	ExitCode *int            `json:"exitCode,omitempty"`
+
+	// item/completed carries the full command output as `aggregatedOutput`
+	// (there is no `output` field on the wire). The streamed outputDelta
+	// events are best-effort and can miss chunks, so normalizeItem folds
+	// this into Output as the authoritative value.
+	AggregatedOutput string `json:"aggregatedOutput,omitempty"`
 
 	// Wire-only truncation markers — set by truncateItemsForWire when Output
 	// is too big to ship in the initial history dump. The client fetches the
@@ -208,6 +220,16 @@ type commandExecutionOutputDelta struct {
 	TurnID   string `json:"turnId"`
 	ItemID   string `json:"itemId"`
 	Stream   string `json:"stream"` // "stdout" | "stderr"
+	Delta    string `json:"delta"`
+}
+
+// reasoningDelta covers "item/reasoning/summaryTextDelta",
+// "item/reasoning/textDelta" and "item/reasoning/summaryPartAdded"
+// (the last has no delta — it marks the start of a new summary section).
+type reasoningDelta struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
 	Delta    string `json:"delta"`
 }
 

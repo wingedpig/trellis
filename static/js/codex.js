@@ -134,7 +134,7 @@
             case 'agentMessage':
                 return item.text || '';
             case 'reasoning':
-                return '_(reasoning)_ ' + (item.text || '');
+                return item.text ? '_(reasoning)_ ' + item.text : '';
             case 'commandExecution':
                 var cmd = item.command || '';
                 if (typeof cmd === 'object') cmd = JSON.stringify(cmd);
@@ -357,6 +357,9 @@
                 break;
             case 'agent_message_delta':
                 appendAgentDelta(ev.item_id, ev.delta || '');
+                break;
+            case 'reasoning_delta':
+                appendReasoningDelta(ev.item_id, ev.delta || '');
                 break;
             case 'command_output_delta':
                 appendCommandOutput(ev.item_id, ev.delta || '', ev.stream || 'stdout');
@@ -717,26 +720,26 @@
         return div;
     }
 
+    // Reasoning summaries are markdown ("**Headline**\n\nbody…"). The first
+    // line doubles as the collapsed header's subtitle so the row says what
+    // the model was thinking about.
+    function reasoningHeadline(text) {
+        const first = (text || '').split('\n', 1)[0] || '';
+        return first.replace(/[*_#`]/g, '').trim();
+    }
+
     function renderReasoningNode(item, completed) {
-        const div = document.createElement('div');
-        div.className = 'codex-item codex-item-reasoning';
-
-        const header = document.createElement('div');
-        header.className = 'codex-item-header';
-        header.innerHTML = '<i class="fa-solid fa-brain"></i> <span class="codex-item-label">Reasoning</span>';
-        div.appendChild(header);
-
+        // Encrypted-only reasoning carries no summary text — there is nothing
+        // to show, so render nothing. (New turns no longer persist these;
+        // this also hides them in histories recorded before that fix.)
+        if (!item.text) return null;
+        const tool = makeToolBlock({ icon: 'fa-brain', name: 'Reasoning' });
+        setSubtitle(tool.header, reasoningHeadline(item.text));
         const body = document.createElement('div');
-        body.className = 'codex-item-body codex-reasoning-body';
-        if (item.text) body.textContent = item.text;
-        // Reasoning is collapsed by default; click the header to toggle.
-        header.style.cursor = 'pointer';
-        header.addEventListener('click', function () {
-            div.classList.toggle('codex-collapsed');
-        });
-        div.classList.add('codex-collapsed');
-        div.appendChild(body);
-        return div;
+        body.className = 'codex-item-body codex-text-content';
+        body.innerHTML = renderMarkdown(item.text);
+        tool.body.appendChild(body);
+        return tool.root;
     }
 
     function renderCommandExecNode(item, completed) {
@@ -888,7 +891,9 @@
             addCopyButtonsToCode(entry.body);
         } else if (entry.kind === 'reasoning') {
             entry.raw = item.text || entry.raw || '';
-            entry.body.textContent = entry.raw;
+            entry.body.innerHTML = renderMarkdown(entry.raw);
+            const header = entry.root.querySelector('.codex-tool-header');
+            if (header) setSubtitle(header, reasoningHeadline(entry.raw));
         } else if (entry.kind === 'commandExecution') {
             // Refresh subtitle (command may have only become known on
             // completion) and the status badge in the header.
@@ -950,6 +955,25 @@
         entry.raw = (entry.raw || '') + delta;
         entry.body.innerHTML = renderMarkdown(entry.raw);
         addCopyButtonsToCode(entry.body);
+        scrollToBottom();
+    }
+
+    function appendReasoningDelta(itemId, delta) {
+        if (!delta) return;
+        ensureTurn();
+        let entry = itemEls.get(itemId);
+        if (!entry) {
+            // item/started carries no summary text, so no node exists yet —
+            // the first delta creates it.
+            renderItem({ id: itemId, type: 'reasoning', text: delta }, false);
+            scrollToBottom();
+            return;
+        }
+        if (entry.kind !== 'reasoning') return;
+        entry.raw = (entry.raw || '') + delta;
+        entry.body.innerHTML = renderMarkdown(entry.raw);
+        const header = entry.root.querySelector('.codex-tool-header');
+        if (header) setSubtitle(header, reasoningHeadline(entry.raw));
         scrollToBottom();
     }
 
