@@ -234,7 +234,13 @@ func (s *FileSource) ReadBackward(ctx context.Context, cursor BackwardCursor, ma
 		return BackwardResult{NextCursor: cursor}, err
 	}
 	opener := &fileBackwardOpener{files: files}
-	return readBackwardAcrossFiles(ctx, opener, len(files), cursor, maxLines)
+	res, rerr := readBackwardAcrossFiles(ctx, opener, len(files), cursor, maxLines)
+	if err != nil && res.Done {
+		// The rotated listing failed, so "done" only covers the files we
+		// could see; don't let the client latch a permanent end-of-history.
+		res.Done = false
+	}
+	return res, rerr
 }
 
 // SeekToTime binary-searches the active file for an offset whose first

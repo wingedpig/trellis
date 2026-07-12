@@ -1779,6 +1779,7 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
     let logViewerOldestTime = null;     // Oldest entry timestamp (ISO string); used as a fallback to load from rotated history when no cursor is established yet
     let logViewerHistoryCursor = null;  // Server-provided cursor for byte-offset paging through rotated history; opaque to the client
     let logViewerLoadingMore = false;   // Prevent multiple load requests
+    let logViewerLoadMoreTimer = null;  // Failsafe: clears a stuck loadingMore if the response never arrives (dropped WS mid-request)
     let logViewerNoMoreEntries = false; // True when both in-memory buffer AND rotated history are exhausted
     let logViewerFileField = null;      // Parser's file field name for current log viewer
     let logViewerLineField = null;      // Parser's line field name for current log viewer
@@ -5021,6 +5022,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             logViewerReconnectTimer = null;
         }
 
+        // A load_more in flight when the old connection died will never get
+        // its response; if the flag survived the reconnect, every future
+        // scroll-up would be silently ignored.
+        logViewerLoadingMore = false;
+        if (logViewerLoadMoreTimer) {
+            clearTimeout(logViewerLoadMoreTimer);
+            logViewerLoadMoreTimer = null;
+        }
+        hideLogViewerLoadingOlder();
+
         // If already connected or connecting to the same log viewer, skip
         if (logViewerWs && currentLogViewerName === logViewerName &&
             (logViewerWs.readyState === WebSocket.CONNECTING || logViewerWs.readyState === WebSocket.OPEN)) {
@@ -5102,6 +5113,13 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                 if (data.type === 'older_entries') {
                     // Older entries loaded via scroll-to-top
                     logViewerLoadingMore = false;
+                    if (logViewerLoadMoreTimer) {
+                        clearTimeout(logViewerLoadMoreTimer);
+                        logViewerLoadMoreTimer = null;
+                    }
+                    // Remove the loading row before prepend measures scroll
+                    // heights, so position restoration stays exact.
+                    hideLogViewerLoadingOlder();
                     // Server returns a next_cursor whenever it advanced
                     // through historical files via the byte-offset reader.
                     // Stash it for the next request regardless of whether
@@ -5113,12 +5131,18 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
                         logViewerNoMoreEntries = true;
                         return;
                     }
-                    if (!data.entries || data.entries.length === 0) {
-                        // No entries this round but server may have more.
-                        // Don't set no_more — the next scroll will retry.
-                        return;
+                    if (data.entries && data.entries.length > 0) {
+                        prependLogViewerEntries(data.entries);
                     }
-                    prependLogViewerEntries(data.entries);
+                    // If the user is still pinned near the top, keep paging.
+                    // Sitting at scrollTop 0 fires no further scroll events
+                    // (wheel-up doesn't move an already-topped element), so
+                    // without this an empty or short batch strands the user
+                    // at a false end-of-history.
+                    const logEl = document.getElementById('logviewer-log');
+                    if (logEl && logEl.scrollTop < 100) {
+                        setTimeout(handleLogViewerScroll, 100);
+                    }
                     return;
                 }
 
@@ -5566,6 +5590,16 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             logViewerHistoryCursor === null) return;
 
         logViewerLoadingMore = true;
+        showLogViewerLoadingOlder();
+        // Failsafe: if the response never arrives (connection dropped with
+        // the request in flight), unstick loadingMore so a later scroll can
+        // retry. Longer than the server's 30s history-read budget.
+        if (logViewerLoadMoreTimer) clearTimeout(logViewerLoadMoreTimer);
+        logViewerLoadMoreTimer = setTimeout(() => {
+            logViewerLoadMoreTimer = null;
+            logViewerLoadingMore = false;
+            hideLogViewerLoadingOlder();
+        }, 45000);
         // The server tries three paths in order:
         //   1. before_seq → in-memory ring buffer (fastest)
         //   2. history_cursor → byte-offset reader (rotated files)
@@ -5582,6 +5616,25 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             msg.history_cursor = logViewerHistoryCursor;
         }
         logViewerWs.send(JSON.stringify(msg));
+    }
+
+    // showLogViewerLoadingOlder pins a small notice row at the top of the
+    // transcript while a scrollback read is in flight. The transition from
+    // the in-memory buffer to reading the file takes several seconds on SSH
+    // sources; without feedback that pause reads as "end of history".
+    function showLogViewerLoadingOlder() {
+        const logEl = document.getElementById('logviewer-log');
+        if (document.getElementById('logviewer-loading-older')) return;
+        const div = document.createElement('div');
+        div.id = 'logviewer-loading-older';
+        div.className = 'logviewer-gap-notice';
+        div.textContent = '— loading older entries… —';
+        logEl.insertBefore(div, logEl.firstChild);
+    }
+
+    function hideLogViewerLoadingOlder() {
+        const div = document.getElementById('logviewer-loading-older');
+        if (div) div.remove();
     }
 
     function toggleLogViewerFollowing() {
@@ -6133,36 +6186,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script src="/static/js/inbox_main_ws.js"></script>
 `)
-//line views/terminal.qtpl:5582
+//line views/terminal.qtpl:5635
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5582
+//line views/terminal.qtpl:5635
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 }
 
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 }
 
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 	return qs422016
-//line views/terminal.qtpl:5583
+//line views/terminal.qtpl:5636
 }

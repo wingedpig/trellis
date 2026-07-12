@@ -131,6 +131,33 @@ func findOffsetForTime(ctx context.Context, reader readerAt, fileSize int64, tar
 	}
 
 	lo, hi := int64(0), fileSize
+
+	// Gallop backward from EOF before binary-searching. The dominant caller
+	// is the in-memory → byte-offset transition, whose target sits just
+	// older than the ring buffer — i.e. within the last small fraction of
+	// the file. Doubling steps back from the end bracket that target in a
+	// few probes whose reads stay close together (cache-friendly for the
+	// SSH reader), instead of opening with probes scattered across the
+	// whole file — each one a full remote round-trip on multi-GB logs.
+	for step := int64(256 * 1024); hi-lo > 2*seekProbeSize; step *= 2 {
+		if err := ctx.Err(); err != nil {
+			return lo
+		}
+		pos := fileSize - step
+		if pos <= lo {
+			break // gallop window already spans the remaining range
+		}
+		ts, lineOff, ok := probeTimestampAt(reader, pos, seekProbeSize, parseTS)
+		if !ok {
+			break // unparseable region — let the binary search handle it
+		}
+		if ts.Before(target) {
+			lo = lineOff + 1 // boundary is after this line: bracketed
+			break
+		}
+		hi = lineOff // boundary is at or before this line: keep galloping
+	}
+
 	for hi-lo > 2*seekProbeSize {
 		if err := ctx.Err(); err != nil {
 			return lo

@@ -381,7 +381,16 @@ func (s *SSHSource) ReadBackward(ctx context.Context, cursor BackwardCursor, max
 	}
 	files := append(active, rotated...)
 	opener := &sshBackwardOpener{ctx: ctx, src: s, files: files}
-	return readBackwardAcrossFiles(ctx, opener, len(files), cursor, maxLines)
+	res, rerr := readBackwardAcrossFiles(ctx, opener, len(files), cursor, maxLines)
+	if err != nil && res.Done {
+		// The rotated-file listing failed, so "done" only means "done with
+		// the files we could see". Reporting Done would make the client
+		// latch a permanent end-of-history; leave it unset so a later
+		// scroll retries once the listing recovers.
+		log.Printf("ssh source %s: rotated listing failed (%v); suppressing backward-read Done", s.cfg.Host, err)
+		res.Done = false
+	}
+	return res, rerr
 }
 
 // SeekToTime binary-searches the remote active file for an offset whose

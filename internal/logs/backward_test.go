@@ -330,6 +330,59 @@ func TestFindOffsetForTime_NoOverlapAcrossBoundary(t *testing.T) {
 	}
 }
 
+// countingReaderAt wraps a readerAt and counts ReadAt calls — each one is a
+// remote round-trip for the SSH source, so the seek path's probe count is a
+// latency budget, not a nicety.
+type countingReaderAt struct {
+	inner readerAt
+	calls int
+}
+
+func (c *countingReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	c.calls++
+	return c.inner.ReadAt(p, off)
+}
+
+// TestFindOffsetForTime_GallopNearEnd: the common transition target (just
+// older than the ring buffer) lives near EOF. The gallop phase must find it
+// in far fewer probes than a full binary search over the file would take,
+// and the answer must match the plain-binary-search result exactly.
+func TestFindOffsetForTime_GallopNearEnd(t *testing.T) {
+	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	// ~7MB file: 100k lines of ~70 bytes.
+	data, offsets := makeTimestampedFile(base, 100_000)
+	fileSize := int64(len(data))
+
+	// Target = line 99,000 — within the last ~1% of the file.
+	target := base.Add(99_000 * time.Second)
+	counter := &countingReaderAt{inner: &bytesReaderAt{data: data}}
+	got := findOffsetForTime(context.Background(), counter, fileSize, target, tsParser)
+	if got != offsets[99_000] {
+		t.Errorf("got offset %d, want %d (line 99000)", got, offsets[99_000])
+	}
+	// Full binary search over 7MB with 4KB probes needs ~11 probes plus the
+	// linear tail; galloping from EOF should stay well under that.
+	if counter.calls > 8 {
+		t.Errorf("near-end seek took %d probes, want <= 8 (gallop should bracket the target quickly)", counter.calls)
+	}
+}
+
+// TestFindOffsetForTime_GallopDeepTarget: targets far from EOF must still
+// resolve correctly once the gallop hands over to the binary search.
+func TestFindOffsetForTime_GallopDeepTarget(t *testing.T) {
+	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	data, offsets := makeTimestampedFile(base, 100_000)
+	fileSize := int64(len(data))
+
+	for _, line := range []int{0, 1, 500, 10_000, 50_000, 99_999} {
+		target := base.Add(time.Duration(line) * time.Second)
+		got := findOffsetForTime(context.Background(), &bytesReaderAt{data: data}, fileSize, target, tsParser)
+		if got != offsets[line] {
+			t.Errorf("target line %d: got offset %d, want %d", line, got, offsets[line])
+		}
+	}
+}
+
 // ----- readBackwardAcrossFiles -------------------------------------------
 
 // fakeOpener implements readBackwardOpener for testing the multi-file
