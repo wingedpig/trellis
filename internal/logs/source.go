@@ -55,6 +55,22 @@ type ServerSideGrep interface {
 	HandlesGrep() bool
 }
 
+// ContinuousSource is an optional capability for LogSources whose Start
+// emits only lines that were never emitted before — nothing already seen is
+// replayed. ServiceSource qualifies: it's fed directly by the service
+// runner, so a restart picks up where the stream left off.
+//
+// Every other source replays a backlog of recent content when it starts
+// (tail -F -n 1000 for file/SSH, docker/kubectl logs from the top, commands
+// re-run from scratch). Because the tail is stopped whenever the last
+// watcher disconnects and restarted on the next connect, that replay would
+// append a duplicate copy of the same lines to a ring buffer that survives
+// the restart — so the viewer clears its buffer before starting any source
+// that does NOT implement this interface.
+type ContinuousSource interface {
+	ContinuousStart() bool
+}
+
 // SourceStatus represents the connection status of a log source.
 type SourceStatus struct {
 	Connected   bool      `json:"connected"`

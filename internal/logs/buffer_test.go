@@ -240,6 +240,16 @@ func TestBufferClear(t *testing.T) {
 	if buf.Size() != 0 {
 		t.Errorf("Size() = %d after Clear, want 0", buf.Size())
 	}
+
+	// The sequence counter survives the clear: clients holding
+	// before_seq/after_seq bookmarks must stay consistent.
+	e := buf.Add(LogEntry{Message: "after clear"})
+	if e.Sequence != 6 {
+		t.Errorf("Sequence after Clear = %d, want 6 (counter must not reset)", e.Sequence)
+	}
+	if got := buf.Get(0); len(got) != 1 {
+		t.Errorf("Get(0) returned %d entries after Clear+Add, want 1", len(got))
+	}
 }
 
 func TestBufferTimestamps(t *testing.T) {

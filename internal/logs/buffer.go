@@ -345,10 +345,19 @@ func (b *Buffer) CurrentSequence() uint64 {
 	return atomic.LoadUint64(&b.sequence)
 }
 
-// Clear removes all entries from the buffer.
+// Clear removes all entries from the buffer. The sequence counter is
+// preserved, so entries added after a Clear still get sequence numbers
+// greater than anything handed out before it — clients holding
+// before_seq/after_seq bookmarks stay consistent across the clear.
 func (b *Buffer) Clear() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.size == 0 {
+		return
+	}
+	// Fresh backing array so the old entries' strings and field maps are
+	// released rather than pinned by the ring.
+	b.entries = make([]LogEntry, b.maxSize)
 	b.head = 0
 	b.size = 0
 }

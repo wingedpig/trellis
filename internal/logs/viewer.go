@@ -103,6 +103,19 @@ func (v *Viewer) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	v.cancel = cancel
 
+	// Most sources replay a backlog of recent lines on every start (tail -F
+	// -n 1000, docker/kubectl logs from the top). The tail stops whenever
+	// the last watcher disconnects, so without this each reopen of the
+	// viewer would append another copy of the same file content to the
+	// surviving buffer — and sequence-keyed scrollback would then serve
+	// those duplicate generations forever instead of falling through to the
+	// byte-offset file reader. Start each run with a clean buffer; Clear
+	// preserves the sequence counter, and anything discarded is still
+	// readable from the file via the backward/history readers.
+	if cs, ok := v.source.(ContinuousSource); !ok || !cs.ContinuousStart() {
+		v.buffer.Clear()
+	}
+
 	lineCh := make(chan string, 1000)
 	v.errCh = make(chan error, 10)
 

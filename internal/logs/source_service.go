@@ -42,6 +42,13 @@ func (s *ServiceSource) Name() string {
 	return "service:" + s.serviceName
 }
 
+// ContinuousStart implements ContinuousSource: starting a service source
+// replays nothing (lines come straight from the service runner), so the
+// viewer keeps its ring buffer across restarts instead of clearing it.
+func (s *ServiceSource) ContinuousStart() bool {
+	return true
+}
+
 // Start marks the source as connected and blocks until the context is cancelled.
 // Service sources don't stream through the viewer pipeline; data is accessed via ReadRange.
 func (s *ServiceSource) Start(ctx context.Context, lineCh chan<- string, errCh chan<- error) error {
