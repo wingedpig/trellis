@@ -174,7 +174,10 @@ type SessionInfo struct {
 	WorktreeName  string     `json:"worktree_name"`
 	DisplayName   string     `json:"display_name"`
 	LastUserInput time.Time  `json:"last_user_input,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	// LastActivityAt is the timestamp of the most recent message of any role
+	// (user or assistant) — i.e. the last time this session did anything.
+	LastActivityAt time.Time `json:"last_activity_at,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 	TrashedAt     *time.Time `json:"trashed_at,omitempty"`
 	CostUSD       float64    `json:"cost_usd,omitempty"`
 	Model         string     `json:"model,omitempty"`
@@ -325,6 +328,10 @@ func (s *Session) Info() SessionInfo {
 		CostUSD:         s.costUSD,
 		Model:           s.model,
 		SkipPermissions: s.skipPermissions,
+	}
+	// The last message of any role marks when this session last did something.
+	if n := len(s.messages); n > 0 {
+		info.LastActivityAt = s.messages[n-1].Timestamp
 	}
 	// Find the last user message timestamp
 	for i := len(s.messages) - 1; i >= 0; i-- {

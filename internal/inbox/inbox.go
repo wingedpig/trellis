@@ -106,6 +106,12 @@ func (a *Aggregator) List() []SessionRow {
 		}
 		ts := lastChange[info.ID]
 		if ts.IsZero() {
+			// No transition observed since startup (e.g. a session idle since
+			// before the process began). Fall back to its most recent activity,
+			// then to creation time only if it has never done anything.
+			ts = info.LastActivityAt
+		}
+		if ts.IsZero() {
 			ts = info.CreatedAt
 		}
 		rows = append(rows, SessionRow{
@@ -131,6 +137,12 @@ func (a *Aggregator) List() []SessionRow {
 			state = events.SessionStateNeedsYou
 		}
 		ts := lastChange[info.ID]
+		if ts.IsZero() {
+			// No transition observed since startup (e.g. a session idle since
+			// before the process began). Fall back to its most recent activity,
+			// then to creation time only if it has never done anything.
+			ts = info.LastActivityAt
+		}
 		if ts.IsZero() {
 			ts = info.CreatedAt
 		}
