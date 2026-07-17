@@ -5,7 +5,6 @@ package api
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io/fs"
 	"log"
@@ -39,10 +38,11 @@ import (
 
 // ServerConfig holds configuration for the API server.
 type ServerConfig struct {
-	Host    string
-	Port    int
-	TLSCert string // Path to TLS certificate file
-	TLSKey  string // Path to TLS private key file
+	Host         string
+	Port         int
+	TLSCert      string // Path to TLS certificate file
+	TLSKey       string // Path to TLS private key file
+	TLSTailscale bool   // Use Tailscale daemon for automatic TLS certificates
 	// AllowedOrigins is the list of cross-origin browser origins permitted to
 	// reach this server. Loopback origins are always allowed. Set this when
 	// the server is reachable at a different origin than the page driving it
@@ -475,8 +475,7 @@ func (s *Server) Router() *mux.Router {
 }
 
 // ListenAndServe starts the server.
-// If TLS is configured (tls_cert and tls_key), uses HTTPS.
-// If cert/key files don't exist, they are auto-generated.
+// If TLS is configured (tls_tailscale or tls_cert and tls_key), uses HTTPS.
 func (s *Server) ListenAndServe() error {
 	addr := s.cfg.Host + ":" + strconv.Itoa(s.cfg.Port)
 	// No blanket ReadTimeout/WriteTimeout: the server hosts long-lived SSE
@@ -491,26 +490,13 @@ func (s *Server) ListenAndServe() error {
 		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
-	// Check if TLS is configured
-	tlsEnabled, err := CheckTLSConfig(s.cfg.TLSCert, s.cfg.TLSKey)
+	certPath, keyPath, tlsConfig, err := serverTLSConfig(s.cfg)
 	if err != nil {
 		return fmt.Errorf("TLS configuration error: %w", err)
 	}
 
-	if tlsEnabled {
-		certPath := expandPath(s.cfg.TLSCert)
-		keyPath := expandPath(s.cfg.TLSKey)
-		// Log every TLS ClientHello so handshake errors can be correlated
-		// to a specific client (remote addr + SNI hostname + ALPN). The
-		// stdlib's "TLS handshake error from <ip>:<port>" log line that
-		// follows on a failure shares the same remote addr.
-		s.server.TLSConfig = &tls.Config{
-			GetConfigForClient: func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
-				log.Printf("TLS ClientHello from %s: sni=%q alpn=%v versions=%v",
-					hi.Conn.RemoteAddr(), hi.ServerName, hi.SupportedProtos, tlsVersionNames(hi.SupportedVersions))
-				return nil, nil
-			},
-		}
+	if tlsConfig != nil {
+		s.server.TLSConfig = tlsConfig
 		log.Printf("API server listening on https://%s (TLS enabled)", addr)
 		return s.server.ListenAndServeTLS(certPath, keyPath)
 	}

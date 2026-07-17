@@ -284,7 +284,11 @@ func generateConfig(projectName string, port int, services []serviceConfig, buil
 	sb.WriteString(strconv.Itoa(port))
 	sb.WriteString(`
 
-    // For HTTPS, uncomment and set paths to your certificates:
+    // For HTTPS via Tailscale (automatic provisioning and renewal):
+    // tls_tailscale: true
+    // When enabled, set public_url below to the machine's *.ts.net URL.
+
+    // Or use certificate files:
     // tls_cert: "~/.trellis/cert.pem"
     // tls_key: "~/.trellis/key.pem"
 

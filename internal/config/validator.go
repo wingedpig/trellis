@@ -88,9 +88,13 @@ func (v *Validator) validateServer(cfg *Config, errs *ValidationError) {
 		}
 	}
 
-	// TLS requires both cert and key — half a pair would otherwise silently
-	// downgrade the server to plain HTTP.
-	if (cfg.Server.TLSCert == "") != (cfg.Server.TLSKey == "") {
+	// Tailscale-managed TLS and a static certificate pair are alternative
+	// modes. A half-pair would otherwise silently downgrade the server to HTTP.
+	hasCertKey := cfg.Server.TLSCert != "" || cfg.Server.TLSKey != ""
+	if cfg.Server.TLSTailscale && hasCertKey {
+		errs.Add("server", "tls_tailscale and tls_cert/tls_key are mutually exclusive")
+	}
+	if !cfg.Server.TLSTailscale && (cfg.Server.TLSCert == "") != (cfg.Server.TLSKey == "") {
 		errs.Add("server", "both tls_cert and tls_key must be specified together")
 	}
 

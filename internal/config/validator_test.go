@@ -62,6 +62,20 @@ func TestValidator_Validate_ServerTLSPair(t *testing.T) {
 	cfg.Server.TLSCert = "/tmp/cert.pem"
 	cfg.Server.TLSKey = "/tmp/key.pem"
 	assert.NoError(t, validator.Validate(cfg))
+
+	// Tailscale TLS without certificate files is fine
+	cfg = base()
+	cfg.Server.TLSTailscale = true
+	assert.NoError(t, validator.Validate(cfg))
+
+	// Tailscale TLS and certificate files are alternative modes
+	cfg = base()
+	cfg.Server.TLSTailscale = true
+	cfg.Server.TLSCert = "/tmp/cert.pem"
+	cfg.Server.TLSKey = "/tmp/key.pem"
+	err = validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mutually exclusive")
 }
 
 func TestValidator_Validate_PortConflicts(t *testing.T) {

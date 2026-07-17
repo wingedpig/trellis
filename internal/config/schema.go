@@ -86,11 +86,12 @@ type ProjectConfig struct {
 
 // ServerConfig configures the HTTP server.
 type ServerConfig struct {
-	Port      int    `json:"port"`
-	Host      string `json:"host"`
-	TLSCert   string `json:"tls_cert"`   // Path to TLS certificate file (enables HTTPS if both cert and key set)
-	TLSKey    string `json:"tls_key"`    // Path to TLS private key file
-	PublicURL string `json:"public_url"` // Externally reachable URL clients should use (overrides host/port for trellis-ctl and TRELLIS_API)
+	Port         int    `json:"port"`
+	Host         string `json:"host"`
+	TLSCert      string `json:"tls_cert"`      // Path to TLS certificate file (enables HTTPS if both cert and key set)
+	TLSKey       string `json:"tls_key"`       // Path to TLS private key file
+	TLSTailscale bool   `json:"tls_tailscale"` // Use Tailscale daemon for automatic TLS certificates
+	PublicURL    string `json:"public_url"`    // Externally reachable URL clients should use (overrides host/port for trellis-ctl and TRELLIS_API)
 	// AllowedOrigins is the explicit allow list of cross-origin browser origins
 	// (scheme://host[:port]) permitted to talk to the API and open WebSockets.
 	// Same-origin requests are always allowed; set this only when the UI is

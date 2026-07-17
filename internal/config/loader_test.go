@@ -45,6 +45,65 @@ func TestLoader_Load_ValidConfig(t *testing.T) {
 	assert.Equal(t, "api", cfg.Services[0].Name)
 }
 
+func TestLoader_Load_ServerTLSTailscale(t *testing.T) {
+	configContent := `{
+		version: "1.0"
+		project: { name: "test-project" }
+		server: {
+			port: 1234
+			host: "100.80.99.38"
+			tls_tailscale: true
+			public_url: "https://test.tailnet.ts.net:1234"
+		}
+	}`
+
+	cfg := loadFromString(t, configContent)
+
+	assert.True(t, cfg.Server.TLSTailscale)
+	assert.Equal(t, "https://test.tailnet.ts.net:1234", cfg.APIBaseURL())
+}
+
+func TestConfig_APIBaseURL_TLSModes(t *testing.T) {
+	tests := []struct {
+		name   string
+		server ServerConfig
+		want   string
+	}{
+		{
+			name:   "plain HTTP",
+			server: ServerConfig{Host: "127.0.0.1", Port: 1234},
+			want:   "http://127.0.0.1:1234",
+		},
+		{
+			name:   "static TLS",
+			server: ServerConfig{Host: "127.0.0.1", Port: 1234, TLSCert: "cert.pem", TLSKey: "key.pem"},
+			want:   "https://127.0.0.1:1234",
+		},
+		{
+			name:   "Tailscale TLS",
+			server: ServerConfig{Host: "test.tailnet.ts.net", Port: 1234, TLSTailscale: true},
+			want:   "https://test.tailnet.ts.net:1234",
+		},
+		{
+			name:   "Tailscale TLS wildcard bind",
+			server: ServerConfig{Host: "0.0.0.0", Port: 1234, TLSTailscale: true},
+			want:   "https://127.0.0.1:1234",
+		},
+		{
+			name:   "public URL takes precedence",
+			server: ServerConfig{Host: "0.0.0.0", Port: 1234, PublicURL: "https://test.tailnet.ts.net:1234/"},
+			want:   "https://test.tailnet.ts.net:1234",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Server: tt.server}
+			assert.Equal(t, tt.want, cfg.APIBaseURL())
+		})
+	}
+}
+
 func TestLoader_Load_HJSONFeatures(t *testing.T) {
 	// Test HJSON-specific features: comments, unquoted keys, trailing commas
 	configContent := `{

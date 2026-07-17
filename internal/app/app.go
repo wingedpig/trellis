@@ -812,7 +812,7 @@ func (app *App) Initialize(ctx context.Context) error {
 	permitAnyHost := wildcardBind
 	if !loopbackBind && !wildcardBind {
 		scheme := "http"
-		if cfg.Server.TLSCert != "" && cfg.Server.TLSKey != "" {
+		if cfg.Server.TLSTailscale || (cfg.Server.TLSCert != "" && cfg.Server.TLSKey != "") {
 			scheme = "https"
 		}
 		allowedOrigins = append(allowedOrigins,
@@ -827,9 +827,9 @@ func (app *App) Initialize(ctx context.Context) error {
 		log.Printf("⚠ SECURITY: binding to non-loopback address %s:%d with NO authentication — "+
 			"any host that can reach this port can run workflows, open terminals, and control services. "+
 			"Only expose Trellis on a trusted network (e.g. Tailscale).", bindHost, cfg.Server.Port)
-		if cfg.Server.TLSCert == "" || cfg.Server.TLSKey == "" {
+		if !cfg.Server.TLSTailscale && (cfg.Server.TLSCert == "" || cfg.Server.TLSKey == "") {
 			log.Printf("⚠ SECURITY: TLS is not configured — all traffic (including terminal I/O) is sent in " +
-				"plaintext. Set server.tls_cert and server.tls_key to enable HTTPS.")
+				"plaintext. Set server.tls_tailscale or server.tls_cert and server.tls_key to enable HTTPS.")
 		}
 	}
 	app.apiServer = api.NewServer(
@@ -838,6 +838,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			Port:           cfg.Server.Port,
 			TLSCert:        cfg.Server.TLSCert,
 			TLSKey:         cfg.Server.TLSKey,
+			TLSTailscale:   cfg.Server.TLSTailscale,
 			AllowedOrigins: allowedOrigins,
 			PermitAnyHost:  permitAnyHost,
 		},

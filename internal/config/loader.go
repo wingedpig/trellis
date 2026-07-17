@@ -22,8 +22,8 @@ import (
 // Resolution order:
 //  1. Server.PublicURL when set (use verbatim, trailing slash trimmed).
 //  2. Otherwise build "<scheme>://<host>:<port>" where scheme is "https" if
-//     both TLS cert and key are set, and bind-all addresses ("", "0.0.0.0",
-//     "::", "[::]") are rewritten to "127.0.0.1".
+//     Tailscale TLS or both TLS cert and key are set, and bind-all addresses
+//     ("", "0.0.0.0", "::", "[::]") are rewritten to "127.0.0.1".
 //
 // PublicURL is needed when bind address differs from the address clients
 // should use — for example, when binding to a Tailscale IP whose certificate
@@ -38,7 +38,7 @@ func (c *Config) APIBaseURL() string {
 		host = "127.0.0.1"
 	}
 	scheme := "http"
-	if c.Server.TLSCert != "" && c.Server.TLSKey != "" {
+	if c.Server.TLSTailscale || (c.Server.TLSCert != "" && c.Server.TLSKey != "") {
 		scheme = "https"
 	}
 	return fmt.Sprintf("%s://%s:%d", scheme, host, c.Server.Port)

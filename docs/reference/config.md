@@ -294,11 +294,13 @@ project: {
 
 ```hjson
 server: {
-  host: "127.0.0.1"       // Bind address (use 0.0.0.0 for remote)
-  port: 1234              // HTTP port
-  tls_cert: "path"        // TLS certificate (for HTTPS)
-  tls_key: "path"         // TLS private key
-  public_url: "https://trellis.example.com"  // External URL clients use (folds into allowed_origins)
+  host: "100.80.99.38"    // Bind address (use 0.0.0.0 for all interfaces)
+  port: 1234              // Server port
+  tls_tailscale: true      // Automatic Tailscale HTTPS certificates
+  // Or use a static certificate pair instead:
+  // tls_cert: "path"
+  // tls_key: "path"
+  public_url: "https://mybox.tailnet.ts.net:1234"  // External URL and TLS SNI name
   allowed_origins: [      // Extra cross-origin browser origins permitted
     "https://review.example.com"
   ]
@@ -308,13 +310,21 @@ server: {
 | Field | Default | Description |
 |-------|---------|-------------|
 | `host` | `"127.0.0.1"` | Bind address. Use `"0.0.0.0"` to allow remote access. |
-| `port` | `1234` | HTTP server port |
+| `port` | `1234` | Server port |
+| `tls_tailscale` | `false` | Fetch and automatically renew HTTPS certificates through the local Tailscale daemon. |
 | `tls_cert` | (none) | Path to TLS certificate for HTTPS |
 | `tls_key` | (none) | Path to TLS private key |
 | `public_url` | (none) | External URL the UI is reachable at (e.g., behind a reverse proxy). Automatically permitted as a browser origin. |
 | `allowed_origins` | `[]` | Additional cross-origin browser origins permitted to call the API and open WebSockets. Loopback (`localhost`, `127.0.0.1`, `::1`) is always allowed. |
 
 When `host` is loopback-only the server runs in DNS-rebinding-safe mode: requests are rejected unless the Host header is loopback or appears in `allowed_origins`/`public_url`. Binding to `0.0.0.0` (or any non-loopback address) is treated as opt-in to wide network access — the Host gate is relaxed, but Origin-based CORS still blocks browser-driven cross-origin attacks. List your external hostname in `public_url` (or `allowed_origins`) so a browser loading the UI from that address gets an Origin match.
+
+`tls_tailscale` and `tls_cert`/`tls_key` are mutually exclusive. With
+`tls_tailscale: true`, Trellis obtains certificates on demand from the local
+Tailscale daemon and renews them automatically; no certificate files are
+needed. Clients must connect using the machine's `*.ts.net` hostname so the TLS
+handshake includes the correct SNI name. Set `public_url` to that HTTPS URL when
+`host` is an IP address or wildcard bind address.
 
 ### proxy
 

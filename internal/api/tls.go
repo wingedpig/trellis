@@ -6,8 +6,47 @@ package api
 import (
 	"crypto/tls"
 	"fmt"
+	"log"
 	"os"
+
+	"github.com/tailscale/tscert"
 )
+
+// serverTLSConfig validates the API server's TLS settings and returns the
+// certificate paths and tls.Config that http.Server should use. Empty paths
+// are intentional for Tailscale TLS: GetCertificate obtains and renews the
+// certificate through the local Tailscale daemon during the handshake.
+func serverTLSConfig(cfg ServerConfig) (certPath, keyPath string, tlsConfig *tls.Config, err error) {
+	hasCertKey := cfg.TLSCert != "" || cfg.TLSKey != ""
+	if cfg.TLSTailscale && hasCertKey {
+		return "", "", nil, fmt.Errorf("tls_tailscale and tls_cert/tls_key are mutually exclusive")
+	}
+
+	tlsEnabled, err := CheckTLSConfig(cfg.TLSCert, cfg.TLSKey)
+	if err != nil {
+		return "", "", nil, err
+	}
+	if !cfg.TLSTailscale && !tlsEnabled {
+		return "", "", nil, nil
+	}
+
+	tlsConfig = &tls.Config{
+		GetConfigForClient: func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+			// Log every TLS ClientHello so handshake errors can be correlated
+			// to a specific client. The stdlib handshake error that follows on
+			// a failure shares the same remote address.
+			log.Printf("TLS ClientHello from %s: sni=%q alpn=%v versions=%v",
+				hi.Conn.RemoteAddr(), hi.ServerName, hi.SupportedProtos, tlsVersionNames(hi.SupportedVersions))
+			return nil, nil
+		},
+	}
+	if cfg.TLSTailscale {
+		tlsConfig.GetCertificate = tscert.GetCertificate
+		return "", "", tlsConfig, nil
+	}
+
+	return expandPath(cfg.TLSCert), expandPath(cfg.TLSKey), tlsConfig, nil
+}
 
 // tlsVersionNames maps the raw uint16 TLS version codes from a ClientHello
 // to short human-readable strings ("1.2", "1.3", ...). Unknown versions are

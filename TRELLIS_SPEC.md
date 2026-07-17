@@ -159,7 +159,10 @@ Trellis looks for configuration in this order:
     port: 1234
     host: "127.0.0.1"
 
-    // Optional: Enable HTTPS (see section 17.2 for certificate generation)
+    // Optional: Enable HTTPS via Tailscale (automatic provisioning/renewal)
+    // tls_tailscale: true
+
+    // Or use certificate files (see section 17.2)
     // tls_cert: "~/.trellis/cert.pem"
     // tls_key: "~/.trellis/key.pem"
   }
@@ -1539,9 +1542,10 @@ This enables CLI tools and scripts running in Trellis-managed terminals to disco
 
 The URL is computed from `server.public_url` when set; otherwise from
 `server.host`/`server.port` (rewriting bind-all addresses to `127.0.0.1`
-and using `https://` when both `server.tls_cert` and `server.tls_key` are
-set). Configure `server.public_url` when the bind address isn't reachable
-to clients or doesn't match the certificate (e.g., Tailscale IPs).
+and using `https://` when `server.tls_tailscale` or both `server.tls_cert`
+and `server.tls_key` are set). Configure `server.public_url` when the bind
+address isn't reachable to clients or doesn't match the certificate (e.g.,
+Tailscale IPs).
 
 ---
 
@@ -3658,6 +3662,25 @@ Trellis supports HTTPS for secure remote access. This is required when accessing
 
 **Configuration:**
 
+For automatic Tailscale certificate provisioning and renewal:
+
+```hjson
+{
+  server: {
+    host: "100.80.99.38"                            // Tailscale IP to bind
+    port: 1234
+    tls_tailscale: true
+    public_url: "https://mybox.tail-net.ts.net:1234"  // Required SNI hostname
+  }
+}
+```
+
+Trellis obtains the certificate on demand from the local Tailscale daemon.
+Clients must use the machine's `*.ts.net` hostname so the TLS handshake carries
+the correct SNI name. No certificate files or manual renewal are needed.
+
+Alternatively, use static certificate files:
+
 ```hjson
 {
   server: {
@@ -3670,6 +3693,7 @@ Trellis supports HTTPS for secure remote access. This is required when accessing
 ```
 
 Both `tls_cert` and `tls_key` must be set, and both files must exist. Paths support `~` expansion.
+`tls_tailscale` and `tls_cert`/`tls_key` are mutually exclusive.
 
 **Mismatched bind / advertise address:**
 
@@ -3708,13 +3732,16 @@ mkcert -cert-file ~/.trellis/cert.pem -key-file ~/.trellis/key.pem \
   your-machine.tailnet.ts.net  # Add your Tailscale hostname if needed
 ```
 
-For **Tailscale** access, you can also use Tailscale's built-in cert provisioning:
+For **Tailscale** access with static files, you can also use Tailscale's cert command:
 
 ```bash
-# Generates certs signed by Tailscale's CA (trusted by your tailnet devices)
+# Generates a Let's Encrypt certificate using Tailscale's DNS integration
 tailscale cert --cert-file ~/.trellis/cert.pem --key-file ~/.trellis/key.pem \
   your-machine.tailnet.ts.net
 ```
+
+Certificates written to files by `tailscale cert` require periodic manual
+renewal. Prefer `server.tls_tailscale: true` for automatic renewal.
 
 **Startup logging:**
 
@@ -4909,7 +4936,8 @@ go build -o trellis-ctl ./cmd/trellis-ctl
 2. `-config <path>` flag or `TRELLIS_CONFIG` env var pointing to a
    `trellis.hjson`. If `server.public_url` is set in that file, it is used
    verbatim; otherwise the URL is built from `server.host`, `server.port`,
-   and (when both are set) `server.tls_cert` / `server.tls_key`.
+   and the configured TLS mode (`server.tls_tailscale` or
+   `server.tls_cert` / `server.tls_key`).
 3. Auto-discovered `trellis.hjson` (or `trellis.json`) found by walking up
    from the current directory, resolved the same way.
 4. `http://localhost:1234` fallback.
@@ -4919,8 +4947,10 @@ the bind address differs from the address clients should use (for example,
 binding to a Tailscale IP whose certificate is issued for the machine's
 Tailscale hostname rather than the IP). When `public_url` is not set: if
 `server.host` is `0.0.0.0` or `::`, `trellis-ctl` connects to `127.0.0.1`
-instead, and when both `tls_cert` and `tls_key` are set the scheme becomes
-`https`.
+instead, and when `tls_tailscale` or both `tls_cert` and `tls_key` are set the
+scheme becomes `https`. Because Tailscale TLS requires the machine's `*.ts.net`
+SNI hostname, set `public_url` when using `tls_tailscale` with an IP or wildcard
+bind address.
 
 The Trellis daemon uses the same resolution to compute the `TRELLIS_API`
 value it injects into managed tmux sessions, so commands run inside Trellis

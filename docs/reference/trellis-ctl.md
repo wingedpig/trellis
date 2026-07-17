@@ -26,8 +26,8 @@ go build -o trellis-ctl ./cmd/trellis-ctl
    right instance.
 2. `-config <path>` flag or `TRELLIS_CONFIG` environment variable — load the
    specified `trellis.hjson` and use its `server.public_url` if set; otherwise
-   build the URL from `server.host`, `server.port`, and (when both are set)
-   `server.tls_cert` / `server.tls_key`.
+   build the URL from `server.host`, `server.port`, and the configured TLS mode
+   (`server.tls_tailscale` or `server.tls_cert` / `server.tls_key`).
 3. `trellis.hjson` (or `trellis.json`) auto-discovered by walking up from the
    current directory, resolved the same way.
 4. `http://localhost:1234` fallback if no config or env override is found.
@@ -48,8 +48,10 @@ server: {
 ```
 
 When `public_url` is not set: if `server.host` is `0.0.0.0` or `::`,
-`trellis-ctl` connects to `127.0.0.1` instead, and when both `tls_cert` and
-`tls_key` are set the scheme becomes `https`.
+`trellis-ctl` connects to `127.0.0.1` instead, and when `tls_tailscale` or both
+`tls_cert` and `tls_key` are set the scheme becomes `https`. Because Tailscale
+TLS requires the machine's `*.ts.net` SNI hostname, set `public_url` when using
+`tls_tailscale` with an IP or wildcard bind address.
 
 The same resolution is used by the Trellis daemon to compute the
 `TRELLIS_API` value injected into Trellis-managed tmux sessions, so the CLI
