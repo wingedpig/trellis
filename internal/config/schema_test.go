@@ -303,6 +303,18 @@ func TestLogViewerApplyDefaults(t *testing.T) {
 		assert.Equal(t, "regex", cfg.Parser.Type)
 		assert.Equal(t, "", cfg.Parser.File)
 	})
+
+	t.Run("timezone inherits default and viewer overrides it", func(t *testing.T) {
+		tzDefaults := &LoggingDefaultsConfig{Timezone: "America/New_York"}
+
+		inherit := LogViewerConfig{}
+		inherit.ApplyDefaults(tzDefaults)
+		assert.Equal(t, "America/New_York", inherit.Timezone)
+
+		override := LogViewerConfig{Timezone: "Europe/London"}
+		override.ApplyDefaults(tzDefaults)
+		assert.Equal(t, "Europe/London", override.Timezone)
+	})
 }
 
 func intPtr(i int) *int {

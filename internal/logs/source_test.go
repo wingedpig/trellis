@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,7 +152,7 @@ func TestNewSource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewSource(tt.cfg)
+			_, err := NewSource(tt.cfg, nil)
 			if (err != nil) != tt.shouldErr {
 				t.Errorf("NewSource() error = %v, shouldErr = %v", err, tt.shouldErr)
 			}
@@ -189,12 +190,50 @@ func TestCommandSourceName(t *testing.T) {
 	}
 }
 
+// TestBuildTimestampGrepPatternTimezone verifies the remote timestamp grep
+// window is built in the log's configured timezone, not the trellis host's.
+// This is the fix for traces returning nothing (or the wrong hours) when
+// trellis and the production host are in different timezones.
+func TestBuildTimestampGrepPatternTimezone(t *testing.T) {
+	loc := time.FixedZone("minus4", -4*60*60)
+	src, err := NewSSHSource(config.LogSourceConfig{Type: "ssh", Host: "h", Path: "/p"}, loc)
+	if err != nil {
+		t.Fatalf("NewSSHSource: %v", err)
+	}
+	// 19:30–19:45 UTC on 2026-07-22 is 15:30–15:45 in the -04:00 log zone. The
+	// window must grep for the log-zone hour "T15:", never the UTC hour "T19:".
+	start := time.Date(2026, 7, 22, 19, 30, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 22, 19, 45, 0, 0, time.UTC)
+	pattern := src.buildTimestampGrepPattern(start, end)
+	if !strings.Contains(pattern, "2026-07-22T15:") {
+		t.Errorf("pattern %q missing log-zone hour 2026-07-22T15:", pattern)
+	}
+	if strings.Contains(pattern, "T19:") {
+		t.Errorf("pattern %q used the trellis/UTC hour T19: instead of the log zone", pattern)
+	}
+}
+
+// TestBuildTimestampGrepPatternNilLoc verifies a nil location falls back to the
+// trellis-local timezone (unchanged behavior for co-located setups).
+func TestBuildTimestampGrepPatternNilLoc(t *testing.T) {
+	src, err := NewSSHSource(config.LogSourceConfig{Type: "ssh", Host: "h", Path: "/p"}, nil)
+	if err != nil {
+		t.Fatalf("NewSSHSource: %v", err)
+	}
+	start := time.Date(2026, 7, 22, 12, 30, 0, 0, time.Local)
+	end := time.Date(2026, 7, 22, 12, 45, 0, 0, time.Local)
+	pattern := src.buildTimestampGrepPattern(start, end)
+	if want := start.Format("2006-01-02T15:"); !strings.Contains(pattern, want) {
+		t.Errorf("pattern %q missing local hour %q", pattern, want)
+	}
+}
+
 func TestSSHSourceName(t *testing.T) {
 	src, err := NewSSHSource(config.LogSourceConfig{
 		Type: "ssh",
 		Host: "server01",
 		Path: "/var/log/app",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("NewSSHSource failed: %v", err)
 	}
@@ -513,7 +552,7 @@ func TestSSHSourceBasic(t *testing.T) {
 		Type: "ssh",
 		Host: "testhost",
 		Path: "/var/log/app",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("NewSSHSource failed: %v", err)
 	}

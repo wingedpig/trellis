@@ -289,15 +289,18 @@ func filterRelevantFiles(files []RotatedFile, start, end time.Time) ([]RotatedFi
 	return relevant, newestModTime
 }
 
-// NewSource creates a new LogSource from configuration.
-func NewSource(cfg config.LogSourceConfig) (LogSource, error) {
+// NewSource creates a new LogSource from configuration. loc is the timezone the
+// remote logs are written in; only the SSH source uses it (to build its remote
+// timestamp grep window). Other sources filter by absolute time server-side and
+// ignore it.
+func NewSource(cfg config.LogSourceConfig, loc *time.Location) (LogSource, error) {
 	switch SourceType(cfg.Type) {
 	case SourceTypeFile:
 		return NewFileSource(cfg)
 	case SourceTypeCommand:
 		return NewCommandSource(cfg)
 	case SourceTypeSSH:
-		return NewSSHSource(cfg)
+		return NewSSHSource(cfg, loc)
 	case SourceTypeDocker:
 		return NewDockerSource(cfg)
 	case SourceTypeKubernetes:

@@ -226,7 +226,7 @@ func ParseLogLine(line string, cfg ParserConfig, source string) LogEntry {
 		Message:   cfg.MessageField,
 	}
 
-	parser, err := serverlogs.NewParser(serverCfg)
+	parser, err := serverlogs.NewParser(serverCfg, nil)
 	if err != nil {
 		// Fallback: return raw line
 		return LogEntry{

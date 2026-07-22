@@ -48,6 +48,8 @@ The start and end time fields accept flexible formats:
 - **Clock time**: `6:00am`, `14:30`, `9pm`
 - **Special**: `now` (current time)
 
+> **Different timezone than production?** If the machine running Trellis is in a different timezone than the hosts whose logs you're tracing, set each log viewer's `timezone` (or a `logging_defaults.timezone` default) to the zone the production logs are written in — otherwise the time window is misaligned and traces come back empty or with the wrong hours. See [config: Timezones](/docs/reference/config/#timezones).
+
 ## Trace Reports
 
 After executing a trace, a report is generated showing:

@@ -236,7 +236,7 @@ func TestNewParser(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			cfg := config.LogParserConfig{Type: tt.parserType, Pattern: tt.pattern}
-			_, err := NewParser(cfg)
+			_, err := NewParser(cfg, nil)
 			if (err != nil) != tt.shouldErr {
 				t.Errorf("NewParser(%q) error = %v, shouldErr = %v", tt.parserType, err, tt.shouldErr)
 			}
@@ -288,6 +288,51 @@ func TestBaseParserCustomFormat(t *testing.T) {
 	expected := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	if !ts.Equal(expected) {
 		t.Errorf("ParseTimestamp = %v, want %v", ts, expected)
+	}
+}
+
+// TestBaseParserTimestampZoneless verifies that a zoneless timestamp is
+// interpreted in the parser's configured location rather than always UTC —
+// which is what keeps trace/scrollback filtering correct when trellis and the
+// log host are in different timezones. Timestamps that carry an explicit
+// offset (or "Z") must ignore the configured location.
+func TestBaseParserTimestampZoneless(t *testing.T) {
+	loc := time.FixedZone("minus4", -4*60*60)
+
+	bp := &BaseParser{cfg: config.LogParserConfig{TimestampFormat: "2006-01-02 15:04:05"}}
+	bp.setLocation(loc)
+	ts, err := bp.ParseTimestamp("2026-07-22 15:04:05")
+	if err != nil {
+		t.Fatalf("ParseTimestamp failed: %v", err)
+	}
+	if want := time.Date(2026, 7, 22, 15, 4, 5, 0, loc); !ts.Equal(want) {
+		t.Fatalf("zoneless timestamp = %v, want %v (interpreted in configured zone)", ts, want)
+	}
+	if ts.Equal(time.Date(2026, 7, 22, 15, 4, 5, 0, time.UTC)) {
+		t.Fatalf("zoneless timestamp was interpreted as UTC, not the configured zone")
+	}
+
+	bp2 := &BaseParser{cfg: config.LogParserConfig{TimestampFormat: time.RFC3339}}
+	bp2.setLocation(loc)
+	ts2, err := bp2.ParseTimestamp("2026-07-22T15:04:05Z")
+	if err != nil {
+		t.Fatalf("ParseTimestamp(RFC3339) failed: %v", err)
+	}
+	if want := time.Date(2026, 7, 22, 15, 4, 5, 0, time.UTC); !ts2.Equal(want) {
+		t.Fatalf("zoned timestamp = %v, want %v (explicit Z must win)", ts2, want)
+	}
+}
+
+// TestBaseParserTimestampNilLocDefaultsUTC verifies a parser built without a
+// location keeps the historical time.Parse behavior (zoneless => UTC).
+func TestBaseParserTimestampNilLocDefaultsUTC(t *testing.T) {
+	bp := &BaseParser{cfg: config.LogParserConfig{TimestampFormat: "2006-01-02 15:04:05"}}
+	ts, err := bp.ParseTimestamp("2026-07-22 15:04:05")
+	if err != nil {
+		t.Fatalf("ParseTimestamp failed: %v", err)
+	}
+	if want := time.Date(2026, 7, 22, 15, 4, 5, 0, time.UTC); !ts.Equal(want) {
+		t.Fatalf("nil-location zoneless timestamp = %v, want %v (UTC)", ts, want)
 	}
 }
 

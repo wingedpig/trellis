@@ -408,10 +408,23 @@ func (v *Validator) validateTraceGroups(cfg *Config, errs *ValidationError) {
 }
 
 func (v *Validator) validateLogViewers(cfg *Config, errs *ValidationError) {
+	if cfg.LoggingDefaults.Timezone != "" {
+		if _, err := time.LoadLocation(cfg.LoggingDefaults.Timezone); err != nil {
+			errs.Add("logging_defaults.timezone",
+				fmt.Sprintf("invalid IANA timezone '%s': %s", cfg.LoggingDefaults.Timezone, err))
+		}
+	}
+
 	for i, lv := range cfg.LogViewers {
 		if lv.Mode != "" && lv.Mode != "live" && lv.Mode != "explore" {
 			errs.Add(fmt.Sprintf("log_viewers[%d].mode", i),
 				fmt.Sprintf("invalid mode '%s', must be one of: live, explore", lv.Mode))
+		}
+		if lv.Timezone != "" {
+			if _, err := time.LoadLocation(lv.Timezone); err != nil {
+				errs.Add(fmt.Sprintf("log_viewers[%d].timezone", i),
+					fmt.Sprintf("invalid IANA timezone '%s': %s", lv.Timezone, err))
+			}
 		}
 	}
 

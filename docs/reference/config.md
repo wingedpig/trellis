@@ -641,6 +641,8 @@ log_viewers: [
   {
     name: "nginx-logs"
     mode: "live"                 // "live" (default) or "explore" — see Modes below
+    timezone: "America/New_York" // IANA zone the remote host writes timestamps in
+                                  // (inherits logging_defaults.timezone; see Timezones below)
 
     source: {
       type: "ssh"                 // "file", "ssh", "command", "docker", "kubernetes"
@@ -702,6 +704,7 @@ log_viewer_settings: {
 | Field | Default | Description |
 |-------|---------|-------------|
 | `mode` | `"live"` | `"live"` or `"explore"` — see Modes above |
+| `timezone` | trellis host's local zone | IANA name of the zone the remote host writes its log timestamps in; inherits `logging_defaults.timezone` — see Timezones below |
 | `source.follow` | `true` | Follow log output in real-time |
 | `source.since` | `"1h"` | How far back to start reading when connecting |
 | `buffer.max_entries` | `10000` | Maximum entries to keep in memory |
@@ -768,6 +771,8 @@ agent: {
 
 ```hjson
 logging_defaults: {
+  timezone: "America/New_York"  // Default production log timezone (IANA name)
+                                // for every viewer that doesn't set its own
   parser: {
     type: "json"
     timestamp: "ts"
@@ -790,6 +795,12 @@ logging_defaults: {
   ]
 }
 ```
+
+#### Timezones
+
+Historical log search — scrollback paging and `/trace` — filters remote log files by a time window. For `ssh` sources, Trellis narrows the search by grepping the remote files for the hours/days in range, and it must express those in **the timezone the remote host writes its timestamps in**. Set that with `timezone` (an IANA name like `America/New_York` or `UTC`), per-viewer or as a `logging_defaults.timezone` default.
+
+When `timezone` is unset, Trellis assumes the logs are in **the trellis host's own local timezone** — correct only when trellis runs in the same zone as the production hosts. If it doesn't (e.g. trellis on a UTC server, logs in US/Eastern), traces come back empty or with the wrong hours until you set `timezone`. The value also interprets log timestamps that carry no offset of their own; timestamps that already include an offset or `Z` are unaffected. Invalid IANA names are rejected at config load.
 
 ### events
 

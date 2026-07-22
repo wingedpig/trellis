@@ -44,7 +44,7 @@ func (b *LogBuffer) SetParser(parserCfg config.LogParserConfig, deriveCfg map[st
 	defer b.mu.Unlock()
 
 	if parserCfg.Type != "" {
-		parser, err := logs.NewParser(parserCfg)
+		parser, err := logs.NewParser(parserCfg, nil)
 		if err == nil {
 			b.parser = parser
 		}

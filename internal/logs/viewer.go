@@ -39,9 +39,28 @@ type Viewer struct {
 // rate is measured.
 const rateWindowSecs = 10
 
+// resolveLocation resolves an IANA timezone name to a *time.Location used to
+// interpret a viewer's production log timestamps — both the remote grep window
+// (SSH source) and any zoneless timestamps in the log lines (parser). An empty
+// name means "same timezone as the trellis host" (time.Local), which preserves
+// behavior for co-located setups. An unparseable name falls back to time.Local
+// with a warning; config validation rejects bad names at load, so this is only
+// a defensive backstop.
+func resolveLocation(name string) *time.Location {
+	if name == "" {
+		return time.Local
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		log.Printf("logs: invalid timezone %q, falling back to local: %v", name, err)
+		return time.Local
+	}
+	return loc
+}
+
 // NewViewer creates a new log viewer.
 func NewViewer(cfg config.LogViewerConfig) (*Viewer, error) {
-	source, err := NewSource(cfg.Source)
+	source, err := NewSource(cfg.Source, resolveLocation(cfg.Timezone))
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +72,7 @@ func NewViewer(cfg config.LogViewerConfig) (*Viewer, error) {
 // This is used for service log viewers where the source is a ServiceSource
 // rather than a source created from config.
 func NewViewerWithSource(cfg config.LogViewerConfig, source LogSource) (*Viewer, error) {
-	parser, err := NewParser(cfg.Parser)
+	parser, err := NewParser(cfg.Parser, resolveLocation(cfg.Timezone))
 	if err != nil {
 		return nil, err
 	}

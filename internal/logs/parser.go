@@ -45,27 +45,55 @@ type TimestampExtractor interface {
 	ExtractTimestamp(line string) (time.Time, bool)
 }
 
-// NewParser creates a new LogParser from configuration.
-func NewParser(cfg config.LogParserConfig) (LogParser, error) {
+// NewParser creates a new LogParser from configuration. loc is the timezone
+// used to interpret zoneless log timestamps (nil = time.UTC, matching
+// time.Parse). Formats that carry an explicit offset or "Z" are unaffected.
+func NewParser(cfg config.LogParserConfig, loc *time.Location) (LogParser, error) {
+	var p LogParser
+	var err error
 	switch ParserType(cfg.Type) {
 	case ParserTypeJSON, "":
-		return NewJSONParser(cfg), nil
+		p = NewJSONParser(cfg)
 	case ParserTypeLogfmt:
-		return NewLogfmtParser(cfg), nil
+		p = NewLogfmtParser(cfg)
 	case ParserTypeRegex:
-		return NewRegexParser(cfg)
+		p, err = NewRegexParser(cfg)
 	case ParserTypeSyslog:
-		return NewSyslogParser(cfg), nil
+		p = NewSyslogParser(cfg)
 	case ParserTypeNone:
-		return NewNoneParser(), nil
+		p = NewNoneParser()
 	default:
 		return nil, fmt.Errorf("unknown parser type: %s", cfg.Type)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Parsers that carry a BaseParser (all but NoneParser) get the timezone for
+	// zoneless timestamp interpretation.
+	if ls, ok := p.(interface{ setLocation(*time.Location) }); ok {
+		ls.setLocation(loc)
+	}
+	return p, nil
 }
 
 // BaseParser provides common functionality for parsers.
 type BaseParser struct {
 	cfg config.LogParserConfig
+	// loc interprets zoneless timestamps; nil means time.UTC (the time.Parse
+	// default). Set via setLocation during NewParser.
+	loc *time.Location
+}
+
+// setLocation sets the timezone used to interpret zoneless timestamps.
+func (p *BaseParser) setLocation(loc *time.Location) { p.loc = loc }
+
+// location returns the timezone for zoneless timestamps, defaulting to UTC to
+// match time.Parse for parsers built without an explicit location.
+func (p *BaseParser) location() *time.Location {
+	if p.loc == nil {
+		return time.UTC
+	}
+	return p.loc
 }
 
 // ParseTimestamp parses a timestamp string using the configured format.
@@ -74,9 +102,11 @@ func (p *BaseParser) ParseTimestamp(value string) (time.Time, error) {
 		return time.Now(), nil
 	}
 
+	loc := p.location()
+
 	// Try configured format first
 	if p.cfg.TimestampFormat != "" {
-		t, err := time.Parse(p.cfg.TimestampFormat, value)
+		t, err := time.ParseInLocation(p.cfg.TimestampFormat, value, loc)
 		if err == nil {
 			return t, nil
 		}
@@ -96,7 +126,7 @@ func (p *BaseParser) ParseTimestamp(value string) (time.Time, error) {
 	}
 
 	for _, format := range formats {
-		t, err := time.Parse(format, value)
+		t, err := time.ParseInLocation(format, value, loc)
 		if err == nil {
 			return t, nil
 		}

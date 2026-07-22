@@ -58,6 +58,9 @@ type LoggingDefaultsConfig struct {
 	Parser LogParserConfig          `json:"parser"`
 	Derive map[string]DeriveConfig  `json:"derive"`
 	Layout []LayoutColumnConfig     `json:"layout"`
+	// Timezone is the default production log timezone (IANA name) applied to
+	// every log viewer that doesn't set its own. See LogViewerConfig.Timezone.
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // LogViewerSettings configures log viewer behavior.
@@ -518,6 +521,13 @@ type LogViewerConfig struct {
 	Derive  map[string]DeriveConfig    `json:"derive"` // Derived fields computed from parsed fields
 	Layout  []LayoutColumnConfig       `json:"layout"` // Columns to display (in order)
 	Buffer  LogBufferConfig            `json:"buffer"`
+	// Timezone is the IANA name (e.g. "America/New_York") of the timezone the
+	// remote host writes its log timestamps in. It is used to align the
+	// scrollback/trace time window with the log files and to interpret
+	// zoneless timestamps. Empty means "same as the trellis host" (local),
+	// which is correct only when trellis runs in the same zone as the logs.
+	// Falls back to logging_defaults.timezone when unset.
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // GetMode returns the viewer mode, defaulting to "live".
@@ -635,6 +645,10 @@ func (c *LogViewerConfig) ApplyDefaults(defaults *LoggingDefaultsConfig) {
 	// Apply layout defaults (only if not specified)
 	if len(c.Layout) == 0 && len(defaults.Layout) > 0 {
 		c.Layout = defaults.Layout
+	}
+	// Inherit the default production timezone unless the viewer set its own.
+	if c.Timezone == "" {
+		c.Timezone = defaults.Timezone
 	}
 }
 

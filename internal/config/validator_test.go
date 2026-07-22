@@ -33,6 +33,29 @@ func TestValidator_Validate_ValidConfig(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestValidator_Validate_LogViewerTimezone(t *testing.T) {
+	validator := NewValidator()
+	base := func() *Config {
+		return &Config{Version: "1.0", Project: ProjectConfig{Name: "test"}}
+	}
+
+	// Valid IANA names pass (viewer and default).
+	cfg := base()
+	cfg.LoggingDefaults.Timezone = "UTC"
+	cfg.LogViewers = []LogViewerConfig{{Name: "app", Timezone: "America/New_York"}}
+	assert.NoError(t, validator.Validate(cfg))
+
+	// A bogus per-viewer timezone is rejected.
+	cfg = base()
+	cfg.LogViewers = []LogViewerConfig{{Name: "app", Timezone: "Not/AZone"}}
+	assert.Error(t, validator.Validate(cfg))
+
+	// A bogus default timezone is rejected.
+	cfg = base()
+	cfg.LoggingDefaults.Timezone = "Bogus/Zone"
+	assert.Error(t, validator.Validate(cfg))
+}
+
 func TestValidator_Validate_ServerTLSPair(t *testing.T) {
 	validator := NewValidator()
 

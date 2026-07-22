@@ -20,17 +20,22 @@ import (
 // SSHSource reads logs from a remote host via SSH.
 type SSHSource struct {
 	sourceBase
+	// loc is the timezone the remote host writes its log timestamps in, used
+	// to build the timestamp grep window (buildTimestampGrepPattern). nil
+	// means the trellis host's local timezone.
+	loc *time.Location
 }
 
-// NewSSHSource creates a new SSH-based log source.
-func NewSSHSource(cfg config.LogSourceConfig) (*SSHSource, error) {
+// NewSSHSource creates a new SSH-based log source. loc is the timezone the
+// remote logs are written in (nil = trellis-local).
+func NewSSHSource(cfg config.LogSourceConfig, loc *time.Location) (*SSHSource, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("ssh source requires host")
 	}
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("ssh source requires path")
 	}
-	return &SSHSource{sourceBase: sourceBase{cfg: cfg}}, nil
+	return &SSHSource{sourceBase: sourceBase{cfg: cfg}, loc: loc}, nil
 }
 
 // Name returns the source name.
@@ -484,7 +489,11 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 
 // buildTimestampGrepPattern builds a grep pattern to match timestamps in the given range.
 // For JSON logs, this matches patterns like "2026-01-10T" for full days or "2026-01-10T06:" for specific hours.
-// Times are converted to local time since most logs use local timestamps.
+// start/end are absolute instants; they are projected into the log's timezone
+// (s.loc) because the grep matches the remote wall-clock digits the host wrote,
+// which are in the host's timezone — not necessarily the trellis host's. When
+// s.loc is nil (unconfigured) we fall back to the trellis-local timezone, which
+// is correct only when trellis and the remote host share a timezone.
 func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 	if start.IsZero() && end.IsZero() {
 		return "" // No filtering
@@ -494,9 +503,14 @@ func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 		end = time.Now()
 	}
 
-	// Convert to local time since most logs use local timestamps
-	start = start.Local()
-	end = end.Local()
+	// Project into the log's timezone so the wall-clock digits we grep for match
+	// what the remote host wrote.
+	loc := s.loc
+	if loc == nil {
+		loc = time.Local
+	}
+	start = start.In(loc)
+	end = end.In(loc)
 
 	var patterns []string
 
