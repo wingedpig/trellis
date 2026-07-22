@@ -90,9 +90,9 @@
         label.classList.toggle('active', skipPermissions);
     }
 
-    // setSkipPermissions toggles auto-approval (permission mode
-    // bypassPermissions). The server switches the running process live where
-    // the CLI allows it; deny rules in .claude/settings.json still apply.
+    // setSkipPermissions toggles auto-approval (permission mode "auto"). The
+    // server switches the running process live where the CLI allows it; deny
+    // rules in .claude/settings.json still apply.
     function setSkipPermissions(on) {
         var prev = skipPermissions;
         skipPermissions = !!on;      // optimistic

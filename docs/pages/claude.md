@@ -105,11 +105,11 @@ Two things to know:
 
 ### Auto-Approve (Skip Permissions)
 
-An **auto-approve** checkbox in the footer switches the session into Claude Code's `bypassPermissions` mode: tool calls stop raising permission prompts and run immediately. The label turns amber while it's on, and the setting persists with the session.
+An **auto-approve** checkbox in the footer switches the session into Claude Code's `auto` mode: tool calls stop raising permission prompts and run immediately, with a background safety classifier vetting each action (and silently declining risky ones). This is deliberately *not* `bypassPermissions` — the classifier and the guardrails below stay in force, so it is safer than skipping the checks entirely. The label turns amber while it's on, and the setting persists with the session.
 
-Toggling is live where the CLI allows it: turning auto-approve **off** never restarts the process (background tasks survive, and any prompts that were already pending still need answers). Turning it **on** restarts the process once if it wasn't started bypass-capable — the conversation resumes automatically on your next message.
+Toggling is live where the CLI allows it: turning auto-approve **off** never restarts the process (background tasks survive, and any prompts that were already pending still need answers). Turning it **on** restarts the process once if it wasn't started in auto mode — the conversation resumes automatically on your next message.
 
-**Pair this with hard guardrails.** `permissions.deny` rules in `~/.claude/settings.json` are enforced by the CLI in *every* mode, including bypass, and a denied call is refused silently without prompting. Use them (plus a `PreToolUse` hook, which also catches indirect invocations like `sh -c "ssh …"`) to make classes of commands — e.g. anything SSH-shaped when your production hosts are one passwordless hop away — impossible regardless of what the agent decides to run:
+**Pair this with hard guardrails.** `permissions.deny` rules in `~/.claude/settings.json` are enforced by the CLI in *every* mode, including auto, and a denied call is refused silently without prompting. Use them (plus a `PreToolUse` hook, which also catches indirect invocations like `sh -c "ssh …"`) to make classes of commands — e.g. anything SSH-shaped when your production hosts are one passwordless hop away — impossible regardless of what the agent decides to run:
 
 ```json
 {

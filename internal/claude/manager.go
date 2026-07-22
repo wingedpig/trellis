@@ -151,8 +151,7 @@ type stdinControlInner struct {
 	// Model is set for set_model requests: a model alias or full id. Omitted
 	// resets the CLI to its default model.
 	Model string `json:"model,omitempty"`
-	// Mode is set for set_permission_mode requests ("default",
-	// "bypassPermissions", ...).
+	// Mode is set for set_permission_mode requests ("default", "auto", ...).
 	Mode string `json:"mode,omitempty"`
 }
 
@@ -182,8 +181,8 @@ type SessionInfo struct {
 	CostUSD       float64    `json:"cost_usd,omitempty"`
 	Model         string     `json:"model,omitempty"`
 	// SkipPermissions is true when the session auto-approves tool calls
-	// (permission mode bypassPermissions). settings.json deny rules still
-	// apply — the CLI enforces them in every mode.
+	// (permission mode "auto"). settings.json deny rules still apply — the CLI
+	// enforces them in every mode.
 	SkipPermissions bool `json:"skip_permissions,omitempty"`
 }
 
@@ -237,21 +236,21 @@ type Session struct {
 	// control_request so the process (and its background tasks) survives.
 	modelOverride string
 	// skipPermissions is true when the user toggled auto-approval on: the
-	// session runs in permission mode bypassPermissions instead of default.
-	// Applied via --dangerously-skip-permissions at spawn; toggling a running
-	// session attempts a live set_permission_mode switch (toggling OFF always
-	// works live; toggling ON works live only on a process that was spawned
-	// with the flag — otherwise we restart so the respawn comes up with it).
-	// settings.json deny rules are enforced by the CLI in every mode, including
-	// bypass — they are the guardrail this toggle relies on.
+	// session runs in permission mode "auto" (auto-approve with a background
+	// safety classifier) instead of default. Applied via --permission-mode auto
+	// at spawn; toggling a running session attempts a live set_permission_mode
+	// switch (toggling OFF always works live; toggling ON works live only on a
+	// process already spawned in auto — otherwise we restart so the respawn
+	// comes up in auto). settings.json deny rules are enforced by the CLI in
+	// every mode, including auto — they are the guardrail this toggle relies on.
 	skipPermissions bool
 	// processSkipPermissions records whether the currently running process was
-	// spawned with --dangerously-skip-permissions (i.e. is bypass-capable). It
-	// is what the live process supports, which can differ from skipPermissions
-	// after a toggle. SetSkipPermissions reads it to decide whether toggling ON
-	// can be a live set_permission_mode switch (the CLI only accepts the switch
-	// INTO bypass on a bypass-capable process) or must restart. Set at spawn in
-	// ensureProcess; only meaningful while a process is running (stdin != nil).
+	// spawned in auto mode (--permission-mode auto). It is the live process's
+	// spawn mode, which can differ from skipPermissions after a toggle.
+	// SetSkipPermissions reads it to decide whether toggling ON can be a live
+	// set_permission_mode switch or must restart to respawn in auto (a process
+	// spawned prompts-on is restarted). Set at spawn in ensureProcess; only
+	// meaningful while a process is running (stdin != nil).
 	processSkipPermissions bool
 	// Cached from system init event
 	slashCommands []string
@@ -1073,15 +1072,15 @@ func (s *Session) SkipPermissions() bool {
 	return s.skipPermissions
 }
 
-// SetSkipPermissions toggles auto-approval (permission mode
-// bypassPermissions) for this session. A running process is switched live
-// with a set_permission_mode control_request where the CLI allows it —
-// toggling OFF is always live (process, background tasks, and pending
-// prompts survive; already-pending prompts still need answers, but new tool
-// calls stop prompting). Toggling ON is live only on a process spawned with
-// --dangerously-skip-permissions; otherwise the CLI rejects the switch and
-// the readLoop fallback restarts the process, which respawns with the flag.
-// The toggle persists with the session.
+// SetSkipPermissions toggles auto-approval (permission mode "auto") for this
+// session. A running process is switched live with a set_permission_mode
+// control_request where the CLI allows it — toggling OFF is always live
+// (process, background tasks, and pending prompts survive; already-pending
+// prompts still need answers, but new tool calls stop prompting). Toggling ON
+// is live on a process already spawned in auto; a process spawned prompts-on is
+// restarted instead so the respawn comes up in auto (the readLoop fallback also
+// restarts if a live switch is ever rejected). The toggle persists with the
+// session.
 func (s *Session) SetSkipPermissions(skip bool) error {
 	s.mu.Lock()
 	if s.skipPermissions == skip {
@@ -1090,7 +1089,7 @@ func (s *Session) SetSkipPermissions(skip bool) error {
 	}
 	s.skipPermissions = skip
 	running := s.stdin != nil
-	processBypassCapable := s.processSkipPermissions
+	processSpawnedAuto := s.processSkipPermissions
 	persist := s.persistFn
 	s.mu.Unlock()
 	if persist != nil {
@@ -1100,14 +1099,13 @@ func (s *Session) SetSkipPermissions(skip bool) error {
 		// No process; ensureProcess applies the mode on the next spawn.
 		return nil
 	}
-	// Toggling ON needs a bypass-capable process. The CLI refuses a live
-	// set_permission_mode → bypassPermissions on a process that wasn't spawned
-	// with --dangerously-skip-permissions, so when we already know this process
-	// wasn't, don't send a request we know will be rejected — restart straight
-	// away and let the respawn come up with the flag. (The readLoop rejection
-	// handler still restarts as a backstop if this read is ever stale.)
-	// Toggling OFF (→ default) is always accepted live, on any process.
-	if skip && !processBypassCapable {
+	// Toggling ON: switch live only on a process already spawned in auto.
+	// Otherwise restart straight away so the respawn comes up in auto rather
+	// than depend on a live switch into auto being accepted mid-session. (The
+	// readLoop rejection handler still restarts as a backstop if a live switch
+	// is ever rejected.) Toggling OFF (→ default) is always accepted live, on
+	// any process.
+	if skip && !processSpawnedAuto {
 		s.restartProcess()
 		return nil
 	}
@@ -1562,24 +1560,19 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 		}
 	}
 
+	// The auto-approve toggle maps to permission mode "auto": Claude
+	// auto-approves tool use while a background safety classifier vets each
+	// action, unlike bypassPermissions which skips the checks entirely. The
+	// mode is set at spawn; a running session is switched live where the CLI
+	// allows it, otherwise restarted (see SetSkipPermissions). Deny rules from
+	// settings.json are enforced by the CLI in every mode, including auto.
 	args := []string{
 		"--output-format", "stream-json",
 		"--verbose",
 		"--input-format", "stream-json",
 		"--permission-prompt-tool", "stdio",
-		"--permission-mode", "default",
+		"--permission-mode", permissionMode(skipPermissions),
 		"--include-partial-messages",
-	}
-	// The auto-approve toggle. The flag both starts the process in
-	// bypassPermissions (it wins over --permission-mode) and is the only way
-	// the CLI permits a later live set_permission_mode switch back INTO
-	// bypass after the user toggles off and on again. It is deliberately NOT
-	// passed when the toggle is off, so a prompts-on session can never end up
-	// bypassing through a Trellis bug — the CLI itself refuses. Deny rules
-	// from settings.json are enforced by the CLI in every mode, including
-	// bypass.
-	if skipPermissions {
-		args = append(args, "--dangerously-skip-permissions")
 	}
 
 	// Resume a previous conversation if we have a Claude session ID
@@ -1631,9 +1624,9 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	s.stdin = stdinPipe
 	s.cancel = cancel
 	s.started = true
-	// Record what this process can do live: only a process spawned with
-	// --dangerously-skip-permissions accepts a later set_permission_mode switch
-	// into bypass. SetSkipPermissions reads this to avoid a doomed round-trip.
+	// Record this process's spawn mode: SetSkipPermissions reads it to decide
+	// whether toggling auto-approve ON can switch live or must restart to
+	// respawn in auto.
 	s.processSkipPermissions = skipPermissions
 	// A fresh process reports total_cost_usd from zero again.
 	s.lastProcessCost = 0
@@ -1677,10 +1670,13 @@ func (s *Session) ensureResumeTarget(resumeSID, workDir string, msgs []Message) 
 	return newSID
 }
 
-// permissionMode maps the auto-approve toggle to a CLI permission mode.
+// permissionMode maps the auto-approve toggle to a CLI permission mode. When
+// on, the session runs in "auto": tool use is auto-approved but vetted by a
+// background safety classifier — safer than bypassPermissions, which skips the
+// checks. Off is the normal prompt-on-every-action "default".
 func permissionMode(skip bool) string {
 	if skip {
-		return "bypassPermissions"
+		return "auto"
 	}
 	return "default"
 }
@@ -1821,9 +1817,9 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *std
 					s.restartProcess()
 				}
 				// A rejected set_permission_mode means the live process is in
-				// the wrong mode (worst case: still bypassing when the user
-				// toggled auto-approve off). Restart; the respawn re-applies
-				// the persisted toggle from scratch.
+				// the wrong mode (e.g. a live switch into auto the CLI declined,
+				// or still auto-approving after the user toggled off). Restart;
+				// the respawn re-applies the persisted toggle from scratch.
 				if strings.HasPrefix(resp.RequestID, setPermModeReqPrefix) {
 					s.restartProcess()
 				}

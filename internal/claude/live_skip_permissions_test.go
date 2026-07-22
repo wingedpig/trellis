@@ -1,11 +1,10 @@
 //go:build live
 
-// End-to-end verification of the auto-approve (skip permissions) toggle:
+// End-to-end verification of the auto-approve (permission mode "auto") toggle:
 //
 //  1. With the toggle ON, commands run without any can_use_tool prompt.
 //  2. Still with the toggle ON, ssh remains impossible — the user-level
-//     settings.json deny rules / PreToolUse hook fire even in
-//     bypassPermissions mode.
+//     settings.json deny rules / PreToolUse hook fire even in auto mode.
 //  3. Toggling OFF is a live switch (same pid) and prompts come back.
 //
 // Run with:
@@ -75,7 +74,7 @@ func TestLiveSkipPermissions(t *testing.T) {
 	pid1 := s.testPID()
 	t.Logf("turn 1 ok: command ran, no prompts, pid %d", pid1)
 
-	// 2. Still bypassing: ssh must be blocked by the settings.json guardrails.
+	// 2. Still auto-approving: ssh must be blocked by the settings.json guardrails.
 	if err := s.Send(context.Background(), "Run this exact bash command and paste its full output: ssh -V"); err != nil {
 		t.Fatalf("send 2: %v", err)
 	}
@@ -84,12 +83,12 @@ func TestLiveSkipPermissions(t *testing.T) {
 		t.Fatalf("turn 2 errored: %+v", ev)
 	}
 	if strings.Contains(ev.Result, "OpenSSH") {
-		t.Fatalf("ssh executed under bypass! result: %s", ev.Result)
+		t.Fatalf("ssh executed under auto! result: %s", ev.Result)
 	}
 	if promptCount != 0 {
 		t.Fatalf("ssh raised a prompt instead of a silent deny (%d prompts)", promptCount)
 	}
-	t.Logf("turn 2 ok: ssh blocked while bypassing. reply: %.120s", ev.Result)
+	t.Logf("turn 2 ok: ssh blocked under auto. reply: %.120s", ev.Result)
 
 	// 3. Toggle off live: same process, and prompts come back.
 	if err := s.SetSkipPermissions(false); err != nil {
@@ -115,10 +114,10 @@ func TestLiveSkipPermissions(t *testing.T) {
 }
 
 // TestLiveToggleOnRestartsAndResumes exercises turning auto-approve ON for a
-// session that was started with prompts ON (a process NOT spawned bypass-capable).
+// session that was started with prompts ON (a process NOT spawned in auto mode).
 // The toggle must restart the process so the respawn comes up with
-// --dangerously-skip-permissions — and, critically, the restart must not lose
-// the conversation even when the CLI's own transcript is absent (a young session
+// --permission-mode auto — and, critically, the restart must not lose the
+// conversation even when the CLI's own transcript is absent (a young session
 // it never flushed to disk). We delete the CLI session file to force that case:
 // a naive --resume aborts the next turn with "No conversation found"; the fix
 // rebuilds the resume target from the messages Trellis holds, so the next turn
@@ -192,9 +191,9 @@ func TestLiveToggleOnRestartsAndResumes(t *testing.T) {
 		}
 	}
 
-	// Toggle auto-approve ON. The running process was not spawned bypass-capable,
-	// so this must restart it (kill now, respawn with the flag on the next Send)
-	// rather than send a set_permission_mode the CLI would reject.
+	// Toggle auto-approve ON. The running process was not spawned in auto mode,
+	// so this must restart it (kill now, respawn in auto on the next Send)
+	// rather than depend on a live set_permission_mode switch into auto.
 	if err := s.SetSkipPermissions(true); err != nil {
 		t.Fatalf("SetSkipPermissions(true): %v", err)
 	}
@@ -202,7 +201,7 @@ func TestLiveToggleOnRestartsAndResumes(t *testing.T) {
 		t.Fatalf("toggle on did not kill the prompts-on process (pid %d)", pid)
 	}
 
-	// Turn 2: the respawn must come up bypass-capable (command runs, zero
+	// Turn 2: the respawn must come up in auto mode (command runs, zero
 	// prompts) AND resume turn 1's history (recalls the secret word) even though
 	// the CLI's transcript is gone.
 	promptCount = 0
@@ -212,7 +211,7 @@ func TestLiveToggleOnRestartsAndResumes(t *testing.T) {
 	}
 	ev = waitFor("result of turn 2", 120*time.Second, isTurnResult)
 	if ev.IsError {
-		t.Fatalf("turn 2 errored (resume/bypass broken): %+v", ev)
+		t.Fatalf("turn 2 errored (resume/auto broken): %+v", ev)
 	}
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("marker not created — auto-approve did not take effect after restart: %v", err)
