@@ -1,6 +1,6 @@
 ---
 title: "Terminal Page"
-weight: 0
+weight: 1
 ---
 
 # Terminal Page
@@ -23,6 +23,8 @@ Press **Cmd+P** (or **Ctrl+P**) to open the navigation picker. Items are prefixe
 | `!` | terminal | Remote window | `!admin` |
 
 Claude sessions and local terminals both use the `@` prefix but are visually distinguished by their icons. You can also access pages, links, and other items through the picker.
+
+![The navigation picker open over the terminal page](/docs/images/navigation-picker.png)
 
 ## History Picker
 
@@ -87,9 +89,11 @@ Service logs show the stdout/stderr output from your configured services.
 
 ## Log Viewers (~)
 
-Log viewers stream logs from configured sources—local files, remote SSH connections, or custom commands.
+Log viewers stream logs from configured sources—local files, remote SSH connections, Docker containers, Kubernetes pods, or custom commands.
 
-**Configuration:** Each log viewer is defined in the [`log_viewers`](/docs/reference/config/#log_viewers) array. Configure the source type (`file`, `ssh`, `command`), connection details, and logging options (parser, fields, history settings). The `mode` field controls whether the viewer opens tailing (`live`, the default) or paused with a static snapshot for search/scrollback (`explore`) — see [Viewer Modes](/docs/concepts/logging/#viewer-modes-live-vs-explore).
+![A log viewer streaming a remote error log over SSH, showing a panic entry](/docs/images/log-viewer-panic.png)
+
+**Configuration:** Each log viewer is defined in the [`log_viewers`](/docs/reference/config/#log_viewers) array. Configure the source type (`file`, `ssh`, `command`, `docker`, `kubernetes`), connection details, and logging options (parser, fields, history settings). The `mode` field controls whether the viewer opens tailing (`live`, the default) or paused with a static snapshot for search/scrollback (`explore`) — see [Viewer Modes](/docs/concepts/logging/#viewer-modes-live-vs-explore).
 
 **Features:**
 - Real-time streaming via WebSocket
@@ -98,6 +102,8 @@ Log viewers stream logs from configured sources—local files, remote SSH connec
 - Entry details panel
 - Following/paused modes, with automatic pausing on high-volume streams
 - History search for past log entries
+
+![The entry details panel for a log line, with per-field copy buttons](/docs/images/log-entry-detail.png)
 
 **Live vs. Explore:** `live` viewers (the default) start tailing the source as soon as you open them and follow new entries. `explore` viewers — meant for high-volume logs like nginx access logs — open paused with the last ~200 lines loaded from the end of the file, so search and scrollback are the primary workflow. Click **Go live** in the header to start the tail and switch to streaming.
 

@@ -1,6 +1,6 @@
 ---
 title: "Pair Review & Checklist Runs"
-weight: 8
+weight: 3
 ---
 
 # Pair Review & Checklist Runs
@@ -42,7 +42,11 @@ Your settings are remembered as defaults for the next pair.
 
 ### The pair banner
 
-While a session is in an active pair, an amber banner appears at the top of its page: partner, your role, round count, and the current step (waiting for a side, relaying, paused). Controls:
+While a session is in an active pair, an amber banner appears at the top of its page: partner, your role, round count, and the current step (waiting for a side, relaying, paused).
+
+![The pair banner on an implementer session mid-loop](/docs/images/pair-banner.png)
+
+Controls:
 
 - **Pause / Resume** — suspend and resume the loop.
 - **Stop** — end the loop (the record is kept for audit).

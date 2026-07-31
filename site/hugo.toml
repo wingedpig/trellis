@@ -6,7 +6,7 @@ enableRobotsTXT = true
 canonifyURLs = true
 
 [params]
-  description = "A web-based control plane for your development environment. Manage terminals, services, logs, and git worktrees from one keyboard-driven interface."
+  description = "An AI-native development environment. Claude and Codex sessions, service logs, distributed traces, and crash reports — scoped to your git worktrees in one keyboard-driven interface."
   image = "/images/social-preview.png"
 
 [mediaTypes."text/markdown"]
@@ -28,4 +28,5 @@ canonifyURLs = true
   [[module.mounts]]
     source = "../docs"
     target = "content/docs"
+    excludeFiles = ["pair-testing/**"]
 

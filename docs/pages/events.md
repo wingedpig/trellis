@@ -1,6 +1,6 @@
 ---
 title: "Events Page"
-weight: 3
+weight: 11
 ---
 
 # Events Page

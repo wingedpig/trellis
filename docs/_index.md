@@ -14,8 +14,9 @@ Trellis is a **local web app** that acts as a control panel for your development
 - **Worktrees as environments** — Each git worktree gets its own terminals, running processes, and logs
 - **Service supervision** — Run your app's components locally with automatic restart when binaries change
 - **Terminal & tmux management** — Trellis creates and manages tmux sessions for you
-- **Claude Code integration** — AI-assisted development with per-worktree chat sessions, transcript management, and a per-session model picker (Codex sessions get the same surfaces)
+- **Claude Code & Codex sessions** — AI-assisted development with per-worktree chat sessions for either agent, transcript management, and a per-session model picker for Claude
 - **Pair review & checklist runs** — Wire two AI sessions into an automated implementer/reviewer loop, or drive them through a multi-phase checklist one reviewed phase at a time
+- **Session inbox** — A floating popup listing every live Claude and Codex session across worktrees, highlighting the ones waiting on you
 - **Usage & cost tracking** — Daily, per-worktree, and per-session token usage and cost for Claude Code and Codex
 - **Cases** — Track units of work (bugs, features, investigations) with notes, links, transcripts, and trace reports
 - **Remote access** — SSH terminals and log streaming from staging/production in the same UI
@@ -38,7 +39,7 @@ Trellis is a **local web app** that acts as a control panel for your development
 ## Web Interface
 
 - [Terminal Page](/docs/pages/terminal/) - Main view: terminals, service logs, log viewers, remote windows
-- [Claude Page](/docs/pages/claude/) - AI-assisted development with Claude Code
+- [AI Sessions (Claude & Codex)](/docs/pages/claude/) - AI-assisted development with Claude Code and OpenAI Codex
 - [Pair Review & Checklist Runs](/docs/pages/pairing/) - Automated implementer/reviewer loops between two AI sessions
 - [Status Page](/docs/pages/status/) - Monitor and control services
 - [Worktrees Page](/docs/pages/worktrees/) - Manage git worktrees

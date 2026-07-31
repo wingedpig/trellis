@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-weight: 3
+weight: 4
 ---
 
 # Quickstart
@@ -121,8 +121,22 @@ When you recompile a binary that a service is watching, Trellis automatically re
 3. The `backend` service is gracefully restarted
 4. New logs stream to the UI
 
+## 6. Open an AI Session
+
+This is where Trellis stops being just a service manager. On startup, Trellis installed a skill file into your repo (`.claude/skills/trellis/SKILL.md`) that teaches Claude Code how to drive Trellis itself — checking service status, reading logs, running workflows, and tracing errors via `trellis-ctl`.
+
+Open the navigation picker (`Cmd/Ctrl + P`), choose your worktree's home page (`@main - Home`), and click **New Session** under Claude Sessions. Then try something like:
+
+> Check the backend service logs and summarize any errors from the last hour.
+
+Claude runs `trellis-ctl` on its own — no copy-pasting logs into a chat window. When it's done investigating something real, **Wrap Up** captures the transcript and notes as a [case](/docs/pages/cases/), committed alongside the fix.
+
+The same surfaces exist for OpenAI Codex sessions.
+
 ## What's Next
 
+- [AI Sessions](/docs/pages/claude/) - Sessions, cost tracking, plans, commits, and wrap-up
+- [Pair Review & Checklist Runs](/docs/pages/pairing/) - Two AI sessions reviewing each other's work
 - [Services](/docs/concepts/services/) - Configure service lifecycle and restarts
 - [Worktrees](/docs/concepts/worktrees/) - Use git worktrees for parallel development
 - [Configuration Reference](/docs/reference/config/) - Full config file documentation

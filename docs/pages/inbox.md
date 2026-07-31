@@ -1,6 +1,6 @@
 ---
 title: "Session Inbox"
-weight: 11
+weight: 4
 ---
 
 # Session Inbox
@@ -9,9 +9,11 @@ weight: 11
 
 The session inbox is a chromeless floating window that lists every active Claude and Codex session across every worktree, with a live state badge. Click a row and the foreground Trellis window jumps to that session — without leaving whatever screen you were on to scroll through worktrees.
 
+![The session inbox: stalled, errored, and waiting sessions on top, running sessions with live activity below](/docs/images/session-inbox.png)
+
 ## Opening the inbox
 
-Click the inbox icon in the top-right of any Trellis page header, or press **Cmd/Ctrl + I**. The first invocation opens the popup; subsequent invocations reuse the same window (`window.open(..., "trellis-inbox", ...)`).
+Click the inbox icon in the top-right of any Trellis page header, or press **Cmd/Ctrl + I**. The first invocation opens the popup; subsequent invocations reuse the same window.
 
 The popup is sized to roughly 420×720 — small enough to dock alongside an editor or browser, large enough to hold a useful list.
 
@@ -39,55 +41,27 @@ Within **Running**, newer state transitions float to the top. Within **Needs you
 
 ## Clicking a row
 
-A click sends a `navigate` message over the inbox's WebSocket. The server forwards it to every main-window Trellis tab that's connected as `role=main` — those tabs then navigate themselves to `/{agent}/{worktree}/{session-id}`. The inbox window itself never leaves the popup.
+Clicking a row makes your main Trellis window — not the popup — jump to that session. The popup stays where it is, so you can keep triaging. If you have no Trellis tab open at all, a new one is opened for you.
 
-If no main window is currently connected (e.g. you closed your last Trellis tab), the inbox falls back to opening the URL in a new `trellis-main` window.
-
-Before navigating, each main tab pushes its current location onto the navigation history, so `Cmd+Backspace` (or your configured back binding) still works the way it does after any other navigation.
+The jump is recorded in navigation history, so `Cmd+Backspace` (or your configured back binding) takes you back the same way it does after any other navigation.
 
 ## Hide button
 
-The eye-with-slash next to a row hides that row **until its state changes next**. Useful when you have a long-running build agent sitting in "running" that you don't want cluttering the view. As soon as the agent transitions (finishes, errors, asks for input), it pops back into the list.
-
-Hides are stored in `localStorage` so they survive a popup reopen. They are automatically discarded when the recorded state no longer matches the live state.
+The eye-with-slash next to a row hides that row **until its state changes next**. Useful when you have a long-running build agent sitting in "running" that you don't want cluttering the view. As soon as the agent transitions (finishes, errors, asks for input), it pops back into the list. Hides survive closing and reopening the popup.
 
 ## Live updates
 
-The inbox subscribes to two event streams:
+Rows update in real time: state badges flip the moment a session starts or stops needing you, and the activity line refreshes at each tool/step boundary without reordering the list. The footer shows `live` while the connection is up and `offline (reconnecting…)` while it's not — the popup reconnects automatically. Time-in-state labels tick over client-side every 30 seconds with no extra server traffic.
 
-- `session.state_changed` — fired only on coarse `running ↔ needs_you` transitions. Each event carries `{session_id, agent, worktree, display_name, state, reason, unread, trashed}`, and the row is updated (or removed) in place.
-- `session.activity` — a lighter stream carrying `{session_id, activity}`, fired at tool/step boundaries (not on every token) and only when the description changes. It refreshes a row's activity line **in place without reordering** the list.
+## Under the hood
 
-The footer shows `live` when the WebSocket is open and `offline (reconnecting…)` while it's not — the client auto-reconnects every 3 seconds. Time-in-state labels are refreshed client-side on a 30-second tick, with no extra server traffic.
+Mechanics you don't need day-to-day:
 
-## State derivation
-
-`state` stays a coarse two-value field, derived per agent:
-
-- **Claude** — `running` while the session is generating *and* has no pending control request; otherwise `needs_you`.
-- **Codex** — `running` while the session is generating *and* has no pending approvals; otherwise `needs_you`.
-
-`state` is what drives sorting and transition detection — it flips only on a real `running ↔ needs_you` change. A finer **`reason`** field refines it for presentation only, and never reorders the list:
-
-| `reason` | meaning |
-|----------|---------|
-| `running` | a turn is actively in flight |
-| `awaiting_input` | the turn finished cleanly; your move |
-| `needs_approval` | stalled on a permission/approval prompt |
-| `error` | the last turn ended in an error |
-
-The aggregator merges both agents' session lists and tracks the timestamp of each session's most recent state transition, so the UI can sort by recency.
-
-## API
-
-The two endpoints behind the popup:
-
-- `GET /api/v1/inbox/sessions` — initial merged list of `SessionRow{id, agent, worktree, display_name, state, reason, activity, unread, last_state_change_at}` entries.
-- `GET /api/v1/inbox/ws?role=inbox|main` — single WebSocket endpoint that serves two roles:
-  - `role=inbox` — the popup connects this way. Receives `session.state_changed` events (forwarded as `{type:"state_changed"}`) and `session.activity` events (forwarded as `{type:"activity"}`), and can send `{type:"navigate", path:"..."}` commands.
-  - `role=main` — every regular Trellis page connects this way (via `inbox_main_ws.js` loaded by the shared header). Receives `{type:"navigate", path:"..."}` commands and acts on them.
-
-If the inbox sends a `navigate` and there's no `role=main` connection at all, the server replies with `{type:"navigate_failed", reason:"no_main_window", path:"..."}` and the popup opens a window directly.
+- **State model** — `state` is a coarse two-value field derived per agent: Claude is `running` while generating with no pending control request, Codex while generating with no pending approvals; otherwise `needs_you`. `state` drives sorting and transition detection — it flips only on a real `running ↔ needs_you` change. A finer `reason` field (`running`, `awaiting_input`, `needs_approval`, `error`) refines presentation only and never reorders the list. The aggregator merges both agents' session lists and timestamps each session's most recent transition so the UI can sort by recency.
+- **Event streams** — the popup subscribes to `session.state_changed` (fired only on coarse `running ↔ needs_you` transitions, carrying `{session_id, agent, worktree, display_name, state, reason, unread, trashed}`) and `session.activity` (a lighter stream carrying `{session_id, activity}`, fired at tool/step boundaries — not per token — and only when the description changes).
+- **Navigation** — `GET /api/v1/inbox/ws?role=inbox|main` is a single WebSocket endpoint serving two roles: the popup connects as `role=inbox`; every regular Trellis page connects as `role=main` (via `inbox_main_ws.js` in the shared header). A row click sends `{type:"navigate", path:"..."}`, which the server forwards to every main-window connection. If no main window is connected, the server replies `{type:"navigate_failed", reason:"no_main_window"}` and the popup opens a new `trellis-main` window directly.
+- **Initial list** — `GET /api/v1/inbox/sessions` returns the merged list of `SessionRow{id, agent, worktree, display_name, state, reason, activity, unread, last_state_change_at}` entries.
+- **Hides** — stored in `localStorage` with the state they were hidden in; a hide is discarded as soon as the recorded state no longer matches the live one.
 
 ## Related
 

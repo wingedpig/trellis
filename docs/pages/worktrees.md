@@ -1,6 +1,6 @@
 ---
 title: "Worktrees Page"
-weight: 1
+weight: 7
 ---
 
 # Worktrees Page
@@ -8,6 +8,8 @@ weight: 1
 **URL:** `/` (also available at `/worktrees`)
 
 The Worktrees page is the home page. It lets you manage git worktrees for your project. Each worktree provides an isolated working directory with its own branch, allowing you to work on multiple features or fixes simultaneously.
+
+![The worktrees home page](/docs/images/worktrees-home.png)
 
 ## Page Header
 

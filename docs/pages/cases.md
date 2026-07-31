@@ -1,6 +1,6 @@
 ---
 title: "Cases Page"
-weight: 6
+weight: 5
 ---
 
 # Cases
@@ -40,6 +40,8 @@ Results show the synopsis, component chips from the generated summary, and the f
 ## Case detail page
 
 **URL:** `/case/{worktree}/{id}`
+
+![An archived case: generated summary, components, and the wrap-up commit](/docs/images/case-detail.png)
 
 ### Header
 
@@ -112,35 +114,21 @@ The modal:
 
 - Auto-detects the worktree's open case. If none, shows a small title + kind form prefilled from a humanized version of the worktree name.
 - Lists changed files as checkboxes (all checked by default).
-- Generates a draft commit message via `claude -p` when it opens. The draft populates the textarea unless you've started typing; a **Regenerate** button is always available. The model also emits a short per-commit case description that is stored on the resulting commit entry.
+- Generates a draft commit message when it opens. The draft populates the textarea unless you've started typing; a **Regenerate** button is always available. A short per-commit case description is generated alongside it and stored on the resulting commit entry.
 
-On confirm:
-
-1. Resolve / create the case.
-2. Snapshot the active session's transcript onto the case (if the case was just created).
-3. Refresh every transcript already attached to the case.
-4. `git add` the selected files, `git commit` with your message.
-5. Append a `CommitEntry` to `case.json` with SHA, date, message, generated description, and files changed.
-
-The session stays alive and the case stays open — keep working.
+On confirm, Trellis creates the case if needed, snapshots the session's transcript onto it, refreshes any transcripts already attached, commits your selected files, and records the commit on the case's timeline. The session stays alive and the case stays open — keep working.
 
 ### Wrap Up
 
-Click **Wrap Up** when the work is done. Same orchestrator as Commit, but with `archive: true`:
+Click **Wrap Up** when the work is done. It runs everything Commit does, then: merges any new links, saves selected traces, captures selected related sessions from the other agent, generates the case's searchable summary, and archives the case directory into the same commit as your code — the whole record of the work lands in git in one step. The active session is trashed when done.
 
-1. All the Commit steps above.
-2. Merge any new links.
-3. Save any selected traces. Capture any selected related sessions from the other agent.
-4. **Generate the case summary** synchronously (with a timeout) so it lands in the same commit as the archived case.
-5. Move the case directory from `cases/` to `cases-archived/`.
-6. `git add` the selected files **plus** the archived case directory.
-7. `git commit`. Trash the active session.
+If anything fails partway through, the archive is rolled back so the case returns to its pre-wrap-up state.
 
-If any step between archive and commit fails, the archive is rolled back so the case returns to its pre-wrap-up state.
+The exact step-by-step mechanics are documented in [AI Sessions: Under the hood](/docs/pages/claude/#under-the-hood).
 
 ## Generated commit messages and summaries
 
-Generation uses your existing Claude Code authentication — there is no separate API key to configure. Trellis shells out to `claude -p --output-format json` for two distinct purposes:
+Generation uses your existing Claude Code authentication — there is no separate API key to configure. Trellis uses `claude -p` for two distinct purposes:
 
 - **Commit message + per-commit description** when the Commit / Wrap Up modal opens. The diff fed to the model is built from exactly the files you've checked in the modal — uncheck a file and Regenerate, and the new draft describes only what's left selected. The staging area is not consulted at all. Other inputs: the case manifest, `notes.md`, and the last few user messages from the session.
 - **Case summary** at wrap-up. The wrap-up diff is scoped the same way (your selected files only). Other inputs: attached transcripts, `notes.md`, the per-commit descriptions accumulated during the case, linked trace summaries, and the case `kind`/`status`.

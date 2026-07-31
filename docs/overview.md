@@ -31,9 +31,9 @@ You can tail and search the logs produced by those locally running components di
 
 Trellis can run reverse proxy listeners that mirror your production routing (e.g., Caddy or nginx) locally. Route requests to different backend services by path, with optional Tailscale TLS or custom certificates.
 
-### Claude Code Integration
+### AI Sessions (Claude Code & Codex)
 
-Each worktree can have multiple Claude Code chat sessions. You can interact with Claude directly in the Trellis web UI, save transcripts to cases for later reference, and continue previous conversations. The same surfaces exist for [OpenAI Codex](https://openai.com/index/introducing-codex/).
+Each worktree can have multiple AI chat sessions — Claude Code, [OpenAI Codex](https://openai.com/index/introducing-codex/), or both side by side. You interact with the agent directly in the Trellis web UI, save transcripts to cases for later reference, and continue previous conversations.
 
 ### Session Inbox
 
@@ -104,6 +104,6 @@ Common actions—switching context, opening terminals, running commands—are bo
 | **Workflow** | A predefined command or sequence of commands you run frequently—builds, tests, deployments. Workflows can have input parameters and run from the UI or CLI. |
 | **Trace Group** | A named collection of log viewers that are searched together during distributed tracing. Allows correlating events across multiple systems by trace ID. |
 | **Remote Window** | An SSH terminal to a remote server, displayed in the same UI as local terminals. In the picker, remote windows appear as `!name`. |
-| **Claude Session** | An AI chat session powered by Claude Code, scoped to a worktree. Accessible via the navigation picker with `@` prefix and a robot icon. |
+| **AI Session** | A Claude Code or Codex chat session, scoped to a worktree. Accessible via the navigation picker with `@` prefix and a robot icon. |
 | **Case** | The durable record of a worktree's effort — one unit of work (bug, feature, investigation, task) accumulating notes, links, transcripts, evidence, traces, a commit timeline, and a generated summary. At most one open per worktree. |
 | **Picker** | The fuzzy-search popup (`Cmd+P`) for quickly navigating to any terminal, service, log viewer, or page. |

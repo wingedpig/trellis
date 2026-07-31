@@ -1,6 +1,6 @@
 ---
 title: "Trace Page"
-weight: 5
+weight: 9
 ---
 
 # Trace Page
@@ -20,6 +20,8 @@ To execute a trace:
    - **Day mode**: Select a specific date to search that entire day
 4. **Report Name** — Optional custom name (auto-generated if empty)
 5. Click **Execute**
+
+![The trace page: execute form and saved trace reports](/docs/images/trace-reports.png)
 
 ## Trace Groups
 
@@ -58,6 +60,8 @@ After executing a trace, a report is generated showing:
 - **Sorted chronologically** across sources
 - **Source column** showing which log viewer each entry came from
 - **Entry details panel** for inspecting individual entries
+
+![A trace report correlating a request across the web, api, and errord services](/docs/images/trace-report.png)
 
 Reports are saved and listed in the **Trace Reports** table. Click a report name to view it, or delete old reports you no longer need.
 

@@ -1,6 +1,6 @@
 ---
 title: "Status Page"
-weight: 2
+weight: 8
 ---
 
 # Status Page

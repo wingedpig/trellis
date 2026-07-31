@@ -1,6 +1,6 @@
 ---
 title: "Usage Page"
-weight: 12
+weight: 6
 ---
 
 # Usage Page
@@ -10,6 +10,8 @@ weight: 12
 The Usage page shows token usage and cost for your AI coding agents — both Claude Code and OpenAI Codex — computed from the transcript files the agent CLIs write locally. No API keys or network calls are involved; Trellis reads the same on-disk data that tools like [ccusage](https://github.com/ccusage/ccusage) use.
 
 Open it from the navigation picker (`Cmd+P`, type `/Usage`), the command palette (`Shift+Cmd+P`, "View: Token usage & costs"), or by clicking the cost badge in the header.
+
+![The usage page: daily cost and token totals across Claude Code and Codex](/docs/images/usage.png)
 
 ## Data Sources
 
