@@ -2,6 +2,19 @@
 {{ $docsRoot := .Site.GetPage "/docs" }}
 {{ if $docsRoot }}
 <nav class="docs-sidebar">
+  {{/* Pagefind search — assets are generated post-build (npx pagefind --site
+       public), so they don't exist under `hugo server`; the guard below keeps
+       dev mode quiet. */}}
+  <link href="/pagefind/pagefind-ui.css" rel="stylesheet">
+  <script src="/pagefind/pagefind-ui.js"></script>
+  <div id="docs-search" class="mb-3"></div>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      if (typeof PagefindUI !== 'undefined') {
+        new PagefindUI({ element: '#docs-search', showSubResults: true, showImages: false });
+      }
+    });
+  </script>
   <ul class="nav flex-column">
     {{/* Top-level pages (overview, install, quickstart) */}}
     {{ range $docsRoot.Pages }}

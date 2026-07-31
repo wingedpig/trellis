@@ -58,8 +58,9 @@ the session messages — same effect.
    convention) the same way, swapping `implementer-mock.md` for
    `reviewer-mock.md`.
 
-3. **Create the pair.** From either session's page, click the 🔗 link
-   button. In the modal:
+3. **Create the pair.** From either session's page, open the **⋮ More
+   actions** menu next to the input box and choose **Pair for review**.
+   In the modal:
 
    - Confirm "This session" role (use **Swap** if needed).
    - Pick the partner session.

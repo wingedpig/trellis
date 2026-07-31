@@ -1,6 +1,6 @@
 # Trellis
 
-Trellis is a **local web app** that acts as a control panel for your development environment. It brings together terminals, tmux sessions, git worktrees, and logs—both local and remote—into one place, with fast, keyboard-driven navigation.
+Trellis is an **AI-native development environment** — a local web app where Claude Code and Codex sessions work alongside your terminals, services, logs, and distributed traces, all scoped to the git worktree you're working in. Your AI sessions can read the same production logs, traces, and crash reports you can, so investigations start from real data — and finished work is captured as a case, committed to git alongside the fix.
 
 **[Documentation](https://trellis.dev/docs/)** | **[API Reference](https://trellis.dev/api/)** | **[Demo Video](https://youtu.be/6Hb7cakS7WU)**
 

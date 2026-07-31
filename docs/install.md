@@ -12,22 +12,7 @@ Trellis consists of two static binaries with no external dependencies beyond tmu
 ## Requirements
 
 - **tmux** (required) - Terminal multiplexer for session management
-- **Go 1.25+** (for building from source)
-
-## Install from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/wingedpig/trellis.git
-cd trellis
-
-# Build both binaries
-make build
-
-# This creates:
-#   trellis       - The main server
-#   trellis-ctl   - The CLI tool
-```
+- **Go 1.25+** (required) - Trellis is installed by building from source
 
 ## Install tmux
 
@@ -46,6 +31,23 @@ sudo apt install tmux
 **Fedora/RHEL:**
 ```bash
 sudo dnf install tmux
+```
+
+## Build from Source
+
+There are currently no prebuilt binaries — install Trellis by building it from source. With Go installed, this takes under a minute:
+
+```bash
+# Clone the repository
+git clone https://github.com/wingedpig/trellis.git
+cd trellis
+
+# Build both binaries
+make build
+
+# This creates:
+#   trellis       - The main server
+#   trellis-ctl   - The CLI tool
 ```
 
 ## Verify Installation
@@ -236,65 +238,8 @@ kubectl get pods -n my-namespace
 2. Check the `watch.debounce` setting isn't too high
 3. Ensure `watching: true` (the default) isn't set to `false`
 
-## State and Files
-
-Trellis stores runtime state in the following locations:
-
-### Per-Worktree State
-
-These directories are created relative to each worktree's root:
-
-| Directory | Contents | Cleanup |
-|-----------|----------|---------|
-| `.trellis/crashes/` | Crash reports (JSON) | `trellis-ctl crash clear` |
-| `traces/` | Trace reports (JSON) | `trellis-ctl trace-report -delete <name>` |
-
-Crash reports are automatically cleaned up after 7 days or when the count exceeds 100 (configurable via `crashes.max_age` and `crashes.max_count`).
-
-### tmux Sessions
-
-Trellis creates tmux sessions named `<project>` for the main worktree and `<project>-<branch>` for additional worktrees. For example, if your project is `myapp` with worktrees on `main` and `feature`:
-
-```bash
-# List Trellis-created sessions
-tmux list-sessions | grep myapp
-
-# Kill a specific session
-tmux kill-session -t myapp-feature
-
-# Kill all project sessions
-tmux kill-server  # Warning: kills ALL tmux sessions
-```
-
-### Temporary Files
-
-Terminal WebSocket connections use named pipes in `/tmp/`:
-
-```
-/tmp/trellis-pipe-<session>-<window>-<timestamp>.fifo
-```
-
-These are cleaned up automatically when connections close.
-
-### Full Reset
-
-To completely reset Trellis state:
-
-```bash
-# Stop Trellis
-# (Ctrl+C or kill the process)
-
-# Remove per-worktree state
-rm -rf .trellis/ traces/
-
-# Kill tmux sessions for this project
-tmux kill-session -t myproject
-tmux kill-session -t myproject-feature  # etc.
-
-# Restart Trellis
-./trellis
-```
-
 ## Next Steps
 
 Continue to [Quickstart](/docs/quickstart/) to configure your first project.
+
+For where Trellis stores its runtime state (crash reports, traces, tmux sessions) and how to reset it, see [State and Files](/docs/reference/state/).

@@ -1,0 +1,20 @@
+# Trellis
+
+> Trellis is an AI-native development environment — a local web app where Claude Code and Codex sessions work alongside terminals, services, logs, and distributed traces, all scoped to git worktrees. AI sessions get direct access to production logs, traces, and crash reports via trellis-ctl; finished work is captured as cases committed to git.
+
+The complete documentation is available as a single Markdown file: https://trellis.dev/docs/all/index.md
+
+## Docs
+
+- [Overview](https://trellis.dev/docs/overview/): What Trellis does, in plain terms
+- [Installation](https://trellis.dev/docs/install/): tmux + build from source
+- [Quickstart](https://trellis.dev/docs/quickstart/): First project in 5 minutes
+- [AI Sessions (Claude & Codex)](https://trellis.dev/docs/pages/claude/): Sessions, cost tracking, plans, commits, wrap-up
+- [Pair Review & Checklist Runs](https://trellis.dev/docs/pages/pairing/): Automated implementer/reviewer loops
+- [Configuration Reference](https://trellis.dev/docs/reference/config/): Complete trellis.hjson reference
+- [trellis-ctl](https://trellis.dev/docs/reference/trellis-ctl/): CLI reference (what AI agents use to drive Trellis)
+- [API](https://trellis.dev/api/): REST and WebSocket API
+
+## Optional
+
+- [Blog](https://trellis.dev/blog/): Real debugging walkthroughs using Trellis

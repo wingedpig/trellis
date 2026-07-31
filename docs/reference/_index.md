@@ -43,6 +43,10 @@ Quick navigation and control in the web interface:
 - Editor toggle (Cmd+E)
 - Log terminal jump (Cmd+L)
 
+## [State and Files](/docs/reference/state/)
+
+Where Trellis stores runtime state — crash reports, trace reports, tmux sessions, temporary files — and how to clean up or fully reset it.
+
 ## [API](/api/)
 
 REST and WebSocket API documentation for programmatic access to Trellis.
