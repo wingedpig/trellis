@@ -288,7 +288,8 @@ function _generateMessage(force) {
     .then(function(result) {
         _modalState.generationInflight = false;
         if (!result.ok) {
-            msgEl.placeholder = 'Generation failed — type your message.';
+            var detail = (result.data && result.data.error && result.data.error.message) || '';
+            msgEl.placeholder = 'Generation failed' + (detail ? ' (' + detail + ')' : '') + ' — type your message.';
             return;
         }
         var d = result.data.data || result.data;
@@ -298,9 +299,10 @@ function _generateMessage(force) {
             _modalState.generatedDescription = d.description || '';
         }
     })
-    .catch(function() {
+    .catch(function(err) {
         _modalState.generationInflight = false;
-        msgEl.placeholder = 'Generation failed — type your message.';
+        var detail = (err && err.message) || '';
+        msgEl.placeholder = 'Generation failed' + (detail ? ' (' + detail + ')' : '') + ' — type your message.';
     });
 }
 

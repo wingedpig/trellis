@@ -53,6 +53,13 @@ type envelope struct {
 	Model   string `json:"model"`
 }
 
+// oneShotModel is the model alias passed to every `claude -p` invocation.
+// These are simple structured-output generations (commit messages, case
+// summaries); the CLI's default model is a much larger one whose latency
+// regularly ran past the HTTP handlers' deadlines. Haiku is ~3-4x faster
+// and plenty for the task.
+const oneShotModel = "haiku"
+
 // runClaude invokes `claude -p --output-format json`, writing the prompt to
 // stdin, and returns the assistant's text result plus the model identifier.
 // The supplied context bounds the call.
@@ -60,6 +67,7 @@ func runClaude(ctx context.Context, prompt string, cwd string) (result, model st
 	args := []string{
 		"-p",
 		"--output-format", "json",
+		"--model", oneShotModel,
 	}
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Stdin = strings.NewReader(prompt)

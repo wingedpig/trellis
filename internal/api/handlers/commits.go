@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -331,7 +332,13 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 			}
 			summary = &s
 		} else if c, err := deps.caseMgr.Get(wt.Path, caseID); err == nil {
-			summary, _ = generateCaseSummary(ctx, deps, wt.Path, c, req.Files)
+			var genErr error
+			summary, genErr = generateCaseSummary(ctx, deps, wt.Path, c, req.Files)
+			if genErr != nil {
+				// Non-fatal: the case archives without a summary and one
+				// can be regenerated later — but leave a trail.
+				log.Printf("commits: generate wrap-up summary for case %s: %v", caseID, genErr)
+			}
 		}
 		if summary != nil {
 			_ = deps.caseMgr.SetSummary(wt.Path, caseID, summary)
@@ -712,6 +719,7 @@ func generateSummaryHTTP(w http.ResponseWriter, r *http.Request, agent agentAdap
 	// same code that would actually be committed.
 	summary, err := generateCaseSummary(r.Context(), deps, wt.Path, c, body.Files)
 	if err != nil {
+		log.Printf("commits: generate summary preview for %s: %v", worktreeName, err)
 		WriteError(w, http.StatusBadGateway, ErrInternalError, "generate: "+err.Error())
 		return
 	}
@@ -879,7 +887,11 @@ func generateCommitMessageHTTP(w http.ResponseWriter, r *http.Request, agent age
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	// 90s, matching regenerate-summary: the budget covers per-file git
+	// calls, the session export, and a full `claude -p` round trip — and
+	// during wrap-up this runs concurrently with generate-summary, so both
+	// invocations contend for the same API.
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
 	// Resolve case context: explicit case_id first, then worktree's open
@@ -925,6 +937,7 @@ func generateCommitMessageHTTP(w http.ResponseWriter, r *http.Request, agent age
 		Cwd:            wt.Path,
 	})
 	if err != nil {
+		log.Printf("commits: generate commit message for %s: %v", worktreeName, err)
 		WriteError(w, http.StatusBadGateway, ErrInternalError, "generate: "+err.Error())
 		return
 	}
