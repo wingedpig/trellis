@@ -174,9 +174,8 @@ The Wrap Up modal adds (on top of the Commit modal):
 - **Optional links** to attach to the case before archiving.
 - **Traces to include** — saved trace reports from the session.
 - **Related sessions to archive** — sessions from the *other* agent (Codex if this is Claude) that you want captured into the same case in one shot.
-- **Component chips** — the components touched by the work, derived deterministically from the changed file paths as soon as the modal opens. Click × to prune any before confirming; the surviving set is stored on the case summary and makes archived cases searchable by component.
 
-![The Wrap Up modal: changed files, a linked trace, component chips, and a generated commit message](/docs/images/wrapup-modal.png)
+![The Wrap Up modal: changed files, a linked trace, and a generated commit message](/docs/images/wrapup-modal.png)
 
 On confirm, Trellis runs everything Commit does, saves the extras you selected, generates the case's searchable summary, and archives the case directory into the same commit as your code — so the whole record of the work lands in git in one step. The session is trashed when done, and you're redirected to the worktree home page.
 

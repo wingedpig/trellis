@@ -50,7 +50,6 @@ type CaseSummary struct {
 	Symptoms    string    `json:"symptoms"`
 	RootCause   string    `json:"root_cause"`
 	Resolution  string    `json:"resolution"`
-	Components  []string  `json:"components,omitempty"`
 	GeneratedAt time.Time `json:"generated_at"`
 	Model       string    `json:"model,omitempty"`
 }
@@ -149,9 +148,8 @@ type CaseUpdate struct {
 // SummaryUpdate holds per-field summary edits. Nil values are not applied;
 // empty-string values clear the corresponding field.
 type SummaryUpdate struct {
-	Synopsis   *string  `json:"synopsis,omitempty"`
-	Symptoms   *string  `json:"symptoms,omitempty"`
-	RootCause  *string  `json:"root_cause,omitempty"`
-	Resolution *string  `json:"resolution,omitempty"`
-	Components []string `json:"components,omitempty"`
+	Synopsis   *string `json:"synopsis,omitempty"`
+	Symptoms   *string `json:"symptoms,omitempty"`
+	RootCause  *string `json:"root_cause,omitempty"`
+	Resolution *string `json:"resolution,omitempty"`
 }

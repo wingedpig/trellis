@@ -23,7 +23,7 @@ type ArchivedCasesPage struct {
 
     <form id="archivedSearchForm" class="row g-2 mb-3" onsubmit="runArchivedSearch(event)">
         <div class="col-md-5">
-            <input type="text" id="searchQ" class="form-control" placeholder="Search title, summary, components, commits, notes…">
+            <input type="text" id="searchQ" class="form-control" placeholder="Search title, summary, commits, notes…">
         </div>
         <div class="col-md-2">
             <select id="searchKind" class="form-select">
@@ -128,11 +128,6 @@ function renderArchivedResults(results) {
         }
         if (r.snippet) {
             html += '<div class="text-muted small fst-italic">' + escapeArchivedHtml(r.snippet) + '</div>';
-        }
-        if (r.summary) {
-            var chips = [];
-            (r.summary.components || []).forEach(function(c) { chips.push('<span class="badge bg-info me-1">' + escapeArchivedHtml(c) + '</span>'); });
-            if (chips.length > 0) html += '<div class="mt-1">' + chips.join('') + '</div>';
         }
         html += '</div>';
         html += '<div class="text-muted small">' + escapeArchivedHtml(date) + '</div>';

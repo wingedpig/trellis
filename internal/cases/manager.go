@@ -539,9 +539,6 @@ func (m *Manager) UpdateSummary(worktreePath, caseID string, upd SummaryUpdate) 
 		if upd.Resolution != nil {
 			c.Summary.Resolution = *upd.Resolution
 		}
-		if upd.Components != nil {
-			c.Summary.Components = upd.Components
-		}
 		return saveCase(path, c)
 	}
 	return fmt.Errorf("case not found: %s", caseID)

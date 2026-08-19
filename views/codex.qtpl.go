@@ -363,17 +363,6 @@ if (container) {
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
-                <!-- Generated tags (wrap-up only) -->
-                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
-                    <div class="d-flex justify-content-end align-items-center mb-1">
-                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Components</div>
-                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                </div>
-
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
                     <textarea class="form-control" id="wrapUpCommitMsg" rows="3"></textarea>
@@ -435,36 +424,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:375
+//line views/codex.qtpl:364
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:375
+//line views/codex.qtpl:364
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 }
 
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 }
 
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 	return qs422016
-//line views/codex.qtpl:376
+//line views/codex.qtpl:365
 }

@@ -38,9 +38,8 @@ type commitRequest struct {
 	Traces          []string            `json:"traces"`
 	RelatedSessions []relatedSessionRef `json:"related_sessions,omitempty"`
 	// Summary is the user-edited summary from the wrap-up modal. When
-	// non-nil it is used verbatim (components are still normalized) and
-	// server-side generation is skipped. When nil, the server generates
-	// the summary as before.
+	// non-nil it is used verbatim and server-side generation is skipped.
+	// When nil, the server generates the summary as before.
 	Summary *cases.CaseSummary `json:"summary,omitempty"`
 }
 
@@ -317,7 +316,7 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 
 	// Step 5: write the case summary (wrap-up only). Two paths:
 	//   - The client sent a user-curated summary in req.Summary — use it
-	//     verbatim, normalizing components for chip consistency.
+	//     verbatim.
 	//   - Otherwise, generate one synchronously with a timeout so it lands
 	//     in the same commit as the archived case.
 	// The diff is scoped to exactly the files the user picked — we don't
@@ -327,7 +326,6 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		var summary *cases.CaseSummary
 		if req.Summary != nil && strings.TrimSpace(req.Summary.Synopsis) != "" {
 			s := *req.Summary
-			s.Components = genai.NormalizeComponents(s.Components)
 			if s.GeneratedAt.IsZero() {
 				s.GeneratedAt = time.Now()
 			}
@@ -529,7 +527,6 @@ func generateCaseSummary(parent context.Context, deps commitDeps, worktreePath s
 		TranscriptSummaries: transcriptSummaries,
 		CommitDescriptions:  commitDescriptions,
 		TraceSummaries:      traceSummaries,
-		ChangedPaths:        changedPathsForCase(ctx, deps, worktreePath, c, files),
 		Cwd:                 worktreePath,
 	})
 	if err != nil {
@@ -540,7 +537,6 @@ func generateCaseSummary(parent context.Context, deps commitDeps, worktreePath s
 		Symptoms:    gen.Symptoms,
 		RootCause:   gen.RootCause,
 		Resolution:  gen.Resolution,
-		Components:  gen.Components,
 		GeneratedAt: gen.GeneratedAt,
 		Model:       gen.Model,
 	}, nil
@@ -591,7 +587,6 @@ func regenerateSummaryForCase(parent context.Context, deps commitDeps, worktreeP
 		TranscriptSummaries: transcriptSummaries,
 		CommitDescriptions:  commitDescriptions,
 		TraceSummaries:      traceSummaries,
-		ChangedPaths:        changedPathsForCase(ctx, deps, worktreePath, c, nil),
 		Cwd:                 worktreePath,
 	})
 	if err != nil {
@@ -602,49 +597,9 @@ func regenerateSummaryForCase(parent context.Context, deps commitDeps, worktreeP
 		Symptoms:    gen.Symptoms,
 		RootCause:   gen.RootCause,
 		Resolution:  gen.Resolution,
-		Components:  gen.Components,
 		GeneratedAt: gen.GeneratedAt,
 		Model:       gen.Model,
 	}, nil
-}
-
-// changedPathsForCase gathers repo-relative paths a case touched, for
-// deterministic component derivation (see genai.DeriveComponents). `extra` is
-// any caller-supplied set (e.g. the wrap-up commit's selected files); the
-// case's recorded intermediate commits are unioned in. When no `extra` is
-// supplied (the regenerate path) the wrap-up commit — which isn't recorded in
-// c.Commits — is located from git history and added too, so archived cases
-// still yield components.
-func changedPathsForCase(ctx context.Context, deps commitDeps, worktreePath string, c *cases.CaseJSON, extra []string) []string {
-	seen := make(map[string]struct{})
-	var out []string
-	add := func(p string) {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			return
-		}
-		if _, dup := seen[p]; dup {
-			return
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
-	}
-	for _, p := range extra {
-		add(p)
-	}
-	for _, ce := range c.Commits {
-		for _, p := range ce.FilesChanged {
-			add(p)
-		}
-	}
-	if len(extra) == 0 && deps.caseMgr != nil && c.ID != "" {
-		if wu := FindWrapUpCommit(ctx, worktreePath, deps.caseMgr.ArchivedRelDir(), c.ID); wu != nil {
-			for _, p := range wu.FilesChanged {
-				add(p)
-			}
-		}
-	}
-	return out
 }
 
 func traceSummariesForCase(deps commitDeps, worktreePath, caseID string) []string {
@@ -663,8 +618,8 @@ func traceSummariesForCase(deps commitDeps, worktreePath, caseID string) []strin
 }
 
 // generateSummaryHTTP previews the case summary the wrap-up would generate.
-// Used by the wrap-up modal so the user can review and prune the components
-// before committing. The result is NOT persisted — the client
+// Used by the wrap-up modal so the user can review it before committing.
+// The result is NOT persisted — the client
 // is expected to send the (possibly edited) summary back with the wrap-up
 // request, which writes it to case.json.
 //
@@ -761,50 +716,6 @@ func generateSummaryHTTP(w http.ResponseWriter, r *http.Request, agent agentAdap
 		return
 	}
 	WriteJSON(w, http.StatusOK, summary)
-}
-
-// deriveComponentsHTTP returns the deterministic component list for a wrap-up,
-// computed from the changed paths with NO model call — so the wrap-up modal can
-// paint its chips instantly instead of waiting on generate-summary's LLM round
-// trip. Mirrors generateSummaryHTTP's case resolution (explicit id, then the
-// worktree's open case, then a synthetic empty case for the new-case flow where
-// components come purely from the selected files) minus the prose generation.
-func deriveComponentsHTTP(w http.ResponseWriter, r *http.Request, deps commitDeps) {
-	worktreeName := mux.Vars(r)["worktree"]
-	wt, ok := deps.worktreeMgr.GetByName(worktreeName)
-	if !ok {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
-		return
-	}
-	if deps.caseMgr == nil {
-		WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "case manager not configured")
-		return
-	}
-
-	var body struct {
-		CaseID string   `json:"case_id"`
-		Files  []string `json:"files"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	var c *cases.CaseJSON
-	if body.CaseID != "" {
-		got, err := deps.caseMgr.Get(wt.Path, body.CaseID)
-		if err != nil {
-			WriteError(w, http.StatusNotFound, ErrNotFound, "case not found")
-			return
-		}
-		c = got
-	} else if open, _ := deps.caseMgr.FirstOpenCase(wt.Path); open != nil {
-		c = open
-	} else {
-		c = &cases.CaseJSON{Status: "open"}
-	}
-
-	paths := changedPathsForCase(r.Context(), deps, wt.Path, c, body.Files)
-	WriteJSON(w, http.StatusOK, map[string][]string{
-		"components": genai.DeriveComponents(paths),
-	})
 }
 
 // WrapUpCommitInfo is the git data we surface on the case detail page for an

@@ -881,17 +881,6 @@ var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind
                     <div id="wrapUpFileList" class="wrap-up-file-list"></div>
                 </div>
 
-                <!-- Generated tags (wrap-up only) -->
-                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
-                    <div class="d-flex justify-content-end align-items-center mb-1">
-                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Components</div>
-                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                </div>
-
                 <!-- Commit message -->
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
@@ -946,12 +935,6 @@ var WRAPUP_CASE = {id: CASE_ID, title: {%s= notesJSONSafe(p.Case.Title) %}, kind
     {% if s.Resolution != "" %}
     <dt>Resolution</dt>
     <dd data-field="resolution">{%s s.Resolution %}</dd>
-    {% endif %}
-    {% if len(s.Components) > 0 %}
-    <dt>Components</dt>
-    <dd data-field="components">
-        {% for _, c := range s.Components %}<span class="badge bg-info me-1">{%s c %}</span>{% endfor %}
-    </dd>
     {% endif %}
 </dl>
 <div class="small text-muted mt-2">

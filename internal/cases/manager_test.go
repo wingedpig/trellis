@@ -161,7 +161,6 @@ func TestSummary_setAndUpdate(t *testing.T) {
 		Symptoms:    "obvious",
 		RootCause:   "missing init",
 		Resolution:  "initialize earlier",
-		Components:  []string{"auth", "session"},
 		GeneratedAt: time.Now(),
 		Model:       "claude-test",
 	}
@@ -171,9 +170,6 @@ func TestSummary_setAndUpdate(t *testing.T) {
 	got, _ := m.Get(wt, c.ID)
 	if got.Summary == nil || got.Summary.Synopsis != "one line" {
 		t.Fatalf("SetSummary did not persist: %+v", got.Summary)
-	}
-	if len(got.Summary.Components) != 2 {
-		t.Errorf("components not preserved")
 	}
 
 	// Partial update.

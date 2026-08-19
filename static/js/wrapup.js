@@ -39,12 +39,10 @@ var _modalState = {
     generationInflight: false,
     userTouchedMessage: false,
     // Wrap-up only: the full summary returned by /generate-summary. Stored
-    // so we can ship it back on confirm with the user's chip edits applied.
+    // so we can ship it back on confirm.
     // null when no summary has been generated (or generation failed).
     generatedSummary: null,
     summaryInflight: false,
-    components: [],
-    componentsLoaded: false,  // true once chips are painted (deriver or fallback)
 };
 
 function _agent() {
@@ -63,8 +61,6 @@ function showCommitModal(mode) {
     _modalState.userTouchedMessage = false;
     _modalState.generatedSummary = null;
     _modalState.summaryInflight = false;
-    _modalState.components = [];
-    _modalState.componentsLoaded = false;
 
     var modal = document.getElementById('wrapUpModal');
     if (!modal) return;
@@ -105,9 +101,8 @@ function showCommitModal(mode) {
     // Install the Regenerate button next to the message field (idempotent).
     _ensureRegenerateButton();
 
-    // Hide wrap-up-only sections in commit mode. (Tags section starts hidden
-    // and is only shown once /generate-summary returns a result.)
-    var hideForCommit = ['wrapUpTraceSection', 'wrapUpRelatedSection', 'wrapUpLinksSection', 'wrapUpTagsSection'];
+    // Hide wrap-up-only sections in commit mode.
+    var hideForCommit = ['wrapUpTraceSection', 'wrapUpRelatedSection', 'wrapUpLinksSection'];
     hideForCommit.forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -330,15 +325,13 @@ function _wireNewCaseTitleBlur() {
     });
 }
 
-// _generateSummary pre-generates the case summary so the user can review
-// and prune the generated components before confirming wrap-up.
+// _generateSummary pre-generates the case summary so it can be shipped back
+// verbatim on confirm (skipping a second server-side generation pass).
 // The selected files are passed through so the model's diff input matches
 // what will actually be committed.
 function _generateSummary() {
     if (_modalState.summaryInflight) return;
     var modal = document.getElementById('wrapUpModal');
-    var statusEl = document.getElementById('wrapUpTagsStatus');
-    var section = document.getElementById('wrapUpTagsSection');
 
     // The set of files is sent purely to scope the diff input. After a
     // round of intermediate Commits the working tree will often be clean
@@ -350,11 +343,6 @@ function _generateSummary() {
     });
 
     _modalState.summaryInflight = true;
-    if (section) section.style.display = '';
-    if (statusEl) statusEl.textContent = '';
-    _modalState.components = [];
-    _modalState.componentsLoaded = false;
-    _renderChips();
 
     var body = { files: files };
     if (modal.dataset.isNewCase === 'true') {
@@ -370,16 +358,10 @@ function _generateSummary() {
         body.case_id = modal.dataset.caseId;
     }
 
-    // Paint the component chips immediately from the deterministic deriver —
-    // no LLM, so this returns in milliseconds, independent of the prose
-    // summary (which needs the model and, for new cases, a title).
-    _deriveComponents(body);
-
     // The prose summary needs a title for the new-case path; defer it until
-    // one is entered. Chips are already painting regardless.
+    // one is entered.
     if (modal.dataset.isNewCase === 'true' && !body.title) {
         _modalState.summaryInflight = false;
-        if (statusEl) statusEl.textContent = '';
         return;
     }
 
@@ -392,77 +374,16 @@ function _generateSummary() {
     .then(function(result) {
         _modalState.summaryInflight = false;
         if (!result.ok) {
-            // generate-summary only supplies the prose fields now; the chips
-            // are already painted by the deriver and the server regenerates
-            // the summary at commit time, so fail quietly here.
-            if (statusEl) statusEl.textContent = '';
+            // The server regenerates the summary at commit time when none is
+            // shipped, so fail quietly here.
             return;
         }
-        var s = result.data.data || result.data;
-        _modalState.generatedSummary = s;
-        // Backstop: if the fast deriver hasn't populated chips (e.g. it
-        // errored), use the identical deterministic components carried in
-        // this response. Never clobber chips the user may have edited.
-        if (!_modalState.componentsLoaded && s.components) {
-            _modalState.components = s.components.slice();
-            _modalState.componentsLoaded = true;
-            _renderChips();
-        }
-        if (statusEl) statusEl.textContent = '';
+        _modalState.generatedSummary = result.data.data || result.data;
     })
     .catch(function() {
         _modalState.summaryInflight = false;
-        if (statusEl) statusEl.textContent = '';
     });
 }
-
-// _deriveComponents paints the component chips from the deterministic
-// server-side deriver — no LLM, so it returns near-instantly. Runs
-// independently of the prose summary and fails silently (generate-summary's
-// response carries the same deterministic components as a backstop).
-function _deriveComponents(body) {
-    fetch(_apiBase() + '/derive-components', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ case_id: body.case_id, files: body.files })
-    })
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(d) {
-        if (!d) return;
-        var data = d.data || d;  // unwrap the WriteJSON {data,meta} envelope
-        // Don't clobber chips the user may already have edited.
-        if (_modalState.componentsLoaded) return;
-        _modalState.components = (data.components || []).slice();
-        _modalState.componentsLoaded = true;
-        _renderChips();
-    })
-    .catch(function() { /* silent — generate-summary backstops */ });
-}
-
-// _renderChips paints the components list from _modalState.
-// Each chip's × removes it from the in-memory list.
-function _renderChips() {
-    var compEl = document.getElementById('wrapUpComponentsList');
-    if (compEl) compEl.innerHTML = _chipHTML('component', _modalState.components) || '<span class="text-muted small">(none)</span>';
-}
-
-function _chipHTML(kind, values) {
-    return values.map(function(v, i) {
-        return '<span class="wrap-up-chip ' + kind + '">' +
-            escapeWrapUpHtml(v) +
-            '<button type="button" class="wrap-up-chip-remove" ' +
-            'aria-label="Remove" onclick="removeWrapUpChip(\'' + kind + '\', ' + i + ')">' +
-            '×</button></span>';
-    }).join('');
-}
-
-// Exposed globally so the chip buttons can find it.
-window.removeWrapUpChip = function(kind, index) {
-    var arr = _modalState.components;
-    if (index < 0 || index >= arr.length) return;
-    arr.splice(index, 1);
-    _renderChips();
-};
 
 function renderWrapUpFiles(status) {
     var el = document.getElementById('wrapUpFileList');
@@ -659,13 +580,10 @@ function wrapUpConfirm() {
         body.links = links;
         body.traces = traces;
         body.related_sessions = relatedSessions;
-        // Ship the user-edited summary. The server normalizes and writes
-        // it as-is, skipping a second generation pass — so the chips the
-        // user just curated are exactly what lands in case.json.
+        // Ship the pre-generated summary. The server writes it as-is,
+        // skipping a second generation pass.
         if (_modalState.generatedSummary) {
-            body.summary = Object.assign({}, _modalState.generatedSummary, {
-                components: _modalState.components.slice(),
-            });
+            body.summary = Object.assign({}, _modalState.generatedSummary);
         }
     }
 

@@ -18,7 +18,6 @@ import (
 	"github.com/wingedpig/trellis/internal/cases"
 	"github.com/wingedpig/trellis/internal/claude"
 	"github.com/wingedpig/trellis/internal/codex"
-	"github.com/wingedpig/trellis/internal/genai"
 	"github.com/wingedpig/trellis/internal/trace"
 	"github.com/wingedpig/trellis/internal/worktree"
 )
@@ -781,7 +780,7 @@ func splitTerms(q string) []string {
 }
 
 // scoreCase produces a relevance score and a short snippet for display.
-// Component matches rank highest, title next, notes / commit
+// Synopsis matches rank highest, title next, notes / commit
 // descriptions lowest. With an empty term list every case scores 0 and the
 // caller treats that as "include unconditionally" (browse mode, not search
 // mode).
@@ -808,11 +807,8 @@ func scoreCase(c *cases.CaseJSON, terms []string, qLower string, mgr *cases.Mana
 		}
 	}
 
-	// Highest-weight: explicit component fields.
+	// Highest-weight: the generated summary fields.
 	if c.Summary != nil {
-		for _, comp := range c.Summary.Components {
-			hit(8, comp, "component")
-		}
 		hit(6, c.Summary.Synopsis, "synopsis")
 		hit(4, c.Summary.Symptoms, "symptoms")
 		hit(4, c.Summary.RootCause, "root cause")
@@ -895,11 +891,6 @@ func (h *CaseHandler) UpdateSummary(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&upd); err != nil {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
 		return
-	}
-	// Apply the same normalization to hand-edits as we do to generated
-	// summaries, so the chip set stays consistent regardless of source.
-	if upd.Components != nil {
-		upd.Components = genai.NormalizeComponents(upd.Components)
 	}
 	if err := h.caseMgr.UpdateSummary(wt.Path, caseID, upd); err != nil {
 		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())

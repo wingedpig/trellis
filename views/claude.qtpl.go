@@ -454,17 +454,6 @@ if (container) {
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
-                <!-- Generated tags (wrap-up only) -->
-                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
-                    <div class="d-flex justify-content-end align-items-center mb-1">
-                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Components</div>
-                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                </div>
-
                 <!-- Commit message -->
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
@@ -502,36 +491,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:423
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:434
+//line views/claude.qtpl:423
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 }
 
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 }
 
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 	return qs422016
-//line views/claude.qtpl:435
+//line views/claude.qtpl:424
 }

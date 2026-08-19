@@ -21,19 +21,15 @@ type SummaryInput struct {
 	TranscriptSummaries []string // brief summaries / preview lines for attached transcripts
 	CommitDescriptions  []string // per-commit descriptions accumulated during the case
 	TraceSummaries      []string // one-line summary per linked trace
-	ChangedPaths        []string // repo-relative paths the case touched; source for deterministic components
 	Cwd                 string
 }
 
-// SummaryOutput is the structured case summary. The prose fields come from the
-// model; Components is derived deterministically from the changed paths (see
-// DeriveComponents) and overwrites whatever the model may have returned.
+// SummaryOutput is the structured case summary returned by the model.
 type SummaryOutput struct {
-	Synopsis   string   `json:"synopsis"`
-	Symptoms   string   `json:"symptoms"`
-	RootCause  string   `json:"root_cause"`
-	Resolution string   `json:"resolution"`
-	Components []string `json:"components"`
+	Synopsis   string `json:"synopsis"`
+	Symptoms   string `json:"symptoms"`
+	RootCause  string `json:"root_cause"`
+	Resolution string `json:"resolution"`
 }
 
 // GeneratedSummary is the full result including bookkeeping fields the caller
@@ -88,61 +84,11 @@ func GenerateCaseSummary(ctx context.Context, in SummaryInput) (*GeneratedSummar
 	if strings.TrimSpace(out.Synopsis) == "" {
 		return nil, fmt.Errorf("generated summary has empty synopsis")
 	}
-	// Components are derived deterministically from the changed paths, not
-	// taken from the model — grounded in real paths by construction.
-	out.Components = DeriveComponents(in.ChangedPaths)
 	return &GeneratedSummary{
 		SummaryOutput: out,
 		GeneratedAt:   time.Now(),
 		Model:         model,
 	}, nil
-}
-
-// NormalizeComponents cleans up the model's "components" array: trim, drop
-// empty, lowercase, convert internal whitespace to hyphens (so a stray
-// "case detail page" becomes "case-detail-page"), drop entries that still
-// look like sentences after that, and dedupe. Idempotent.
-func NormalizeComponents(in []string) []string {
-	seen := make(map[string]struct{}, len(in))
-	out := make([]string, 0, len(in))
-	for _, raw := range in {
-		v := strings.ToLower(strings.TrimSpace(raw))
-		v = collapseWhitespaceToHyphen(v)
-		v = strings.Trim(v, "-")
-		if v == "" {
-			continue
-		}
-		// Drop anything that still has > 5 hyphen-separated parts — it
-		// was probably a sentence the model couldn't help itself with.
-		if strings.Count(v, "-") > 5 {
-			continue
-		}
-		if _, dup := seen[v]; dup {
-			continue
-		}
-		seen[v] = struct{}{}
-		out = append(out, v)
-	}
-	return out
-}
-
-func collapseWhitespaceToHyphen(s string) string {
-	// Replace any run of whitespace or underscores with a single hyphen.
-	var b strings.Builder
-	b.Grow(len(s))
-	inSep := false
-	for _, r := range s {
-		if r == ' ' || r == '\t' || r == '\n' || r == '_' {
-			if !inSep {
-				b.WriteByte('-')
-				inSep = true
-			}
-			continue
-		}
-		inSep = false
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 func buildSummaryContextSection(in SummaryInput) string {

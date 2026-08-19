@@ -301,17 +301,6 @@ if (container) {
                     <div id="wrapUpRelatedList" class="wrap-up-file-list"></div>
                 </div>
 
-                <!-- Generated tags (wrap-up only) -->
-                <div class="mb-3" id="wrapUpTagsSection" style="display:none">
-                    <div class="d-flex justify-content-end align-items-center mb-1">
-                        <span class="small text-muted" id="wrapUpTagsStatus"></span>
-                    </div>
-                    <div>
-                        <div class="text-muted small">Components</div>
-                        <div id="wrapUpComponentsList" class="wrap-up-chip-list"></div>
-                    </div>
-                </div>
-
                 <div class="mb-3">
                     <label for="wrapUpCommitMsg" class="form-label">Commit message</label>
                     <textarea class="form-control" id="wrapUpCommitMsg" rows="3"></textarea>
