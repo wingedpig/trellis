@@ -5,6 +5,7 @@ package logs
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -156,12 +157,19 @@ func (s *SSHSource) listFiles(ctx context.Context, pattern string) ([]RotatedFil
 
 	// Get file list with mtime and size in a single SSH command using ls
 	// --time-style=full-iso gives: 2024-01-15 10:30:00.123456789 -0500
-	remoteCmd := fmt.Sprintf("/usr/bin/ls -l --time-style=full-iso %s 2>/dev/null", pattern)
+	//
+	// stderr is deliberately not redirected to /dev/null: ls exits 2 for an
+	// unmatched glob, a missing directory, and an unreadable directory alike,
+	// so its own message is the only thing that tells those apart. Without it
+	// all three present identically as a viewer that is simply empty.
+	remoteCmd := fmt.Sprintf("/usr/bin/ls -l --time-style=full-iso %s", pattern)
 	cmd := exec.CommandContext(ctx, "ssh", s.cfg.Host, remoteCmd)
 	output, err := cmd.Output()
 	if err != nil {
 		// Empty result if no files match (ls returns exit code 2)
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 2 {
+			log.Printf("logs[%s]: no files match %s: %s",
+				s.cfg.Host, pattern, strings.TrimSpace(string(exitErr.Stderr)))
 			return nil, nil
 		}
 		return nil, fmt.Errorf("listing remote files: %w", err)
@@ -240,6 +248,14 @@ func (s *SSHSource) backwardFiles(ctx context.Context) ([]RotatedFile, []Rotated
 		active, err := s.listFiles(ctx, s.cfg.ActivePattern)
 		if err != nil {
 			return nil, nil, err
+		}
+		if len(active) == 0 {
+			// Nothing matched. These viewers have no separate current file to
+			// fall back on, so this is the difference between "quiet log" and
+			// "reading the wrong place entirely" — say so rather than letting
+			// the viewer come up empty and look like an idle server.
+			log.Printf("logs[%s]: active_pattern %q matched no files under %s; the viewer will be empty",
+				s.cfg.Host, s.cfg.ActivePattern, s.cfg.Path)
 		}
 		rotated, err := s.ListRotatedFiles(ctx)
 		return active, rotated, err
@@ -723,6 +739,27 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 		return err
 	}
 
+	// The `|| true` above keeps grep's "no lines matched" (exit 1) from looking
+	// like a failure, but it also swallows a real failure (exit 2) — an
+	// unreadable file reads exactly like one with nothing in the window. Keep
+	// the remote stderr so the reason survives, and report it when the file
+	// yielded nothing, which is the only time it explains anything. Reporting
+	// it unconditionally would log the ssh client's own per-connection banners
+	// on every successful read.
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	lineCount := 0
+	defer func() {
+		if lineCount > 0 {
+			return
+		}
+		if msg := strings.TrimSpace(stderrBuf.String()); msg != "" {
+			log.Printf("logs[%s]: %s produced no lines; remote stderr: %s",
+				s.cfg.Host, file.Path, msg)
+		}
+	}()
+
 	if err := cmd.Start(); err != nil {
 		log.Printf("SSH grep: start failed: %v", err)
 		return err
@@ -731,7 +768,6 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	lineCount := 0
 	for scanner.Scan() {
 		lineCount++
 		select {
