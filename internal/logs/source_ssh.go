@@ -59,8 +59,21 @@ func (s *SSHSource) Start(ctx context.Context, lineCh chan<- string, errCh chan<
 	return nil
 }
 
-// tailRemote tails the remote file via SSH.
-func (s *SSHSource) tailRemote(ctx context.Context, lineCh chan<- string, errCh chan<- error) {
+// tailCommand builds the remote tail command. The path is deliberately left
+// unquoted: an active pattern relies on the remote shell to expand it.
+func (s *SSHSource) tailCommand() string {
+	if s.cfg.ActivePattern != "" {
+		// The remote shell expands the pattern, so tail follows every name in
+		// the set at once and a rollover to a different name needs no restart.
+		// -q drops the "==> name <==" banners tail prints for multiple files,
+		// and -n 0 avoids replaying the tail of every file in the set at
+		// startup, which would arrive interleaved and out of order. The empty
+		// buffer that leaves behind is why the config validator requires
+		// mode: "explore" here — that mode seeds the display from a backward
+		// read rather than from the tail.
+		return fmt.Sprintf("tail -F -q -n 0 %s", path.Join(s.cfg.Path, s.cfg.ActivePattern))
+	}
+
 	// Build the log file path
 	logFile := s.cfg.Path
 	if s.cfg.Current != "" {
@@ -68,9 +81,12 @@ func (s *SSHSource) tailRemote(ctx context.Context, lineCh chan<- string, errCh 
 	}
 
 	// Use tail -F for rotation support
-	remoteCmd := fmt.Sprintf("tail -F -n 1000 %s", logFile)
+	return fmt.Sprintf("tail -F -n 1000 %s", logFile)
+}
 
-	cmd := exec.CommandContext(ctx, "ssh", s.cfg.Host, remoteCmd)
+// tailRemote tails the remote file via SSH.
+func (s *SSHSource) tailRemote(ctx context.Context, lineCh chan<- string, errCh chan<- error) {
+	cmd := exec.CommandContext(ctx, "ssh", s.cfg.Host, s.tailCommand())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		s.setError(err)
@@ -120,14 +136,19 @@ func (s *SSHSource) tailRemote(ctx context.Context, lineCh chan<- string, errCh 
 	}
 }
 
-
 // ListRotatedFiles returns available rotated log files on the remote host.
 func (s *SSHSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error) {
-	if s.cfg.RotatedPattern == "" {
+	return s.listFiles(ctx, s.cfg.RotatedPattern)
+}
+
+// listFiles returns the remote files matching a glob, newest mtime first.
+// Shared by the rotated-file listing and, for sources that cycle through a set
+// of filenames, the active-file listing.
+func (s *SSHSource) listFiles(ctx context.Context, pattern string) ([]RotatedFile, error) {
+	if pattern == "" {
 		return nil, nil
 	}
 
-	pattern := s.cfg.RotatedPattern
 	// Make pattern relative to log directory
 	if !strings.HasPrefix(pattern, "/") {
 		pattern = path.Join(s.cfg.Path, pattern)
@@ -212,6 +233,18 @@ func (s *SSHSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, error)
 // We mirror the same path-joining logic ReadRange uses so the byte-offset
 // reader sees the same active file.
 func (s *SSHSource) backwardFiles(ctx context.Context) ([]RotatedFile, []RotatedFile, error) {
+	// With an active pattern there is no single name to stat: the file being
+	// written is whichever of the set was touched most recently, which the
+	// newest-first listing puts at index 0.
+	if s.cfg.ActivePattern != "" {
+		active, err := s.listFiles(ctx, s.cfg.ActivePattern)
+		if err != nil {
+			return nil, nil, err
+		}
+		rotated, err := s.ListRotatedFiles(ctx)
+		return active, rotated, err
+	}
+
 	var active []RotatedFile
 	curPath := ""
 	if s.cfg.Current != "" {
@@ -405,11 +438,16 @@ func (s *SSHSource) ReadBackward(ctx context.Context, cursor BackwardCursor, max
 // offset paging would start at end-of-file and replay content the buffer
 // already showed.
 func (s *SSHSource) SeekToTime(ctx context.Context, target time.Time, parseTS func(line string) time.Time) (BackwardCursor, error) {
-	active, _, err := s.backwardFiles(ctx)
-	if err != nil || len(active) == 0 {
+	// Index 0 of active+rotated is the file currently being written, whether
+	// that came from cfg.Current or, for an active pattern, from the
+	// newest-first listing of the set. ReadBackward numbers FileIndex over the
+	// same combined slice.
+	active, rotated, err := s.backwardFiles(ctx)
+	files := append(active, rotated...)
+	if err != nil || len(files) == 0 {
 		return BackwardCursor{Offset: -1}, err
 	}
-	f := active[0]
+	f := files[0]
 	reader := &sshBackwardReader{ctx: ctx, src: s, path: f.Path}
 	off := findOffsetForTime(ctx, reader, f.Size, target, parseTS)
 	return BackwardCursor{FileIndex: 0, Offset: off, FilePath: f.Path}, nil
@@ -419,16 +457,34 @@ func (s *SSHSource) SeekToTime(ctx context.Context, target time.Time, parseTS fu
 // part of ReadRange, so the viewer should not double-filter the line stream.
 func (s *SSHSource) HandlesGrep() bool { return true }
 
+// readRangeFiles returns the files ReadRange should scan, newest first. For an
+// active pattern that is the whole set — the files being written included,
+// since they carry the newest entries and ReadRange has no separate current
+// file to append afterwards.
+func (s *SSHSource) readRangeFiles(ctx context.Context) ([]RotatedFile, error) {
+	if s.cfg.ActivePattern == "" {
+		return s.ListRotatedFiles(ctx)
+	}
+	active, rotated, err := s.backwardFiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(active, rotated...), nil
+}
+
 // ReadRange reads log lines from a time range in rotated files.
 func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
 	log.Printf("SSH ReadRange: start=%v end=%v grep=%q before=%d after=%d", start, end, grep, grepBefore, grepAfter)
 
-	files, err := s.ListRotatedFiles(ctx)
+	// With an active pattern there is no separate current file to append at the
+	// end: the files being written are part of the same set, so they go through
+	// the same newest-first relevance filter and chronological read below.
+	files, err := s.readRangeFiles(ctx)
 	if err != nil {
-		log.Printf("SSH ReadRange: ListRotatedFiles error: %v", err)
+		log.Printf("SSH ReadRange: listing files error: %v", err)
 		return err
 	}
-	log.Printf("SSH ReadRange: found %d rotated files", len(files))
+	log.Printf("SSH ReadRange: found %d candidate files", len(files))
 
 	// Build grep pattern for timestamp filtering
 	// This creates patterns like "2026-01-12T06:" for each hour in the range
@@ -437,7 +493,7 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 
 	relevantFiles, newestRotatedModTime := filterRelevantFiles(files, start, end)
 
-	log.Printf("SSH ReadRange: %d relevant rotated files, newestRotatedModTime=%v", len(relevantFiles), newestRotatedModTime)
+	log.Printf("SSH ReadRange: %d relevant files, newestRotatedModTime=%v", len(relevantFiles), newestRotatedModTime)
 	for _, f := range relevantFiles {
 		log.Printf("SSH ReadRange: relevant file: %s (ModTime=%v)", f.Path, f.ModTime)
 	}
@@ -452,7 +508,7 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 		}
 
 		file := relevantFiles[i]
-		log.Printf("SSH ReadRange: processing rotated file %s", file.Path)
+		log.Printf("SSH ReadRange: processing file %s", file.Path)
 		fileCtx, fileCancel := fileContext(ctx)
 		err := s.grepRemoteFile(fileCtx, file, timestampPattern, grep, grepBefore, grepAfter, lineCh)
 		fileCancel()
@@ -462,7 +518,9 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 	}
 
 	// If the time range extends beyond the newest rotated file, also read the current file
-	// (it contains entries newer than the rotated files)
+	// (it contains entries newer than the rotated files). Sources with an
+	// active pattern already covered theirs in the loop above; a second pass
+	// would duplicate every line in the window.
 	willReadCurrent := s.cfg.Current != "" && (end.IsZero() || end.After(newestRotatedModTime))
 	log.Printf("SSH ReadRange: will read current file: %v (Current=%q, end=%v, newestRotatedModTime=%v)",
 		willReadCurrent, s.cfg.Current, end, newestRotatedModTime)
@@ -487,8 +545,16 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 	return nil
 }
 
+// dateTimeSep matches the character between the date and the time in a log
+// timestamp: "T" for ISO-8601 (JSON logs), a space for formats that write
+// "2026-01-10 06:04:05" (postgres's %t, among others). The grep is only a
+// prefilter — entries are re-checked against the range after parsing — so
+// matching both separators costs nothing, while matching only "T" silently
+// returns zero lines for every space-separated log.
+const dateTimeSep = "[T ]"
+
 // buildTimestampGrepPattern builds a grep pattern to match timestamps in the given range.
-// For JSON logs, this matches patterns like "2026-01-10T" for full days or "2026-01-10T06:" for specific hours.
+// This matches patterns like "2026-01-10[T ]" for full days or "2026-01-10[T ]06:" for specific hours.
 // start/end are absolute instants; they are projected into the log's timezone
 // (s.loc) because the grep matches the remote wall-clock digits the host wrote,
 // which are in the host's timezone — not necessarily the trellis host's. When
@@ -538,8 +604,8 @@ func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 		}
 
 		if isFullDay {
-			// Full day: just use date prefix (e.g., "2026-01-10T")
-			patterns = append(patterns, currentDay.Format("2006-01-02T"))
+			// Full day: just use date prefix (e.g., "2026-01-10[T ]")
+			patterns = append(patterns, currentDay.Format("2006-01-02")+dateTimeSep)
 		} else {
 			// Partial day: enumerate the hours within range
 			hourStart := 0
@@ -554,7 +620,7 @@ func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 
 			for h := hourStart; h <= hourEnd; h++ {
 				t := time.Date(currentDay.Year(), currentDay.Month(), currentDay.Day(), h, 0, 0, 0, currentDay.Location())
-				patterns = append(patterns, t.Format("2006-01-02T15:"))
+				patterns = append(patterns, t.Format("2006-01-02")+dateTimeSep+t.Format("15:"))
 			}
 		}
 
@@ -695,4 +761,3 @@ func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timest
 
 	return waitErr
 }
-

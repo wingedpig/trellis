@@ -544,6 +544,7 @@ type LogSourceConfig struct {
 	Host           string   `json:"host"`            // SSH host
 	Path           string   `json:"path"`            // Log directory or file path
 	Current        string   `json:"current"`         // Active log file name (for SSH)
+	ActivePattern  string   `json:"active_pattern"`  // Glob for servers that cycle through a set of names instead of writing one stable file; alternative to Current (SSH only)
 	RotatedPattern string   `json:"rotated_pattern"` // Glob pattern for rotated logs
 	Decompress     string   `json:"decompress"`      // Command to decompress
 	Command        []string `json:"command"`         // Command source: command to run

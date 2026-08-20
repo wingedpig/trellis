@@ -426,6 +426,27 @@ func (v *Validator) validateLogViewers(cfg *Config, errs *ValidationError) {
 					fmt.Sprintf("invalid IANA timezone '%s': %s", lv.Timezone, err))
 			}
 		}
+		// active_pattern is for servers that cycle through a set of filenames
+		// rather than writing one stable file. Each rule below turns a silent
+		// empty viewer — the failure mode that reads as "no logs" rather than
+		// "misconfigured" — into a startup error.
+		if lv.Source.ActivePattern != "" {
+			if lv.Source.Current != "" {
+				errs.Add(fmt.Sprintf("log_viewers[%d].source.active_pattern", i),
+					"cannot be combined with source.current; active_pattern replaces it for servers that cycle through a set of filenames")
+			}
+			if lv.Source.Type != "ssh" {
+				errs.Add(fmt.Sprintf("log_viewers[%d].source.active_pattern", i),
+					fmt.Sprintf("only supported by ssh sources, not '%s'", lv.Source.Type))
+			}
+			// The tail cannot seed the buffer from a set of files without
+			// replaying them interleaved, so it starts at end-of-file. A live
+			// viewer would open blank and stay blank until a new line arrives.
+			if lv.GetMode() != "explore" {
+				errs.Add(fmt.Sprintf("log_viewers[%d].mode", i),
+					"must be \"explore\" when source.active_pattern is set: the live buffer starts empty, so a live viewer would open blank")
+			}
+		}
 	}
 
 	if cfg.LogViewerSettings.IdleTimeout != "" && cfg.LogViewerSettings.IdleTimeout != "0" {

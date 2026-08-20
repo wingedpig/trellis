@@ -201,15 +201,15 @@ func TestBuildTimestampGrepPatternTimezone(t *testing.T) {
 		t.Fatalf("NewSSHSource: %v", err)
 	}
 	// 19:30–19:45 UTC on 2026-07-22 is 15:30–15:45 in the -04:00 log zone. The
-	// window must grep for the log-zone hour "T15:", never the UTC hour "T19:".
+	// window must grep for the log-zone hour 15:, never the UTC hour 19:.
 	start := time.Date(2026, 7, 22, 19, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 7, 22, 19, 45, 0, 0, time.UTC)
 	pattern := src.buildTimestampGrepPattern(start, end)
-	if !strings.Contains(pattern, "2026-07-22T15:") {
-		t.Errorf("pattern %q missing log-zone hour 2026-07-22T15:", pattern)
+	if !strings.Contains(pattern, "2026-07-22"+dateTimeSep+"15:") {
+		t.Errorf("pattern %q missing log-zone hour 2026-07-22 15:", pattern)
 	}
-	if strings.Contains(pattern, "T19:") {
-		t.Errorf("pattern %q used the trellis/UTC hour T19: instead of the log zone", pattern)
+	if strings.Contains(pattern, "19:") {
+		t.Errorf("pattern %q used the trellis/UTC hour 19: instead of the log zone", pattern)
 	}
 }
 
@@ -223,7 +223,7 @@ func TestBuildTimestampGrepPatternNilLoc(t *testing.T) {
 	start := time.Date(2026, 7, 22, 12, 30, 0, 0, time.Local)
 	end := time.Date(2026, 7, 22, 12, 45, 0, 0, time.Local)
 	pattern := src.buildTimestampGrepPattern(start, end)
-	if want := start.Format("2006-01-02T15:"); !strings.Contains(pattern, want) {
+	if want := start.Format("2006-01-02") + dateTimeSep + start.Format("15:"); !strings.Contains(pattern, want) {
 		t.Errorf("pattern %q missing local hour %q", pattern, want)
 	}
 }

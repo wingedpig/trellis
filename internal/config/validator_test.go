@@ -56,6 +56,58 @@ func TestValidator_Validate_LogViewerTimezone(t *testing.T) {
 	assert.Error(t, validator.Validate(cfg))
 }
 
+// TestValidator_Validate_LogViewerActivePattern covers the rules that keep an
+// active_pattern viewer from failing silently. Each misconfiguration below
+// produces an empty viewer at runtime, which reads as "this host has no logs"
+// rather than "this config is wrong", so they are rejected at startup instead.
+func TestValidator_Validate_LogViewerActivePattern(t *testing.T) {
+	validator := NewValidator()
+	base := func() *Config {
+		return &Config{Version: "1.0", Project: ProjectConfig{Name: "test"}}
+	}
+	sshSource := func() LogSourceConfig {
+		return LogSourceConfig{Type: "ssh", Host: "db10", Path: "/var/log/postgresql", ActivePattern: "postgresql-*.log"}
+	}
+
+	// The intended shape: ssh source, active_pattern, explore mode.
+	cfg := base()
+	cfg.LogViewers = []LogViewerConfig{{Name: "pg", Mode: "explore", Source: sshSource()}}
+	assert.NoError(t, validator.Validate(cfg))
+
+	// current would name a single active file, which is the thing
+	// active_pattern exists to replace.
+	cfg = base()
+	src := sshSource()
+	src.Current = "postgresql.log"
+	cfg.LogViewers = []LogViewerConfig{{Name: "pg", Mode: "explore", Source: src}}
+	assert.Error(t, validator.Validate(cfg))
+
+	// Only the ssh source implements it; anywhere else it is silently ignored.
+	cfg = base()
+	src = sshSource()
+	src.Type = "file"
+	cfg.LogViewers = []LogViewerConfig{{Name: "pg", Mode: "explore", Source: src}}
+	assert.Error(t, validator.Validate(cfg))
+
+	// Live mode would open a permanently blank pane: the tail starts at
+	// end-of-file, so nothing seeds the buffer.
+	cfg = base()
+	cfg.LogViewers = []LogViewerConfig{{Name: "pg", Mode: "live", Source: sshSource()}}
+	assert.Error(t, validator.Validate(cfg))
+
+	// Mode defaults to live, so omitting it is the same mistake.
+	cfg = base()
+	cfg.LogViewers = []LogViewerConfig{{Name: "pg", Source: sshSource()}}
+	assert.Error(t, validator.Validate(cfg))
+
+	// Viewers without an active pattern are untouched by these rules.
+	cfg = base()
+	cfg.LogViewers = []LogViewerConfig{{Name: "app", Source: LogSourceConfig{
+		Type: "ssh", Host: "web01", Path: "/var/log/web", Current: "current", RotatedPattern: "@*s",
+	}}}
+	assert.NoError(t, validator.Validate(cfg))
+}
+
 func TestValidator_Validate_ServerTLSPair(t *testing.T) {
 	validator := NewValidator()
 
@@ -214,8 +266,8 @@ func TestValidator_Validate_ServiceConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				Version: "1.0",
-				Project: ProjectConfig{Name: "test"},
+				Version:  "1.0",
+				Project:  ProjectConfig{Name: "test"},
 				Services: []ServiceConfig{tt.service},
 			}
 			err := validator.Validate(cfg)

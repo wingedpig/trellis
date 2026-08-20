@@ -69,6 +69,48 @@ source: {
 }
 ```
 
+`current` names the file being written to; `rotated_pattern` is a glob for the
+files behind it, listed newest-first by mtime and used for scrollback and
+history search.
+
+Some servers have no stable current file — they cycle through a fixed set of
+names instead. Postgres with `log_filename = 'postgresql-%a.log'` rotates
+through `postgresql-Mon.log` … `postgresql-Sun.log`, so the active file changes
+name at midnight. Use `active_pattern` instead of `current` for these; it
+describes the whole set, and whichever member was written most recently is
+treated as the active file:
+
+```hjson
+{
+  name: "postgres10-logs"
+  mode: "explore"
+  source: {
+    type: "ssh"
+    host: "db10"
+    path: "/var/log/postgresql"
+    active_pattern: "postgresql-*.log"
+  }
+}
+```
+
+The remote tail follows every name in the set at once, so a rollover to a
+different name needs no restart, and the newest-first listing supplies the
+active file to the backward reader and to history search. `rotated_pattern` is
+still available alongside it for genuinely archived files behind the set (say,
+gzipped older logs), but is not needed when the set is self-limiting.
+
+Three constraints come with it, all enforced by the config validator so a
+misconfiguration is a startup error rather than a viewer that silently shows
+nothing:
+
+- It cannot be combined with `current`, which names a single active file.
+- It is implemented by the `ssh` source only.
+- It requires `mode: "explore"`. The tail starts at end-of-file rather than
+  replaying the tail of every file in the set interleaved and out of order, so
+  nothing seeds the live buffer; explore mode opens from a backward read
+  instead. For the same reason, pass `-since` when reading one of these from
+  `trellis-ctl` — without it the CLI reads only the live buffer.
+
 ### Command Source
 ```hjson
 source: {

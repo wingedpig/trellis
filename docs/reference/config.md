@@ -650,6 +650,11 @@ log_viewers: [
       host: "web01.example.com"
       path: "/var/log/nginx"      // Log directory
       current: "access.log"       // Active log file name
+      active_pattern: ""          // Alternative to current, for servers that cycle
+                                  // through a set of filenames rather than writing
+                                  // one stable file (ssh only; requires mode:
+                                  // "explore"; mutually exclusive with current).
+                                  // See Concepts › Logging, SSH Source
       rotated_pattern: "access.log.*"  // Pattern for rotated logs
       decompress: "zcat"          // Command to decompress rotated files
       follow: true                // Follow log output (default: true)
