@@ -330,3 +330,34 @@ func TestResponseWriter_WriteHeader(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, rw.status)
 	assert.Equal(t, http.StatusCreated, rec.Code)
 }
+
+func TestResponseWriter_Flush(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := &responseWriter{
+		ResponseWriter: rec,
+		status:         http.StatusOK,
+	}
+
+	_, err := rw.Write([]byte("data: hi\n\n"))
+	assert.NoError(t, err)
+	rw.Flush()
+	assert.True(t, rec.Flushed)
+}
+
+// Logging must not hide http.Flusher from SSE and NDJSON handlers.
+func TestLogging_PreservesFlusher(t *testing.T) {
+	var gotFlusher bool
+	handler := Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		gotFlusher = ok
+		if ok {
+			flusher.Flush()
+		}
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/logs/x/stream", nil))
+
+	assert.True(t, gotFlusher, "handlers must see an http.Flusher through the Logging wrapper")
+	assert.True(t, rec.Flushed)
+}
