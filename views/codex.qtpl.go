@@ -415,6 +415,7 @@ if (container) {
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="/static/js/marked_setup.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="/static/js/codex.js"></script>
@@ -424,36 +425,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:364
+//line views/codex.qtpl:365
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:364
+//line views/codex.qtpl:365
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 }
 
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 }
 
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 	return qs422016
-//line views/codex.qtpl:365
+//line views/codex.qtpl:366
 }
