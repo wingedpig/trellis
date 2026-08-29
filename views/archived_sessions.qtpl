@@ -1,0 +1,265 @@
+// Copyright © 2026 Groups.io, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+{% code
+type ArchivedSessionsPage struct {
+    BasePage
+    // WorktreeName preselects the worktree filter; "" opens on the whole archive.
+    WorktreeName string
+    // Agent preselects the agent filter ("claude" or "codex"); "" shows both.
+    Agent string
+    // Worktrees are the names offered in the filter, including worktrees that
+    // now exist only as the home of an archived session.
+    Worktrees []string
+}
+%}
+
+{% func (p *ArchivedSessionsPage) Render() %}
+{%= p.Header() %}
+
+<div class="archived-sessions">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0"><i class="fa-solid fa-box-archive"></i> Archived sessions</h2>
+        {% if p.WorktreeName != "" %}
+        <a href="/worktree/{%s p.WorktreeName %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-arrow-left"></i> Back
+        </a>
+        {% endif %}
+    </div>
+
+    <form id="archivedSessionsForm" class="row g-2 mb-2" onsubmit="runSessionArchiveSearch(event)">
+        <div class="col-md-4">
+            <input type="text" id="sessionSearchQ" class="form-control" placeholder="Search names and conversation…" autofocus>
+        </div>
+        <div class="col-md-2">
+            <select id="sessionSearchWorktree" class="form-select" onchange="runSessionArchiveSearch()">
+                <option value="">All worktrees</option>
+                {% for _, wt := range p.Worktrees %}
+                <option value="{%s wt %}"{% if wt == p.WorktreeName %} selected{% endif %}>{%s wt %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select id="sessionSearchAgent" class="form-select" onchange="runSessionArchiveSearch()">
+                <option value="">Claude &amp; Codex</option>
+                <option value="claude"{% if p.Agent == "claude" %} selected{% endif %}>Claude</option>
+                <option value="codex"{% if p.Agent == "codex" %} selected{% endif %}>Codex</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <input type="date" id="sessionSearchFrom" class="form-control" title="Created on or after">
+        </div>
+        <div class="col-md-1">
+            <input type="date" id="sessionSearchTo" class="form-control" title="Created on or before">
+        </div>
+        <div class="col-md-1 d-grid">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i></button>
+        </div>
+    </form>
+
+    <div class="d-flex align-items-center mb-3">
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" id="sessionSearchTools" onchange="runSessionArchiveSearch()">
+            <label class="form-check-label" for="sessionSearchTools">Also search tool calls and output (slow)</label>
+        </div>
+        <div class="ms-auto">
+            <label class="form-label me-2 mb-0">Sort by</label>
+            <select id="sessionSearchSort" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="renderSessionArchiveResults()">
+                <option value="relevance">Relevance</option>
+                <option value="archived">Date archived</option>
+                <option value="activity">Last activity</option>
+                <option value="name">Name</option>
+                <option value="worktree">Worktree</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="sessionArchiveResults">
+        <div class="text-muted">Loading…</div>
+    </div>
+</div>
+
+<script>
+// var (not let): SPA navigation re-executes this inline script in global
+// scope, and a top-level let/const throws "already declared" on the second run.
+var ARCHIVE_RESULTS = [];
+
+function initArchivedSessionsPage() {
+    runSessionArchiveSearch();
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initArchivedSessionsPage);
+} else {
+    initArchivedSessionsPage();
+}
+
+// archiveQueryString builds the shared query params both agent endpoints take.
+function archiveQueryString() {
+    var qs = new URLSearchParams();
+    var q = document.getElementById('sessionSearchQ').value.trim();
+    if (q) qs.set('q', q);
+    var wt = document.getElementById('sessionSearchWorktree').value;
+    if (wt) qs.set('worktree', wt);
+    var from = document.getElementById('sessionSearchFrom').value;
+    if (from) qs.set('from', from);
+    var to = document.getElementById('sessionSearchTo').value;
+    if (to) qs.set('to', to);
+    if (document.getElementById('sessionSearchTools').checked) qs.set('include_tools', '1');
+    return qs.toString();
+}
+
+function runSessionArchiveSearch(ev) {
+    if (ev) ev.preventDefault();
+    var agent = document.getElementById('sessionSearchAgent').value;
+    var qs = archiveQueryString();
+    var el = document.getElementById('sessionArchiveResults');
+    el.innerHTML = '<div class="text-muted">Searching…</div>';
+
+    // Each agent keeps its own session store, so the merged view is two
+    // requests joined client-side and re-sorted below.
+    var wanted = agent ? [agent] : ['claude', 'codex'];
+    Promise.all(wanted.map(function(a) {
+        return fetch('/api/v1/' + a + '/archived-sessions?' + qs)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var rows = (d && d.data) || d || [];
+                if (!Array.isArray(rows)) rows = [];
+                return rows.map(function(row) { row.agent = a; return row; });
+            })
+            .catch(function() { return []; });
+    })).then(function(lists) {
+        ARCHIVE_RESULTS = [].concat.apply([], lists);
+        renderSessionArchiveResults();
+    });
+}
+
+function sortedArchiveResults() {
+    var key = document.getElementById('sessionSearchSort').value;
+    var rows = ARCHIVE_RESULTS.slice();
+    var ts = function(v) { return v ? Date.parse(v) || 0 : 0; };
+    rows.sort(function(a, b) {
+        switch (key) {
+            case 'archived':
+                return ts(b.archived_at) - ts(a.archived_at);
+            case 'activity':
+                return ts(b.last_activity_at || b.created_at) - ts(a.last_activity_at || a.created_at);
+            case 'name':
+                return (a.display_name || '').localeCompare(b.display_name || '');
+            case 'worktree':
+                return (a.worktree_name || '').localeCompare(b.worktree_name || '')
+                    || ts(b.archived_at) - ts(a.archived_at);
+            default: // relevance — score first, then most recently archived
+                return (b.score || 0) - (a.score || 0) || ts(b.archived_at) - ts(a.archived_at);
+        }
+    });
+    return rows;
+}
+
+function renderSessionArchiveResults() {
+    var el = document.getElementById('sessionArchiveResults');
+    var rows = sortedArchiveResults();
+    if (rows.length === 0) {
+        el.innerHTML = '<div class="text-muted p-3">Nothing in the archive matches.</div>';
+        return;
+    }
+
+    el.textContent = '';
+    var count = document.createElement('div');
+    count.className = 'text-muted small mb-2';
+    count.textContent = rows.length + (rows.length === 1 ? ' session' : ' sessions');
+    el.appendChild(count);
+
+    var list = document.createElement('div');
+    list.className = 'list-group';
+    rows.forEach(function(row) { list.appendChild(archiveRow(row)); });
+    el.appendChild(list);
+}
+
+function archiveRow(row) {
+    var item = document.createElement('div');
+    item.className = 'list-group-item d-flex justify-content-between align-items-center';
+
+    var link = document.createElement('a');
+    link.className = 'text-decoration-none flex-grow-1 me-2';
+    link.href = '/' + row.agent + '/' + encodeURIComponent(row.worktree_name) + '/' + encodeURIComponent(row.id);
+
+    var head = document.createElement('div');
+    var badge = document.createElement('span');
+    badge.className = 'badge bg-secondary me-2';
+    badge.textContent = row.agent;
+    head.appendChild(badge);
+    var name = document.createElement('strong');
+    name.textContent = row.display_name || row.id.slice(0, 8);
+    head.appendChild(name);
+    link.appendChild(head);
+
+    var meta = document.createElement('div');
+    meta.className = 'text-muted small';
+    meta.textContent = archiveMetaLine(row);
+    link.appendChild(meta);
+
+    if (row.snippet) {
+        var snippet = document.createElement('div');
+        snippet.className = 'text-muted small fst-italic';
+        snippet.textContent = row.snippet;
+        link.appendChild(snippet);
+    }
+    item.appendChild(link);
+
+    var unarchive = document.createElement('button');
+    unarchive.className = 'btn btn-outline-success btn-sm me-1';
+    unarchive.title = 'Unarchive — put back in the worktree listing';
+    unarchive.innerHTML = '<i class="fa-solid fa-box-open"></i>';
+    unarchive.onclick = function() { unarchiveSession(row); };
+    item.appendChild(unarchive);
+
+    var trash = document.createElement('button');
+    trash.className = 'btn btn-outline-danger btn-sm';
+    trash.title = 'Move to trash';
+    trash.innerHTML = '<i class="fa-solid fa-trash"></i>';
+    trash.onclick = function() { trashArchivedSession(row); };
+    item.appendChild(trash);
+
+    return item;
+}
+
+function archiveMetaLine(row) {
+    var parts = [];
+    if (row.worktree_name) parts.push(row.worktree_name);
+    if (row.message_count) parts.push(row.message_count + (row.message_count === 1 ? ' message' : ' messages'));
+    if (row.archived_at) {
+        var d = new Date(row.archived_at);
+        if (!isNaN(d)) parts.push('archived ' + d.toLocaleDateString());
+    }
+    return parts.join(' · ');
+}
+
+function unarchiveSession(row) {
+    fetch('/api/v1/' + row.agent + '/sessions/' + encodeURIComponent(row.id) + '/unarchive', { method: 'POST' })
+    .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        dropArchiveRow(row.id);
+    })
+    .catch(function(err) { alert('Failed to unarchive session: ' + err); });
+}
+
+function trashArchivedSession(row) {
+    if (!confirm('Move this session to the trash? It will be deleted for good after 7 days.')) return;
+    fetch('/api/v1/' + row.agent + '/sessions/' + encodeURIComponent(row.id), { method: 'DELETE' })
+    .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        dropArchiveRow(row.id);
+    })
+    .catch(function(err) { alert('Failed to trash session: ' + err); });
+}
+
+// dropArchiveRow removes a row that just left the archive, so the list stays
+// accurate without re-running the search.
+function dropArchiveRow(id) {
+    ARCHIVE_RESULTS = ARCHIVE_RESULTS.filter(function(r) { return r.id !== id; });
+    renderSessionArchiveResults();
+}
+</script>
+
+{%= p.Footer() %}
+{% endfunc %}

@@ -151,6 +151,8 @@ func registerPageRoutes(r *mux.Router, pageHandler *handlers.PageHandler) {
 	r.HandleFunc("/case/{worktree}/{id}", pageHandler.CaseDetail).Methods("GET")
 	r.HandleFunc("/case/{worktree}/{id}/trace/{trace_id}", pageHandler.CaseTraceView).Methods("GET")
 	r.HandleFunc("/worktree/{worktree}/archived-cases", pageHandler.ArchivedCases).Methods("GET")
+	// Archived sessions span worktrees; ?worktree= preselects one.
+	r.HandleFunc("/archived-sessions", pageHandler.ArchivedSessions).Methods("GET")
 	// Claude Code chat pages
 	r.HandleFunc("/claude/{worktree}/{session}", pageHandler.ClaudePage).Methods("GET")
 	r.HandleFunc("/claude/{worktree}", pageHandler.ClaudeRedirect).Methods("GET")
@@ -326,6 +328,12 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/sessions/{session}/ws", claudeHandler.WebSocket).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/export", claudeHandler.ExportSessionAPI).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/restore", claudeHandler.RestoreSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/sessions/{session}/archive", claudeHandler.ArchiveSessionAPI).Methods("POST")
+		api.HandleFunc("/claude/sessions/{session}/unarchive", claudeHandler.UnarchiveSessionAPI).Methods("POST")
+		// Not worktree-scoped: archived sessions outlive the worktree they were
+		// created in, so the archive is searchable across all of them (narrow
+		// it with ?worktree=).
+		api.HandleFunc("/claude/archived-sessions", claudeHandler.SearchArchivedSessionsAPI).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/permanent", claudeHandler.PermanentDeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/claude/sessions/{session}/move", claudeHandler.MoveSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}/fork", claudeHandler.ForkSessionAPI).Methods("POST")
@@ -357,6 +365,10 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/codex/sessions/{session}/ws", codexHandler.WebSocket).Methods("GET")
 		api.HandleFunc("/codex/sessions/{session}/export", codexHandler.ExportSessionAPI).Methods("GET")
 		api.HandleFunc("/codex/sessions/{session}/restore", codexHandler.RestoreSessionAPI).Methods("POST")
+		api.HandleFunc("/codex/sessions/{session}/archive", codexHandler.ArchiveSessionAPI).Methods("POST")
+		api.HandleFunc("/codex/sessions/{session}/unarchive", codexHandler.UnarchiveSessionAPI).Methods("POST")
+		// See the Claude route above for why this isn't worktree-scoped.
+		api.HandleFunc("/codex/archived-sessions", codexHandler.SearchArchivedSessionsAPI).Methods("GET")
 		api.HandleFunc("/codex/sessions/{session}/permanent", codexHandler.PermanentDeleteSessionAPI).Methods("DELETE")
 		api.HandleFunc("/codex/sessions/{session}/fork", codexHandler.ForkSessionAPI).Methods("POST")
 		api.HandleFunc("/codex/sessions/{session}/move", codexHandler.MoveSessionAPI).Methods("POST")

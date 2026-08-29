@@ -949,7 +949,7 @@ func (h *ClaudeHandler) ListTraceReports(w http.ResponseWriter, r *http.Request)
 
 // relatedSessionRef is an entry in commitRequest.RelatedSessions: a session
 // from the *other* agent in the same worktree that the user wants captured
-// (transcript saved to the case, then session trashed) as part of a
+// (transcript saved to the case, then session archived) as part of a
 // wrap-up. Lets the user wrap up cross-agent collaborative work in one shot.
 type relatedSessionRef struct {
 	Agent     string `json:"agent"` // "claude" | "codex"
@@ -957,8 +957,9 @@ type relatedSessionRef struct {
 }
 
 // captureRelatedSession exports a session from the named agent, saves its
-// transcript to the case, and trashes the session. Best-effort — failures
-// are silent and don't abort the wrap-up.
+// transcript to the case, and archives the session — the same disposition
+// wrap-up gives the active session. Best-effort — failures are silent and
+// don't abort the wrap-up.
 //
 // Called by commitToCase when archive == true and req.RelatedSessions is
 // non-empty.
@@ -982,7 +983,7 @@ func captureRelatedSession(rel relatedSessionRef, worktreePath, caseID string, c
 		refID := uuid.New().String()[:8]
 		_ = caseMgr.SaveTranscript(worktreePath, caseID, refID, title, rel.SessionID, t)
 		seedCasePlanFromClaudeSession(caseMgr, claudeMgr, worktreePath, caseID, rel.SessionID)
-		_ = claudeMgr.TrashSession(rel.SessionID)
+		_ = claudeMgr.ArchiveSession(rel.SessionID)
 	case "codex":
 		if codexMgr == nil {
 			return
@@ -997,7 +998,7 @@ func captureRelatedSession(rel relatedSessionRef, worktreePath, caseID string, c
 		}
 		refID := uuid.New().String()[:8]
 		_ = caseMgr.SaveCodexTranscript(worktreePath, caseID, refID, title, rel.SessionID, t)
-		_ = codexMgr.TrashSession(rel.SessionID)
+		_ = codexMgr.ArchiveSession(rel.SessionID)
 	}
 }
 

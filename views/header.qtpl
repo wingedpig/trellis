@@ -142,7 +142,8 @@ window.TrellisNav = (function() {
         { value: '/trace', text: '/Trace', icon: 'magnifying-glass-location' },
         { value: '/crashes', text: '/Crashes', icon: 'skull-crossbones' },
         { value: '/events', text: '/Events', icon: 'clock-rotate-left' },
-        { value: '/usage', text: '/Usage', icon: 'coins' }
+        { value: '/usage', text: '/Usage', icon: 'coins' },
+        { value: '/archived-sessions', text: '/Archived sessions', icon: 'box-archive' }
     ];
 
     // Convert a terminal URL path to a human-readable display name.

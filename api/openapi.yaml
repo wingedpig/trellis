@@ -2069,6 +2069,90 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /claude/sessions/{session}/archive:
+    post:
+      tags: [Claude]
+      summary: Archive a Claude session
+      description: |
+        Files the session away: it leaves the worktree listing and the inbox
+        but is kept indefinitely and stays searchable. The process is stopped,
+        as with trash, but nothing is ever auto-purged. Clears trashed_at.
+      operationId: archiveClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      responses:
+        '204':
+          description: Session archived
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/sessions/{session}/unarchive:
+    post:
+      tags: [Claude]
+      summary: Return an archived Claude session to the normal listing
+      operationId: unarchiveClaudeSession
+      parameters:
+        - $ref: '#/components/parameters/ClaudeSessionId'
+      responses:
+        '204':
+          description: Session unarchived
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claude/archived-sessions:
+    get:
+      tags: [Claude]
+      summary: Search archived Claude sessions
+      description: |
+        Searches the archive across every worktree (narrow it with
+        `worktree`). Archived sessions outlive the worktree they were created
+        in, which is why this is not worktree-scoped.
+
+        Every term in `q` must appear somewhere in a session for it to match,
+        so adding words narrows the results. Matches are ranked: the session's
+        name outranks the user's own messages, which outrank the assistant's
+        replies. With no `q` the whole archive is listed, best-recency first.
+      operationId: searchArchivedClaudeSessions
+      parameters:
+        - name: q
+          in: query
+          description: Free-text query over session names and transcript prose
+          schema:
+            type: string
+        - name: worktree
+          in: query
+          description: Limit to one worktree; omit to search all of them
+          schema:
+            type: string
+        - name: from
+          in: query
+          description: Lower bound on created_at (ISO date or RFC3339)
+          schema:
+            type: string
+        - name: to
+          in: query
+          description: Upper bound on created_at (ISO date or RFC3339; a bare date is inclusive)
+          schema:
+            type: string
+        - name: include_tools
+          in: query
+          description: >
+            Set to "1" to also scan tool calls, command output and diffs.
+            Off by default — that output is the bulk of a transcript and the
+            noisiest part of it.
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        '200':
+          description: Matching archived sessions, best match first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArchivedSessionResult'
+
   /claude/sessions/{session}/fork:
     post:
       tags: [Claude]
@@ -2460,6 +2544,82 @@ paths:
         '502':
           description: Generation failed or timed out
 
+  /codex/sessions/{session}/archive:
+    post:
+      tags: [Codex]
+      summary: Archive a Codex session
+      description: |
+        Files the session away: it leaves the worktree listing and the inbox
+        but is kept indefinitely and stays searchable. The process is stopped,
+        as with trash, but nothing is ever auto-purged. Clears trashed_at.
+      operationId: archiveCodexSession
+      parameters:
+        - $ref: '#/components/parameters/CodexSessionId'
+      responses:
+        '204':
+          description: Session archived
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /codex/sessions/{session}/unarchive:
+    post:
+      tags: [Codex]
+      summary: Return an archived Codex session to the normal listing
+      operationId: unarchiveCodexSession
+      parameters:
+        - $ref: '#/components/parameters/CodexSessionId'
+      responses:
+        '204':
+          description: Session unarchived
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /codex/archived-sessions:
+    get:
+      tags: [Codex]
+      summary: Search archived Codex sessions
+      description: |
+        The Codex half of the session archive; takes the same parameters as
+        `/claude/archived-sessions` and is queried alongside it to build the
+        merged archive listing.
+      operationId: searchArchivedCodexSessions
+      parameters:
+        - name: q
+          in: query
+          description: Free-text query over session names and transcript prose
+          schema:
+            type: string
+        - name: worktree
+          in: query
+          description: Limit to one worktree; omit to search all of them
+          schema:
+            type: string
+        - name: from
+          in: query
+          description: Lower bound on created_at (ISO date or RFC3339)
+          schema:
+            type: string
+        - name: to
+          in: query
+          description: Upper bound on created_at (ISO date or RFC3339; a bare date is inclusive)
+          schema:
+            type: string
+        - name: include_tools
+          in: query
+          description: Set to "1" to also scan commands, their output and diffs
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        '200':
+          description: Matching archived sessions, best match first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArchivedSessionResult'
+
   /codex/{worktree}/wrap-up:
     post:
       tags: [Codex]
@@ -2742,6 +2902,14 @@ components:
       in: path
       required: true
       description: Claude session UUID
+      schema:
+        type: string
+
+    CodexSessionId:
+      name: session
+      in: path
+      required: true
+      description: Codex session UUID
       schema:
         type: string
 
@@ -3769,6 +3937,32 @@ components:
           type: string
           format: date-time
           description: Null if not trashed
+        archived_at:
+          type: string
+          format: date-time
+          description: >
+            Set while the session is filed in the archive; null otherwise.
+            A session is in exactly one place — active, archived, or trashed —
+            so this and trashed_at are never both set. Unlike the trash, the
+            archive is never auto-purged.
+
+    ArchivedSessionResult:
+      type: object
+      description: One archived session returned by an archive search
+      allOf:
+        - $ref: '#/components/schemas/ClaudeSession'
+        - type: object
+          properties:
+            score:
+              type: integer
+              description: Relevance rank; 0 when listing without a query
+            snippet:
+              type: string
+              description: >
+                Text around the first term hit, or the session's opening user
+                message when listing without a query
+            message_count:
+              type: integer
 
     ClaudeTranscript:
       type: object

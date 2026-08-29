@@ -178,6 +178,7 @@ type SessionInfo struct {
 	LastActivityAt time.Time `json:"last_activity_at,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	TrashedAt     *time.Time `json:"trashed_at,omitempty"`
+	ArchivedAt    *time.Time `json:"archived_at,omitempty"`
 	CostUSD       float64    `json:"cost_usd,omitempty"`
 	Model         string     `json:"model,omitempty"`
 	// SkipPermissions is true when the session auto-approves tool calls
@@ -198,6 +199,11 @@ type Session struct {
 	workDir       string
 	createdAt     time.Time
 	trashedAt     *time.Time
+	// archivedAt is set while the session is filed in the archive: hidden from
+	// the normal listings but kept forever and searchable, unlike trash.
+	// Archive and trash are mutually exclusive — each transition clears the
+	// other, so a session is exactly one of active / archived / trashed.
+	archivedAt    *time.Time
 	messages      []Message
 	cmd           *exec.Cmd
 	stdin         io.WriteCloser
@@ -324,6 +330,7 @@ func (s *Session) Info() SessionInfo {
 		DisplayName:     s.displayName,
 		CreatedAt:       s.createdAt,
 		TrashedAt:       s.trashedAt,
+		ArchivedAt:      s.archivedAt,
 		CostUSD:         s.costUSD,
 		Model:           s.model,
 		SkipPermissions: s.skipPermissions,
@@ -342,6 +349,14 @@ func (s *Session) Info() SessionInfo {
 	return info
 }
 
+// isActive reports whether the session belongs in the normal listings —
+// neither trashed nor archived.
+func (s *Session) isActive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.trashedAt == nil && s.archivedAt == nil
+}
+
 // Manager manages Claude sessions across worktrees.
 type Manager struct {
 	mu             sync.Mutex
@@ -352,6 +367,18 @@ type Manager struct {
 	messagesDir    string                // directory for per-session message files
 	plansDir       string                // directory for per-session plan files
 	bus            events.EventBus       // optional; for publishing inbox state changes
+	// persistMu serializes persist() end to end — snapshot, write, rename.
+	// Without it two concurrent persists race on the same sessions.json.tmp
+	// path: whichever renames second fails with ENOENT, and the snapshot that
+	// lands is whichever won the rename, not the newest one. Held outside
+	// m.mu; nothing takes it but persist.
+	persistMu sync.Mutex
+	// persistWG tracks persists started in the background. CreateSession has
+	// to fire one off the caller's goroutine (it still holds m.mu), so without
+	// a drain the newest snapshot can be lost when the process exits — or, in
+	// tests, land in a temp directory that has already been cleaned up.
+	// Shutdown waits on this.
+	persistWG sync.WaitGroup
 }
 
 // SetEventBus wires the bus used for publishing inbox session-state events.
@@ -411,6 +438,7 @@ func (m *Manager) loadFromDisk() {
 			workDir:      rec.WorkDir,
 			createdAt:     rec.CreatedAt,
 			trashedAt:     rec.TrashedAt,
+			archivedAt:    rec.ArchivedAt,
 			costUSD:         rec.CostUSD,
 			model:           rec.Model,
 			modelOverride:   rec.ModelOverride,
@@ -447,7 +475,7 @@ func (m *Manager) loadFromDisk() {
 	}
 	if purged > 0 {
 		log.Printf("claude: purged %d expired trashed sessions", purged)
-		go m.persist()
+		m.persistAsync()
 	}
 	if len(records)-purged > 0 {
 		log.Printf("claude: loaded %d persisted sessions", len(records)-purged)
@@ -459,6 +487,9 @@ func (m *Manager) persist() {
 	if m.sessionsFile == "" {
 		return
 	}
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+
 	m.mu.Lock()
 	records := make([]SessionRecord, 0, len(m.sessions))
 	for _, s := range m.sessions {
@@ -471,6 +502,7 @@ func (m *Manager) persist() {
 			WorkDir:      s.workDir,
 			CreatedAt:        s.createdAt,
 			TrashedAt:        s.trashedAt,
+			ArchivedAt:       s.archivedAt,
 			CostUSD:          s.costUSD,
 			Model:            s.model,
 			ModelOverride:    s.modelOverride,
@@ -483,6 +515,17 @@ func (m *Manager) persist() {
 	if err := saveRecords(m.sessionsFile, records); err != nil {
 		log.Printf("claude: failed to persist sessions: %v", err)
 	}
+}
+
+// persistAsync runs persist off the caller's goroutine, tracked so Shutdown
+// can wait for it. Callers holding m.mu must use this rather than calling
+// persist directly, which would deadlock re-taking m.mu.
+func (m *Manager) persistAsync() {
+	m.persistWG.Add(1)
+	go func() {
+		defer m.persistWG.Done()
+		m.persist()
+	}()
 }
 
 // makePersistFn returns a callback that persists manager state.
@@ -549,7 +592,7 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	m.sessions[id] = s
 	m.worktreeIndex[worktreeName] = append(m.worktreeIndex[worktreeName], id)
 
-	go m.persist()
+	m.persistAsync()
 	s.mu.Lock()
 	s.publishStateLocked()
 	s.mu.Unlock()
@@ -572,10 +615,7 @@ func (m *Manager) ListSessions(worktreeName string) []*SessionInfo {
 	result := make([]*SessionInfo, 0, len(ids))
 	for _, id := range ids {
 		if s, ok := m.sessions[id]; ok {
-			s.mu.Lock()
-			trashed := s.trashedAt != nil
-			s.mu.Unlock()
-			if trashed {
+			if !s.isActive() {
 				continue
 			}
 			info := s.Info()
@@ -724,6 +764,10 @@ func (m *Manager) TrashSession(sessionID string) error {
 	s.closeAllSubscribers()
 	now := time.Now()
 	s.trashedAt = &now
+	// Trash and archive are mutually exclusive: trashing an archived session
+	// moves it, so restoring later returns it to the normal listing rather
+	// than silently back into the archive.
+	s.archivedAt = nil
 	s.started = false
 	s.generating = false
 	s.stdin = nil
@@ -776,6 +820,61 @@ func (m *Manager) ListTrashedSessions(worktreeName string) []*SessionInfo {
 	return result
 }
 
+// ArchiveSession files a session away: it leaves the normal listings but is
+// kept indefinitely and stays searchable. The process is killed, as with
+// trash, but nothing is ever auto-purged.
+func (m *Manager) ArchiveSession(sessionID string) error {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionID]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	s.mu.Lock()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.closeAllSubscribers()
+	now := time.Now()
+	s.archivedAt = &now
+	s.trashedAt = nil
+	s.started = false
+	s.generating = false
+	s.stdin = nil
+	s.cmd = nil
+	s.cancel = nil
+	s.publishStateLocked()
+	s.mu.Unlock()
+
+	m.persist()
+	return nil
+}
+
+// UnarchiveSession returns an archived session to the normal listing.
+func (m *Manager) UnarchiveSession(sessionID string) error {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionID]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	s.mu.Lock()
+	s.archivedAt = nil
+	s.publishStateLocked()
+	s.mu.Unlock()
+
+	m.persist()
+	return nil
+}
+
+// ListArchivedSessions returns archived sessions for a worktree, or for every
+// worktree when worktreeName is empty.
+func (m *Manager) ListArchivedSessions(worktreeName string) []*SessionInfo {
+	return infosOf(m.SearchArchivedSessions(ArchiveQuery{Worktree: worktreeName}))
+}
+
 // AllSessions returns info for all active (non-trashed) sessions across all worktrees.
 func (m *Manager) AllSessions() []*SessionInfo {
 	m.mu.Lock()
@@ -783,10 +882,7 @@ func (m *Manager) AllSessions() []*SessionInfo {
 
 	result := make([]*SessionInfo, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		s.mu.Lock()
-		trashed := s.trashedAt != nil
-		s.mu.Unlock()
-		if trashed {
+		if !s.isActive() {
 			continue
 		}
 		info := s.Info()
@@ -802,10 +898,7 @@ func (m *Manager) GetOrCreateSession(worktreeName, workDir string) *Session {
 	ids := m.worktreeIndex[worktreeName]
 	for _, id := range ids {
 		if s, ok := m.sessions[id]; ok {
-			s.mu.Lock()
-			trashed := s.trashedAt != nil
-			s.mu.Unlock()
-			if !trashed {
+			if s.isActive() {
 				m.mu.Unlock()
 				return s
 			}
@@ -819,8 +912,6 @@ func (m *Manager) GetOrCreateSession(worktreeName, workDir string) *Session {
 // Shutdown kills all running Claude processes and closes all subscribers.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	for _, s := range m.sessions {
 		s.mu.Lock()
 		if s.cancel != nil {
@@ -829,6 +920,11 @@ func (m *Manager) Shutdown() {
 		s.closeAllSubscribers()
 		s.mu.Unlock()
 	}
+	m.mu.Unlock()
+
+	// Drain background persists outside m.mu — they need it themselves — so
+	// the newest snapshot is on disk before we return.
+	m.persistWG.Wait()
 }
 
 // persistMessage appends a single message to disk. Must be called with s.mu held.
@@ -1220,6 +1316,7 @@ func (s *Session) publishStateLocked() {
 		"reason":       s.reasonLocked(),
 		"unread":       s.unread,
 		"trashed":      s.trashedAt != nil,
+		"archived":     s.archivedAt != nil,
 	}
 	_ = bus.Publish(context.Background(), events.Event{
 		Type:     events.EventSessionStateChanged,

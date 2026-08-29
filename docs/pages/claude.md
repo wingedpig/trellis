@@ -35,6 +35,12 @@ Click the pencil icon next to a session on the worktree home page to rename it.
 
 Click the trash icon next to a session on the worktree home page. This moves the session to trash — the process is stopped but the session data is preserved.
 
+### Archiving Sessions
+
+Click the box icon next to a session on the worktree home page, or **Archive session** in the chat page's ⋮ menu. Archiving stops the process and takes the session out of the worktree listing, but keeps it indefinitely and searchable — the archive is for finished work you may want to look up later, where the trash is for work you are done with.
+
+A session is in exactly one place: active, archived, or trashed. Archiving a session clears it from the trash and vice versa, and unlike the trash the archive is never auto-purged.
+
 ### Forking a Session
 
 While viewing a Claude chat, hover over any completed message and click the branch icon (next to the copy icon) to fork the session at that point.
@@ -63,6 +69,23 @@ Click **Show Trash** on the worktree home page to view trashed sessions. Each tr
 - **Permanent Delete** — Permanently remove the session and its message history (requires confirmation)
 
 Trashed sessions are automatically purged after 7 days on server startup.
+
+### Archived Sessions Page
+
+**Archived** on the worktree home page (or `/Archived sessions` in the nav picker) opens the archive at `/archived-sessions`. It lists archived Claude and Codex sessions together and searches across them:
+
+- **Search box** — Free-text search over session names and the conversation itself. Every word you type has to appear somewhere in a session for it to match, so adding words narrows the results. Results are ranked: a hit in the session's name outranks one in your own messages, which outranks one in Claude's replies.
+- **Worktree / agent filters** — The worktree list includes worktrees that no longer exist, since removing a worktree doesn't remove sessions archived from it.
+- **Date range** — Bounds on when the session was created.
+- **Also search tool calls and output** — Off by default. Tool calls, command output, and diffs are the bulk of a transcript and the noisiest part of it; turn this on when you're looking for a command or a filename rather than something someone said.
+- **Sort** — Relevance (default), date archived, last activity, name, or worktree.
+
+Each result links to the session's chat page, and carries:
+
+- **Unarchive** — Puts the session back in its worktree's normal listing
+- **Move to trash** — Sends it to the trash, where the usual 7-day purge applies
+
+The page opens filtered when you arrive from a worktree (`?worktree=` and `?agent=`); clear the filters to search the whole archive.
 
 ## Chat Interface
 
@@ -167,7 +190,7 @@ On confirm, Trellis creates the case if needed, snapshots this session's transcr
 
 ## Wrap Up
 
-Click the **Wrap Up** button when the work is done. Wrap Up runs the same workflow as Commit with one extra flag: the case directory is archived and bundled into the commit, and the session is trashed.
+Click the **Wrap Up** button when the work is done. Wrap Up runs the same workflow as Commit with one extra flag: the case directory is archived and bundled into the commit, and the session is archived.
 
 The Wrap Up modal adds (on top of the Commit modal):
 
@@ -177,7 +200,7 @@ The Wrap Up modal adds (on top of the Commit modal):
 
 ![The Wrap Up modal: changed files, a linked trace, and a generated commit message](/docs/images/wrapup-modal.png)
 
-On confirm, Trellis runs everything Commit does, saves the extras you selected, generates the case's searchable summary, and archives the case directory into the same commit as your code — so the whole record of the work lands in git in one step. The session is trashed when done, and you're redirected to the worktree home page.
+On confirm, Trellis runs everything Commit does, saves the extras you selected, generates the case's searchable summary, and archives the case directory into the same commit as your code — so the whole record of the work lands in git in one step. The session is archived when done (see [Archived Sessions Page](#archived-sessions-page)), and you're redirected to the worktree home page.
 
 If anything fails partway through, the archive is rolled back so the case returns to its pre-wrap-up state.
 
@@ -193,7 +216,7 @@ Mechanics you don't need day-to-day, collected here for the curious:
 - **Moving a session** — The server creates the new worktree, copies the selected files (preserving mode and relative paths), reverts the source worktree — tracked files via `git checkout --`, untracked files via delete — then stops the running Claude process and rebinds the session. A `claude.session.moved` event is emitted.
 - **Plans** — Plan history is stored per session in `.trellis/claude/plans/<session-id>.json` and exposed at `GET/PUT /api/v1/claude/sessions/{session}/plan`.
 - **Commit** — On confirm the server resolves or creates the case, snapshots the session's transcript (if the case was just created), refreshes every attached transcript from its live source, `git add`s the selected files, `git commit`s, and appends a `CommitEntry` to `case.json` with the SHA, date, message, generated description, and files changed. The draft message comes from `claude -p`; inputs include the diff of your checked files (the staging area is not consulted), the case manifest, `notes.md`, and the last few user messages from the session.
-- **Wrap Up** — Runs the Commit steps, merges new links, saves selected traces, captures selected related sessions (transcript saved, session trashed), generates the case summary via `claude -p` synchronously (with a timeout) so it lands in the same commit, moves the case directory from `cases/` to `cases-archived/`, `git add`s the selected files plus the archived directory, commits, and trashes the active session. A failure between archive and commit rolls the archive back.
+- **Wrap Up** — Runs the Commit steps, merges new links, saves selected traces, captures selected related sessions (transcript saved, session archived), generates the case summary via `claude -p` synchronously (with a timeout) so it lands in the same commit, moves the case directory from `cases/` to `cases-archived/`, `git add`s the selected files plus the archived directory, commits, and archives the active session. A failure between archive and commit rolls the archive back.
 - **Codex** — The wrap-up modal (`static/js/wrapup.js`) and the server-side `commitToCase` orchestrator are agent-agnostic; the only per-agent differences are the Save-to-Case button label and the transcript directory.
 
 ## Related

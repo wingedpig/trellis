@@ -192,6 +192,13 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4><i class="fa-solid fa-robot"></i> Claude Sessions</h4>
             <div>
+                <a href="/archived-sessions?agent=claude&worktree=`)
+//line views/worktree_home.qtpl:82
+	qw422016.E().S(p.WorktreeName)
+//line views/worktree_home.qtpl:82
+	qw422016.N().S(`" class="btn btn-outline-secondary btn-sm me-1">
+                    <i class="fa-solid fa-box-archive"></i> Archived
+                </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" id="showTrashBtn" onclick="toggleTrashedSessions()">
                     <i class="fa-solid fa-trash-can"></i> Show Trash
                 </button>
@@ -205,96 +212,103 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:94
+//line views/worktree_home.qtpl:97
 	if len(p.ClaudeSessions) == 0 {
-//line views/worktree_home.qtpl:94
+//line views/worktree_home.qtpl:97
 		qw422016.N().S(`
         <div class="empty-state">
             <p class="text-muted">No Claude sessions yet. Create one to get started.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:98
+//line views/worktree_home.qtpl:101
 	} else {
-//line views/worktree_home.qtpl:98
+//line views/worktree_home.qtpl:101
 		qw422016.N().S(`
         <div class="list-group">
             `)
-//line views/worktree_home.qtpl:100
+//line views/worktree_home.qtpl:103
 		for _, sess := range p.ClaudeSessions {
-//line views/worktree_home.qtpl:100
+//line views/worktree_home.qtpl:103
 			qw422016.N().S(`
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="/claude/`)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:105
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:105
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:105
 			qw422016.E().S(sess.ID)
-//line views/worktree_home.qtpl:102
+//line views/worktree_home.qtpl:105
 			qw422016.N().S(`" class="text-decoration-none flex-grow-1 d-flex align-items-center">
                     <i class="fa-solid fa-message"></i>
                     <span class="ms-1">`)
-//line views/worktree_home.qtpl:104
+//line views/worktree_home.qtpl:107
 			qw422016.E().S(sess.DisplayName)
-//line views/worktree_home.qtpl:104
+//line views/worktree_home.qtpl:107
 			qw422016.N().S(`</span>
                     `)
-//line views/worktree_home.qtpl:105
+//line views/worktree_home.qtpl:108
 			if !sess.LastUserInput.IsZero() {
-//line views/worktree_home.qtpl:105
+//line views/worktree_home.qtpl:108
 				qw422016.N().S(`
                     <span class="text-muted ms-2 small">`)
-//line views/worktree_home.qtpl:106
+//line views/worktree_home.qtpl:109
 				qw422016.E().S(FormatRelativeTime(sess.LastUserInput))
-//line views/worktree_home.qtpl:106
+//line views/worktree_home.qtpl:109
 				qw422016.N().S(`</span>
                     `)
-//line views/worktree_home.qtpl:107
+//line views/worktree_home.qtpl:110
 			}
-//line views/worktree_home.qtpl:107
+//line views/worktree_home.qtpl:110
 			qw422016.N().S(`
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameClaudeSession('`)
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:112
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:112
 			qw422016.N().S(`', '`)
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:112
 			qw422016.E().S(JSAttr(sess.DisplayName))
-//line views/worktree_home.qtpl:109
+//line views/worktree_home.qtpl:112
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Move to new worktree" onclick="showMoveSessionModal('`)
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:115
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:115
 			qw422016.N().S(`', '`)
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:115
 			qw422016.E().S(JSAttr(sess.DisplayName))
-//line views/worktree_home.qtpl:112
+//line views/worktree_home.qtpl:115
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i>
                 </button>
-                <button class="btn btn-outline-danger btn-sm" onclick="deleteClaudeSession('`)
-//line views/worktree_home.qtpl:115
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Archive — keep it, searchable, out of this list" onclick="archiveClaudeSession('`)
+//line views/worktree_home.qtpl:118
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:115
+//line views/worktree_home.qtpl:118
+			qw422016.N().S(`')">
+                    <i class="fa-solid fa-box-archive"></i>
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteClaudeSession('`)
+//line views/worktree_home.qtpl:121
+			qw422016.E().S(JSAttr(sess.ID))
+//line views/worktree_home.qtpl:121
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:119
+//line views/worktree_home.qtpl:125
 		}
-//line views/worktree_home.qtpl:119
+//line views/worktree_home.qtpl:125
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:121
+//line views/worktree_home.qtpl:127
 	}
-//line views/worktree_home.qtpl:121
+//line views/worktree_home.qtpl:127
 	qw422016.N().S(`
 
         <div id="trashedSessionsContainer" style="display:none;" class="mt-3">
@@ -308,6 +322,13 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4><i class="fa-solid fa-microchip"></i> Codex Sessions</h4>
             <div>
+                <a href="/archived-sessions?agent=codex&worktree=`)
+//line views/worktree_home.qtpl:140
+	qw422016.E().S(p.WorktreeName)
+//line views/worktree_home.qtpl:140
+	qw422016.N().S(`" class="btn btn-outline-secondary btn-sm me-1">
+                    <i class="fa-solid fa-box-archive"></i> Archived
+                </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" onclick="toggleTrashedCodexSessions()">
                     <i class="fa-solid fa-trash-can"></i> Show Trash
                 </button>
@@ -318,96 +339,103 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:143
+//line views/worktree_home.qtpl:152
 	if len(p.CodexSessions) == 0 {
-//line views/worktree_home.qtpl:143
+//line views/worktree_home.qtpl:152
 		qw422016.N().S(`
         <div class="empty-state">
             <p class="text-muted">No Codex sessions yet. Create one to get started.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:147
+//line views/worktree_home.qtpl:156
 	} else {
-//line views/worktree_home.qtpl:147
+//line views/worktree_home.qtpl:156
 		qw422016.N().S(`
         <div class="list-group">
             `)
-//line views/worktree_home.qtpl:149
+//line views/worktree_home.qtpl:158
 		for _, sess := range p.CodexSessions {
-//line views/worktree_home.qtpl:149
+//line views/worktree_home.qtpl:158
 			qw422016.N().S(`
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="/codex/`)
-//line views/worktree_home.qtpl:151
+//line views/worktree_home.qtpl:160
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:151
+//line views/worktree_home.qtpl:160
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:151
+//line views/worktree_home.qtpl:160
 			qw422016.E().S(sess.ID)
-//line views/worktree_home.qtpl:151
+//line views/worktree_home.qtpl:160
 			qw422016.N().S(`" class="text-decoration-none flex-grow-1 d-flex align-items-center">
                     <i class="fa-solid fa-message"></i>
                     <span class="ms-1">`)
-//line views/worktree_home.qtpl:153
+//line views/worktree_home.qtpl:162
 			qw422016.E().S(sess.DisplayName)
-//line views/worktree_home.qtpl:153
+//line views/worktree_home.qtpl:162
 			qw422016.N().S(`</span>
                     `)
-//line views/worktree_home.qtpl:154
+//line views/worktree_home.qtpl:163
 			if !sess.LastUserInput.IsZero() {
-//line views/worktree_home.qtpl:154
+//line views/worktree_home.qtpl:163
 				qw422016.N().S(`
                     <span class="text-muted ms-2 small">`)
-//line views/worktree_home.qtpl:155
+//line views/worktree_home.qtpl:164
 				qw422016.E().S(FormatRelativeTime(sess.LastUserInput))
-//line views/worktree_home.qtpl:155
+//line views/worktree_home.qtpl:164
 				qw422016.N().S(`</span>
                     `)
-//line views/worktree_home.qtpl:156
+//line views/worktree_home.qtpl:165
 			}
-//line views/worktree_home.qtpl:156
+//line views/worktree_home.qtpl:165
 			qw422016.N().S(`
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameCodexSession('`)
-//line views/worktree_home.qtpl:158
+//line views/worktree_home.qtpl:167
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:158
+//line views/worktree_home.qtpl:167
 			qw422016.N().S(`', '`)
-//line views/worktree_home.qtpl:158
+//line views/worktree_home.qtpl:167
 			qw422016.E().S(JSAttr(sess.DisplayName))
-//line views/worktree_home.qtpl:158
+//line views/worktree_home.qtpl:167
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
                 <button class="btn btn-outline-secondary btn-sm me-1" title="Move to new worktree" onclick="showMoveCodexSessionModal('`)
-//line views/worktree_home.qtpl:161
+//line views/worktree_home.qtpl:170
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:161
+//line views/worktree_home.qtpl:170
 			qw422016.N().S(`', '`)
-//line views/worktree_home.qtpl:161
+//line views/worktree_home.qtpl:170
 			qw422016.E().S(JSAttr(sess.DisplayName))
-//line views/worktree_home.qtpl:161
+//line views/worktree_home.qtpl:170
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i>
                 </button>
-                <button class="btn btn-outline-danger btn-sm" onclick="deleteCodexSession('`)
-//line views/worktree_home.qtpl:164
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Archive — keep it, searchable, out of this list" onclick="archiveCodexSession('`)
+//line views/worktree_home.qtpl:173
 			qw422016.E().S(JSAttr(sess.ID))
-//line views/worktree_home.qtpl:164
+//line views/worktree_home.qtpl:173
+			qw422016.N().S(`')">
+                    <i class="fa-solid fa-box-archive"></i>
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteCodexSession('`)
+//line views/worktree_home.qtpl:176
+			qw422016.E().S(JSAttr(sess.ID))
+//line views/worktree_home.qtpl:176
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:168
+//line views/worktree_home.qtpl:180
 		}
-//line views/worktree_home.qtpl:168
+//line views/worktree_home.qtpl:180
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:170
+//line views/worktree_home.qtpl:182
 	}
-//line views/worktree_home.qtpl:170
+//line views/worktree_home.qtpl:182
 	qw422016.N().S(`
 
         <div id="trashedCodexSessionsContainer" style="display:none;" class="mt-3">
@@ -426,66 +454,66 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
         </div>
 
         `)
-//line views/worktree_home.qtpl:187
+//line views/worktree_home.qtpl:199
 	if len(p.Terminals) == 0 {
-//line views/worktree_home.qtpl:187
+//line views/worktree_home.qtpl:199
 		qw422016.N().S(`
         <div class="empty-state">
             <p class="text-muted">No terminal windows. Create one to get started.</p>
         </div>
         `)
-//line views/worktree_home.qtpl:191
+//line views/worktree_home.qtpl:203
 	} else {
-//line views/worktree_home.qtpl:191
+//line views/worktree_home.qtpl:203
 		qw422016.N().S(`
         <div class="list-group">
             `)
-//line views/worktree_home.qtpl:193
+//line views/worktree_home.qtpl:205
 		for _, win := range p.Terminals {
-//line views/worktree_home.qtpl:193
+//line views/worktree_home.qtpl:205
 			qw422016.N().S(`
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="/terminal/local/`)
-//line views/worktree_home.qtpl:195
+//line views/worktree_home.qtpl:207
 			qw422016.E().S(p.WorktreeName)
-//line views/worktree_home.qtpl:195
+//line views/worktree_home.qtpl:207
 			qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:195
+//line views/worktree_home.qtpl:207
 			qw422016.E().S(win.Name)
-//line views/worktree_home.qtpl:195
+//line views/worktree_home.qtpl:207
 			qw422016.N().S(`" class="text-decoration-none flex-grow-1">
                     <i class="fa-solid fa-terminal"></i>
                     `)
-//line views/worktree_home.qtpl:197
+//line views/worktree_home.qtpl:209
 			qw422016.E().S(win.Name)
-//line views/worktree_home.qtpl:197
+//line views/worktree_home.qtpl:209
 			qw422016.N().S(`
                 </a>
                 <button class="btn btn-outline-secondary btn-sm me-1" onclick="renameTerminal('`)
-//line views/worktree_home.qtpl:199
+//line views/worktree_home.qtpl:211
 			qw422016.E().S(JSAttr(win.Name))
-//line views/worktree_home.qtpl:199
+//line views/worktree_home.qtpl:211
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-pencil"></i>
                 </button>
                 <button class="btn btn-outline-danger btn-sm" onclick="deleteTerminal('`)
-//line views/worktree_home.qtpl:202
+//line views/worktree_home.qtpl:214
 			qw422016.E().S(JSAttr(win.Name))
-//line views/worktree_home.qtpl:202
+//line views/worktree_home.qtpl:214
 			qw422016.N().S(`')">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
             `)
-//line views/worktree_home.qtpl:206
+//line views/worktree_home.qtpl:218
 		}
-//line views/worktree_home.qtpl:206
+//line views/worktree_home.qtpl:218
 		qw422016.N().S(`
         </div>
         `)
-//line views/worktree_home.qtpl:208
+//line views/worktree_home.qtpl:220
 	}
-//line views/worktree_home.qtpl:208
+//line views/worktree_home.qtpl:220
 	qw422016.N().S(`
     </div>
 
@@ -671,19 +699,19 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script>
 // Top-level declarations use `)
-//line views/worktree_home.qtpl:208
+//line views/worktree_home.qtpl:220
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:208
+//line views/worktree_home.qtpl:220
 	qw422016.N().S(`var`)
-//line views/worktree_home.qtpl:208
+//line views/worktree_home.qtpl:220
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:208
+//line views/worktree_home.qtpl:220
 	qw422016.N().S(` so this script can be re-executed when the
 // SPA re-fetches this page (e.g. after LRU eviction from the page cache).
 var WORKTREE_NAME = '`)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(`';
 
 var newTerminalModal, newClaudeModal, newCodexModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
@@ -810,6 +838,12 @@ function deleteCodexSession(sessionId) {
     .catch(err => alert('Failed to trash session: ' + err));
 }
 
+function archiveCodexSession(sessionId) {
+    fetch('/api/v1/codex/sessions/' + sessionId + '/archive', { method: 'POST' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); window.location.reload(); })
+    .catch(err => alert('Failed to archive session: ' + err));
+}
+
 function renameCodexSession(sessionId, currentName) {
     document.getElementById('renameModalTitle').textContent = 'Rename Codex Session';
     document.getElementById('renameInput').value = currentName;
@@ -832,30 +866,30 @@ function renameCodexSession(sessionId, currentName) {
 
 // var (not let): SPA navigation re-injects and re-executes this inline script
 // in global scope, and a top-level `)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(`let`)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(`const`)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(` throws "already declared" on
 // the second run. `)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(`var`)
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:394
+//line views/worktree_home.qtpl:406
 	qw422016.N().S(` allows redeclaration; resetting to false matches the
 // freshly-rendered (collapsed) trash panel.
 var codexTrashedVisible = false;
@@ -951,6 +985,12 @@ function deleteClaudeSession(sessionId) {
     fetch('/api/v1/claude/sessions/' + sessionId, { method: 'DELETE' })
     .then(() => window.location.reload())
     .catch(err => alert('Failed to trash session: ' + err));
+}
+
+function archiveClaudeSession(sessionId) {
+    fetch('/api/v1/claude/sessions/' + sessionId + '/archive', { method: 'POST' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); window.location.reload(); })
+    .catch(err => alert('Failed to archive session: ' + err));
 }
 
 // var (not let): see codexTrashedVisible above — SPA re-execution would throw
@@ -1281,36 +1321,36 @@ function archiveCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:966
+//line views/worktree_home.qtpl:990
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:966
+//line views/worktree_home.qtpl:990
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 }
 
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 }
 
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 	return qs422016
-//line views/worktree_home.qtpl:967
+//line views/worktree_home.qtpl:991
 }

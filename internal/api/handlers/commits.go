@@ -63,8 +63,9 @@ type agentAdapter interface {
 	// refreshAttached re-exports every transcript of this agent already
 	// attached to the case (used at wrap-up to capture final state).
 	refreshAttached(worktreePath string, c *cases.CaseJSON)
-	// trashSession archives the live session post-commit.
-	trashSession(sessionID string)
+	// archiveSession files the live session away post-commit: out of the
+	// worktree listing, kept and searchable in the archive.
+	archiveSession(sessionID string)
 	// recentUserMessages returns up to n recent user-message previews from
 	// the active session, used as input to the commit-message prompt.
 	recentUserMessages(sessionID string, n int) []string
@@ -103,11 +104,11 @@ func (a claudeAdapter) refreshAttached(worktreePath string, c *cases.CaseJSON) {
 	// We need the caseMgr to write, so refresh logic lives in commitToCase.
 }
 
-func (a claudeAdapter) trashSession(sessionID string) {
+func (a claudeAdapter) archiveSession(sessionID string) {
 	if a.m == nil || sessionID == "" {
 		return
 	}
-	_ = a.m.TrashSession(sessionID)
+	_ = a.m.ArchiveSession(sessionID)
 }
 
 func (a claudeAdapter) recentUserMessages(sessionID string, n int) []string {
@@ -169,11 +170,11 @@ func (a codexAdapter) saveInitialTranscript(worktreePath, caseID, sessionID, tit
 
 func (a codexAdapter) refreshAttached(worktreePath string, c *cases.CaseJSON) {}
 
-func (a codexAdapter) trashSession(sessionID string) {
+func (a codexAdapter) archiveSession(sessionID string) {
 	if a.m == nil || sessionID == "" {
 		return
 	}
-	_ = a.m.TrashSession(sessionID)
+	_ = a.m.ArchiveSession(sessionID)
 }
 
 func (a codexAdapter) recentUserMessages(sessionID string, n int) []string {
@@ -415,10 +416,13 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		})
 	}
 
-	// Step 10: trash the active session (wrap-up only — intermediate
-	// commits keep the session alive so the user can keep working).
+	// Step 10: archive the active session (wrap-up only — intermediate
+	// commits keep the session alive so the user can keep working). Archive
+	// rather than trash: the work is finished and its transcript is now in
+	// git, so the session is exactly the kind of finished record the archive
+	// is meant to keep searchable. Trash would delete it after 7 days.
 	if archive && req.SessionID != "" {
-		agent.trashSession(req.SessionID)
+		agent.archiveSession(req.SessionID)
 	}
 
 	return map[string]string{

@@ -86,6 +86,7 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
                     <li><button class="dropdown-item" type="button" onclick="showSaveToCaseModal()"><i class="fa-solid fa-briefcase fa-fw"></i> Save to case</button></li>
                     <li><button class="dropdown-item" type="button" onclick="showCommitModal('commit')"><i class="fa-solid fa-code-commit fa-fw"></i> Commit</button></li>
                     <li><button class="dropdown-item" type="button" onclick="showCommitModal('wrapup')"><i class="fa-solid fa-flag-checkered fa-fw"></i> Wrap up</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="archiveCurrentSession()"><i class="fa-solid fa-box-archive fa-fw"></i> Archive session</button></li>
                     <!-- pair.js and checklist.js inject their items at the end of this menu -->
                 </ul>
             </div>
@@ -120,14 +121,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // commit / wrap-up on a cache-restored session would target whichever
 // session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:88
+//line views/claude.qtpl:89
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:88
+//line views/claude.qtpl:89
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:89
+//line views/claude.qtpl:90
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:89
+//line views/claude.qtpl:90
 	qw422016.N().S(`';
 
 function localShowSaveToCaseModal() {
@@ -202,9 +203,22 @@ function doSaveTranscript(caseId, title) {
     .catch(err => alert('Save failed: ' + err));
 }
 
+// localArchiveSession files this session away and returns to the worktree,
+// where it is no longer listed. It stays readable and searchable from the
+// archive page, and unarchiving brings it back.
+function localArchiveSession() {
+    fetch('/api/v1/claude/sessions/' + encodeURIComponent(PAGE_SESSION) + '/archive', { method: 'POST' })
+    .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        window.location.href = '/worktree/' + encodeURIComponent(PAGE_WORKTREE);
+    })
+    .catch(err => alert('Failed to archive session: ' + err));
+}
+
 function bind() {
     window.CLAUDE_WORKTREE = PAGE_WORKTREE;
     window.CLAUDE_SESSION = PAGE_SESSION;
+    window.archiveCurrentSession = localArchiveSession;
     window.showSaveToCaseModal = localShowSaveToCaseModal;
     window.onSaveToCaseSelectChange = localOnSaveToCaseSelectChange;
     window.saveToCaseConfirm = localSaveToCaseConfirm;
@@ -316,37 +330,37 @@ if (container) {
 // (e.g. set after creating a new case via the wrap-up flow) survive the
 // SPA cache round-trip. Restore on page-entered.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:276
+//line views/claude.qtpl:290
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:276
+//line views/claude.qtpl:290
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:277
+//line views/claude.qtpl:291
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:277
+//line views/claude.qtpl:291
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/claude.qtpl:278
+//line views/claude.qtpl:292
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/claude.qtpl:278
+//line views/claude.qtpl:292
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/claude.qtpl:279
+//line views/claude.qtpl:293
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:279
+//line views/claude.qtpl:293
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/claude.qtpl:280
+//line views/claude.qtpl:294
 	if p.IsDefaultBranch {
-//line views/claude.qtpl:280
+//line views/claude.qtpl:294
 		qw422016.N().S(`true`)
-//line views/claude.qtpl:280
+//line views/claude.qtpl:294
 	} else {
-//line views/claude.qtpl:280
+//line views/claude.qtpl:294
 		qw422016.N().S(`false`)
-//line views/claude.qtpl:280
+//line views/claude.qtpl:294
 	}
-//line views/claude.qtpl:280
+//line views/claude.qtpl:294
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -492,36 +506,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:424
+//line views/claude.qtpl:438
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:424
+//line views/claude.qtpl:438
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 }
 
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 }
 
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 	return qs422016
-//line views/claude.qtpl:425
+//line views/claude.qtpl:439
 }

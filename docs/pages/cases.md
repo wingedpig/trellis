@@ -119,7 +119,7 @@ On confirm, Trellis creates the case if needed, snapshots the session's transcri
 
 ### Wrap Up
 
-Click **Wrap Up** when the work is done. It runs everything Commit does, then: merges any new links, saves selected traces, captures selected related sessions from the other agent, generates the case's searchable summary, and archives the case directory into the same commit as your code — the whole record of the work lands in git in one step. The active session is trashed when done.
+Click **Wrap Up** when the work is done. It runs everything Commit does, then: merges any new links, saves selected traces, captures selected related sessions from the other agent, generates the case's searchable summary, and archives the case directory into the same commit as your code — the whole record of the work lands in git in one step. The active session, and any related sessions you captured, are archived when done — kept and searchable rather than deleted.
 
 If anything fails partway through, the archive is rolled back so the case returns to its pre-wrap-up state.
 

@@ -23,6 +23,10 @@ type SessionRecord struct {
 	WorkDir      string     `json:"work_dir"`
 	CreatedAt    time.Time  `json:"created_at"`
 	TrashedAt    *time.Time `json:"trashed_at,omitempty"`
+	// ArchivedAt marks a session the user filed away for later reference.
+	// Unlike TrashedAt it is never auto-purged — the archive is meant to be
+	// searched long after the work is done.
+	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	SkipPermissions bool    `json:"skip_permissions,omitempty"` // auto-approve toggle (approval "never" + full-access sandbox)
 	Model           string  `json:"model,omitempty"`            // forced model override, "" = config default
 	Effort          string  `json:"effort,omitempty"`           // reasoning effort for the override, "" = model default

@@ -137,7 +137,7 @@
         var needsYou = [];
         var running = [];
         rows.forEach(function(r) {
-            if (r.trashed) return;
+            if (r.trashed || r.archived) return;
             if (hidden[r.id]) return;
             if (r.state === "needs_you") {
                 needsYou.push(r);
@@ -295,13 +295,16 @@
             activity: existing.activity || "",
             unread: !!p.unread,
             trashed: !!p.trashed,
+            // Archived sessions leave the inbox the same way trashed ones do:
+            // both are dispositions that take a session out of active work.
+            archived: !!p.archived,
             // Only bump on a real running↔needs-you transition. Unread-only
             // updates (e.g. cleared by viewing) must not reorder rows.
             last_state_change_at: (existing.state === undefined || stateChanged)
                 ? (ev.timestamp || new Date().toISOString())
                 : existing.last_state_change_at
         };
-        if (merged.trashed) {
+        if (merged.trashed || merged.archived) {
             rows.delete(id);
         } else {
             rows.set(id, merged);

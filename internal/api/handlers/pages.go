@@ -932,6 +932,61 @@ func (h *PageHandler) ArchivedCases(w http.ResponseWriter, r *http.Request) {
 	page.WriteRender(w)
 }
 
+// ArchivedSessions renders the archive of filed-away Claude and Codex
+// sessions. ?worktree= and ?agent= preselect the filters; without them the
+// page opens on the whole archive.
+func (h *PageHandler) ArchivedSessions(w http.ResponseWriter, r *http.Request) {
+	var activeWorktree *worktree.WorktreeInfo
+	if h.worktrees != nil {
+		activeWorktree = h.worktrees.Active()
+	}
+
+	page := &views.ArchivedSessionsPage{
+		BasePage: views.BasePage{
+			Title:    "Archived sessions",
+			Worktree: activeWorktree,
+		},
+		WorktreeName: r.URL.Query().Get("worktree"),
+		Agent:        r.URL.Query().Get("agent"),
+		Worktrees:    h.archiveWorktreeNames(),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	page.WriteRender(w)
+}
+
+// archiveWorktreeNames lists the worktrees the archive filter offers: the
+// live ones plus any that only survive as the home of an archived session,
+// since removing a worktree doesn't remove sessions filed from it.
+func (h *PageHandler) archiveWorktreeNames() []string {
+	seen := make(map[string]bool)
+	var names []string
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if h.worktrees != nil {
+		wts, _ := h.worktrees.List()
+		for _, wt := range wts {
+			add(wt.Name())
+		}
+	}
+	if h.claudeManager != nil {
+		for _, info := range h.claudeManager.ListArchivedSessions("") {
+			add(info.WorktreeName)
+		}
+	}
+	if h.codexManager != nil {
+		for _, info := range h.codexManager.ListArchivedSessions("") {
+			add(info.WorktreeName)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // CaseTraceView renders a saved trace report from a case using the standard trace report template.
 func (h *PageHandler) CaseTraceView(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

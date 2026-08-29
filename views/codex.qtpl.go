@@ -82,6 +82,7 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
                     <li><button class="dropdown-item" type="button" onclick="showCodexSaveToCaseModal()"><i class="fa-solid fa-briefcase fa-fw"></i> Save to case</button></li>
                     <li><button class="dropdown-item" type="button" onclick="showCommitModal('commit')"><i class="fa-solid fa-code-commit fa-fw"></i> Commit</button></li>
                     <li><button class="dropdown-item" type="button" onclick="showCommitModal('wrapup')"><i class="fa-solid fa-flag-checkered fa-fw"></i> Wrap up</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="archiveCurrentSession()"><i class="fa-solid fa-box-archive fa-fw"></i> Archive session</button></li>
                     <!-- pair.js and checklist.js inject their items at the end of this menu -->
                 </ul>
             </div>
@@ -112,37 +113,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:80
+//line views/codex.qtpl:81
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:80
+//line views/codex.qtpl:81
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:81
+//line views/codex.qtpl:82
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:81
+//line views/codex.qtpl:82
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:82
+//line views/codex.qtpl:83
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:82
+//line views/codex.qtpl:83
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:83
+//line views/codex.qtpl:84
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:83
+//line views/codex.qtpl:84
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 	} else {
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 	}
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -224,9 +225,22 @@ var snap = { caseObj: null };
 function captureWrap() {
     snap.caseObj = window.WRAPUP_CASE;
 }
+// localArchiveSession files this session away and returns to the worktree,
+// where it is no longer listed. It stays readable and searchable from the
+// archive page, and unarchiving brings it back.
+function localArchiveSession() {
+    fetch('/api/v1/codex/sessions/' + encodeURIComponent(PAGE_SESSION) + '/archive', { method: 'POST' })
+    .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        window.location.href = '/worktree/' + encodeURIComponent(PAGE_WORKTREE);
+    })
+    .catch(err => alert('Failed to archive session: ' + err));
+}
+
 function bind() {
     window.CODEX_WORKTREE = PAGE_WORKTREE;
     window.CODEX_SESSION = PAGE_SESSION;
+    window.archiveCurrentSession = localArchiveSession;
     window.WRAPUP_AGENT = 'codex';
     window.WRAPUP_WORKTREE = PAGE_WORKTREE;
     window.WRAPUP_SESSION_ID = PAGE_SESSION;
@@ -425,36 +439,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:379
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:365
+//line views/codex.qtpl:379
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 }
 
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 }
 
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 	return qs422016
-//line views/codex.qtpl:366
+//line views/codex.qtpl:380
 }

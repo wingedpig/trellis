@@ -52,6 +52,7 @@ type ClaudePage struct {
                     <li><button class="dropdown-item" type="button" onclick="showSaveToCaseModal()"><i class="fa-solid fa-briefcase fa-fw"></i> Save to case</button></li>
                     <li><button class="dropdown-item" type="button" onclick="showCommitModal('commit')"><i class="fa-solid fa-code-commit fa-fw"></i> Commit</button></li>
                     <li><button class="dropdown-item" type="button" onclick="showCommitModal('wrapup')"><i class="fa-solid fa-flag-checkered fa-fw"></i> Wrap up</button></li>
+                    <li><button class="dropdown-item" type="button" onclick="archiveCurrentSession()"><i class="fa-solid fa-box-archive fa-fw"></i> Archive session</button></li>
                     <!-- pair.js and checklist.js inject their items at the end of this menu -->
                 </ul>
             </div>
@@ -160,9 +161,22 @@ function doSaveTranscript(caseId, title) {
     .catch(err => alert('Save failed: ' + err));
 }
 
+// localArchiveSession files this session away and returns to the worktree,
+// where it is no longer listed. It stays readable and searchable from the
+// archive page, and unarchiving brings it back.
+function localArchiveSession() {
+    fetch('/api/v1/claude/sessions/' + encodeURIComponent(PAGE_SESSION) + '/archive', { method: 'POST' })
+    .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        window.location.href = '/worktree/' + encodeURIComponent(PAGE_WORKTREE);
+    })
+    .catch(err => alert('Failed to archive session: ' + err));
+}
+
 function bind() {
     window.CLAUDE_WORKTREE = PAGE_WORKTREE;
     window.CLAUDE_SESSION = PAGE_SESSION;
+    window.archiveCurrentSession = localArchiveSession;
     window.showSaveToCaseModal = localShowSaveToCaseModal;
     window.onSaveToCaseSelectChange = localOnSaveToCaseSelectChange;
     window.saveToCaseConfirm = localSaveToCaseConfirm;
