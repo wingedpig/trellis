@@ -33,6 +33,7 @@ type WorktreeManager struct {
 	lifecycle     *LifecycleRunner
 	projectName   string
 	defaultBranch string // Cached default branch (main/master), refreshed in Refresh()
+	expander      *config.TemplateExpander
 }
 
 // NewManager creates a new worktree manager.
@@ -47,6 +48,7 @@ func NewManager(git GitExecutor, bus events.EventBus, cfg config.WorktreeConfig,
 		createDir:   createDir,
 		lifecycle:   NewLifecycleRunner(bus, repoDir),
 		projectName: projectName,
+		expander:    config.NewTemplateExpander(),
 	}
 
 	// Initial load of worktrees
@@ -98,7 +100,7 @@ func (m *WorktreeManager) SetActive(name string) error {
 	}
 
 	m.active = target
-	m.binPath = m.expandBinariesPath(target)
+	m.binPath = m.activeBinariesPath(target)
 	return nil
 }
 
@@ -168,7 +170,7 @@ func (m *WorktreeManager) Activate(ctx context.Context, name string) (*ActivateR
 
 	// Set new active
 	m.active = currentTarget
-	m.binPath = m.expandBinariesPath(m.active)
+	m.binPath = m.activeBinariesPath(m.active)
 
 	// Copy current target info for event (before releasing lock)
 	activatedName := currentTarget.Name()
@@ -347,18 +349,50 @@ func (m *WorktreeManager) BinariesPath() string {
 	return m.binPath
 }
 
-func (m *WorktreeManager) expandBinariesPath(wt *WorktreeInfo) string {
+// activeBinariesPath resolves the binaries path to record for a newly
+// activated worktree. Expansion failure is not fatal to activation: it is
+// logged and the path is left empty so nothing acts on a wrong location.
+func (m *WorktreeManager) activeBinariesPath(wt *WorktreeInfo) string {
+	binPath, err := m.expandBinariesPath(wt)
+	if err != nil {
+		fmt.Printf("Warning: %v\n", err)
+		return ""
+	}
+	return binPath
+}
+
+// expandBinariesPath resolves worktree.binaries.path for the given worktree.
+// The configured value is a Go text/template, like every other templated
+// config value, so it goes through the shared config expander rather than
+// substituting a fixed set of placeholders. That matters for templates with
+// control flow such as {{if .Worktree.Name}}...{{else}}...{{end}}, which a
+// placeholder substitution leaves unexpanded.
+func (m *WorktreeManager) expandBinariesPath(wt *WorktreeInfo) (string, error) {
 	path := m.cfg.Binaries.Path
 	if path == "" {
-		return filepath.Join(wt.Path, "bin")
+		return filepath.Join(wt.Path, "bin"), nil
 	}
 
-	// Simple template expansion
-	path = strings.ReplaceAll(path, "{{.Worktree.Root}}", wt.Path)
-	path = strings.ReplaceAll(path, "{{.Worktree.Name}}", wt.Name())
-	path = strings.ReplaceAll(path, "{{.Worktree.Branch}}", wt.Branch)
-
-	return path
+	expander := m.expander
+	if expander == nil {
+		expander = config.NewTemplateExpander()
+	}
+	ctx := &config.TemplateContext{
+		Worktree: config.WorktreeTemplateData{
+			Root:   wt.Path,
+			Name:   wt.Name(),
+			Branch: wt.Branch,
+		},
+		Project: config.ProjectTemplateData{
+			Name: m.projectName,
+			Root: m.repoDir,
+		},
+	}
+	expanded, err := expander.Expand(path, ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to expand worktree.binaries.path %q: %w", path, err)
+	}
+	return expanded, nil
 }
 
 // ProjectName returns the project name.
@@ -417,8 +451,10 @@ func (m *WorktreeManager) Create(ctx context.Context, branchName string, switchT
 		Path:   worktreePath,
 		Branch: branchName,
 	}
-	binPath := m.expandBinariesPath(wt)
-	if err := os.MkdirAll(binPath, 0755); err != nil {
+	if binPath, err := m.expandBinariesPath(wt); err != nil {
+		// Non-fatal, just log
+		fmt.Printf("Warning: %v\n", err)
+	} else if err := os.MkdirAll(binPath, 0755); err != nil {
 		// Non-fatal, just log
 		fmt.Printf("Warning: failed to create binaries directory %s: %v\n", binPath, err)
 	}
@@ -486,9 +522,13 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 	killTmux := exec.CommandContext(ctx, "tmux", "kill-session", "-t", "="+sessionName)
 	killTmux.Run() // Ignore error - session may not exist
 
-	// Remove binaries directory
-	binPath := m.expandBinariesPath(&wt)
-	if binPath != "" {
+	// Remove binaries directory. If the path cannot be expanded, leave the
+	// filesystem alone rather than deleting a guessed location. Also refuse
+	// to delete the active worktree's binaries, which a template that does
+	// not vary per worktree would otherwise resolve to.
+	if binPath, err := m.expandBinariesPath(&wt); err != nil {
+		fmt.Printf("Warning: %v\n", err)
+	} else if binPath != "" && binPath != m.BinariesPath() {
 		if err := os.RemoveAll(binPath); err != nil {
 			fmt.Printf("Warning: failed to remove binaries directory %s: %v\n", binPath, err)
 		}

@@ -5,6 +5,9 @@ package worktree
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -326,8 +329,138 @@ func TestManager_BinariesPath(t *testing.T) {
 	mgr := NewManager(mock, bus, cfg, "", "", "test-project")
 	_, _ = mgr.Activate(context.Background(), "main")
 
-	binPath := mgr.BinariesPath()
-	assert.Contains(t, binPath, "/bin")
+	assert.Equal(t, "/project/main/bin", mgr.BinariesPath())
+}
+
+// The configured path is a Go template, so control flow such as if/else must
+// expand the same way it does for every other templated config value. A
+// placeholder substitution would leave the template text in the path and
+// create (or delete) a directory literally named after it.
+func TestManager_BinariesPath_IfElseTemplate(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	mock := &MockGitExecutor{
+		worktrees: []WorktreeInfo{
+			{Path: "/src/groups.io", Commit: "abc", Branch: "main"},
+			{Path: "/src/groups.io-new-bounce-system", Commit: "def", Branch: "new-bounce-system"},
+		},
+	}
+
+	cfg := config.WorktreeConfig{
+		Binaries: config.BinariesConfig{
+			Path: "/home/user/bin/{{if .Worktree.Name}}{{.Worktree.Name}}{{else}}groups.io{{end}}",
+		},
+	}
+
+	mgr := NewManager(mock, bus, cfg, "/src/groups.io", "/src", "groups.io")
+
+	require.NoError(t, mgr.SetActive("main"))
+	assert.Equal(t, "/home/user/bin/groups.io", mgr.BinariesPath())
+
+	_, err := mgr.Activate(context.Background(), "new-bounce-system")
+	require.NoError(t, err)
+	assert.Equal(t, "/home/user/bin/groups.io-new-bounce-system", mgr.BinariesPath())
+	assert.NotContains(t, mgr.BinariesPath(), "{{")
+}
+
+func TestManager_ExpandBinariesPath(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	wt := &WorktreeInfo{Path: "/src/proj-feature", Branch: "feature/x"}
+
+	tests := []struct {
+		name    string
+		path    string
+		wt      *WorktreeInfo // defaults to wt above
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "defaults to bin under the worktree",
+			path: "",
+			want: "/src/proj-feature/bin",
+		},
+		{
+			name: "plain placeholders",
+			path: "{{.Worktree.Root}}/out/{{.Worktree.Name}}/{{.Worktree.Branch}}",
+			want: "/src/proj-feature/out/proj-feature/feature/x",
+		},
+		{
+			name: "if/else takes the then branch when the field is set",
+			path: "/bin/{{if .Worktree.Name}}{{.Worktree.Name}}{{else}}proj{{end}}",
+			want: "/bin/proj-feature",
+		},
+		{
+			name: "if/else takes the else branch when the field is empty",
+			path: "/bin/{{if .Worktree.Branch}}{{.Worktree.Branch}}{{else}}fallback{{end}}",
+			wt:   &WorktreeInfo{Path: "/src/proj-feature"},
+			want: "/bin/fallback",
+		},
+		{
+			name: "template functions",
+			path: "/bin/{{.Worktree.Branch | slugify}}",
+			want: "/bin/feature-x",
+		},
+		{
+			name: "project name and root",
+			path: "{{.Project.Root}}/../bin/{{.Project.Name}}-{{.Worktree.Name}}",
+			want: "/src/proj/../bin/proj-proj-feature",
+		},
+		{
+			name:    "malformed template is an error, not a literal path",
+			path:    "/bin/{{.Worktree.Name",
+			wantErr: true,
+		},
+		{
+			name:    "unknown field is an error, not a literal path",
+			path:    "/bin/{{.Worktree.Nope}}",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.WorktreeConfig{Binaries: config.BinariesConfig{Path: tt.path}}
+			mgr := NewManager(&MockGitExecutor{}, bus, cfg, "/src/proj", "/src", "proj")
+
+			in := tt.wt
+			if in == nil {
+				in = wt
+			}
+
+			got, err := mgr.expandBinariesPath(in)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// A template that fails to expand must not break activation, but it must
+// also not leave a wrong path behind.
+func TestManager_BinariesPath_ExpansionErrorLeavesPathEmpty(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	mock := &MockGitExecutor{
+		worktrees: []WorktreeInfo{
+			{Path: "/project/main", Commit: "abc", Branch: "main"},
+		},
+	}
+	cfg := config.WorktreeConfig{
+		Binaries: config.BinariesConfig{Path: "/bin/{{.Worktree.Name"},
+	}
+
+	mgr := NewManager(mock, bus, cfg, "", "", "test-project")
+	_, err := mgr.Activate(context.Background(), "main")
+	require.NoError(t, err)
+	assert.Equal(t, "", mgr.BinariesPath())
 }
 
 func TestManager_Status(t *testing.T) {
@@ -487,4 +620,67 @@ func TestManager_ActivateVsRefresh_Concurrency(t *testing.T) {
 	active := mgr.Active()
 	assert.NotNil(t, active)
 	assert.NotEmpty(t, active.Name())
+}
+
+// Create must make the binaries directory at the expanded path, and Remove
+// must delete that same directory while leaving other worktrees' binaries
+// alone. This drives a real git repository because both operations shell
+// out to git directly.
+func TestManager_CreateRemove_BinariesDirUsesExpandedTemplate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "trellis-bintest")
+	require.NoError(t, os.Mkdir(repoDir, 0755))
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", repoDir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "test@example.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "README"), []byte("hi\n"), 0644))
+	git("add", "README")
+	git("commit", "-q", "-m", "init")
+
+	binRoot := filepath.Join(tmp, "bin")
+	cfg := config.WorktreeConfig{
+		Binaries: config.BinariesConfig{
+			Path: binRoot + "/{{if .Worktree.Name}}{{.Worktree.Name}}{{else}}trellis-bintest{{end}}",
+		},
+	}
+
+	bus := newTestBus()
+	defer bus.Close()
+	mgr := NewManager(NewRealGitExecutor(), bus, cfg, repoDir, tmp, "trellis-bintest")
+	require.NoError(t, mgr.SetActive("main"))
+
+	// The main repo's binaries live alongside and must survive a removal.
+	mainBin := filepath.Join(binRoot, "trellis-bintest")
+	require.NoError(t, os.MkdirAll(mainBin, 0755))
+	assert.Equal(t, mainBin, mgr.BinariesPath())
+
+	ctx := context.Background()
+	require.NoError(t, mgr.Create(ctx, "feature", false))
+
+	featureBin := filepath.Join(binRoot, "trellis-bintest-feature")
+	assert.DirExists(t, featureBin, "Create should make the binaries dir at the expanded path")
+
+	entries, err := os.ReadDir(binRoot)
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.NotContains(t, e.Name(), "{{", "Create must not make a directory named after the raw template")
+	}
+
+	require.NoError(t, mgr.Remove(ctx, "trellis-bintest-feature", true))
+	assert.NoDirExists(t, featureBin, "Remove should delete the worktree's binaries dir")
+	assert.DirExists(t, mainBin, "Remove must leave the main repo's binaries dir alone")
+	assert.NoDirExists(t, filepath.Join(tmp, "trellis-bintest-feature"))
 }

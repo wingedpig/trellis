@@ -150,6 +150,30 @@ func cleanupStalePipes() {
 }
 
 // Initialize sets up all components.
+// newTemplateContext builds the context used to expand config templates for
+// the given worktree. Project values come from the config and the resolved
+// repo directory. The binaries path is expanded first, against the same
+// context, so {{.Worktree.Binaries}} is available to every other value. If it
+// fails to expand, Binaries is left empty rather than holding template text.
+func newTemplateContext(cfg *config.Config, repoDir string, wt config.WorktreeTemplateData) *config.TemplateContext {
+	templateCtx := &config.TemplateContext{
+		Worktree: wt,
+		Project: config.ProjectTemplateData{
+			Name: cfg.Project.Name,
+			Root: repoDir,
+		},
+	}
+	if binPath := cfg.Worktree.Binaries.Path; binPath != "" {
+		expanded, err := config.NewTemplateExpander().Expand(binPath, templateCtx)
+		if err != nil {
+			log.Printf("Warning: failed to expand worktree.binaries.path %q: %v", binPath, err)
+		} else {
+			templateCtx.Worktree.Binaries = expanded
+		}
+	}
+	return templateCtx
+}
+
 func (app *App) Initialize(ctx context.Context) error {
 	cfg := app.config
 
@@ -292,26 +316,21 @@ func (app *App) Initialize(ctx context.Context) error {
 
 	// Expand templates in config
 	expander := config.NewTemplateExpander()
-	templateCtx := &config.TemplateContext{
-		Worktree: config.WorktreeTemplateData{
-			Root: "",
-		},
-	}
+	var wtData config.WorktreeTemplateData
 	if active := app.worktreeManager.Active(); active != nil {
-		templateCtx.Worktree.Root = active.Path
-		templateCtx.Worktree.Branch = active.Branch
-		templateCtx.Worktree.Name = active.Name()
-		templateCtx.Worktree.Binaries = cfg.Worktree.Binaries.Path
-		// Also expand binaries path if it has templates
-		if expandedBin, err := expander.Expand(cfg.Worktree.Binaries.Path, templateCtx); err == nil {
-			templateCtx.Worktree.Binaries = expandedBin
+		wtData = config.WorktreeTemplateData{
+			Root:   active.Path,
+			Branch: active.Branch,
+			Name:   active.Name(),
 		}
-		log.Printf("Template context: Root=%s, Name=%s, Branch=%s, Binaries=%s",
-			templateCtx.Worktree.Root, templateCtx.Worktree.Name,
-			templateCtx.Worktree.Branch, templateCtx.Worktree.Binaries)
 	} else {
-		log.Printf("Warning: no active worktree, templates will not be expanded")
+		log.Printf("Warning: no active worktree, worktree templates will not be expanded")
 	}
+	templateCtx := newTemplateContext(cfg, repoDir, wtData)
+	log.Printf("Template context: Project=%s ProjectRoot=%s Root=%s, Name=%s, Branch=%s, Binaries=%s",
+		templateCtx.Project.Name, templateCtx.Project.Root,
+		templateCtx.Worktree.Root, templateCtx.Worktree.Name,
+		templateCtx.Worktree.Branch, templateCtx.Worktree.Binaries)
 	expandedConfig, err := expander.ExpandConfig(cfg, templateCtx)
 	if err != nil {
 		return fmt.Errorf("failed to expand config templates: %w", err)
@@ -617,17 +636,11 @@ func (app *App) Initialize(ctx context.Context) error {
 
 		// Re-expand config templates with new worktree path using ORIGINAL unexpanded config
 		expander := config.NewTemplateExpander()
-		templateCtx := &config.TemplateContext{
-			Worktree: config.WorktreeTemplateData{
-				Root:   worktreePath,
-				Branch: worktreeBranch,
-				Name:   worktreeName,
-			},
-		}
-		// Expand binaries path from original config
-		if expandedBin, err := expander.Expand(app.originalConfig.Worktree.Binaries.Path, templateCtx); err == nil {
-			templateCtx.Worktree.Binaries = expandedBin
-		}
+		templateCtx := newTemplateContext(app.originalConfig, repoDir, config.WorktreeTemplateData{
+			Root:   worktreePath,
+			Branch: worktreeBranch,
+			Name:   worktreeName,
+		})
 
 		expandedConfig, err := expander.ExpandConfig(app.originalConfig, templateCtx)
 		if err != nil {
