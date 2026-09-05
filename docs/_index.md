@@ -14,7 +14,7 @@ Trellis is an **AI-native development environment** — a local web app where Cl
 - **Worktrees as environments** — Each git worktree gets its own terminals, running processes, and logs
 - **Service supervision** — Run your app's components locally with automatic restart when binaries change
 - **Terminal & tmux management** — Trellis creates and manages tmux sessions for you
-- **Claude Code & Codex sessions** — AI-assisted development with per-worktree chat sessions for either agent, transcript management, and a per-session model picker for Claude
+- **Claude Code & Codex sessions** — AI-assisted development with per-worktree chat sessions for either agent, transcript management, and a per-session model picker (model family for Claude, model + reasoning effort for Codex)
 - **Pair review & checklist runs** — Wire two AI sessions into an automated implementer/reviewer loop, or drive them through a multi-phase checklist one reviewed phase at a time
 - **Session inbox** — A floating popup listing every live Claude and Codex session across worktrees, highlighting the ones waiting on you
 - **Usage & cost tracking** — Daily, per-worktree, and per-session token usage and cost for Claude Code and Codex

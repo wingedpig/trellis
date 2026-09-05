@@ -206,7 +206,21 @@ If anything fails partway through, the archive is rolled back so the case return
 
 ## Codex parity
 
-Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), including [Auto-Approve](#auto-approve-skip-permissions), with two exceptions: [Plan Artifacts](#plan-artifacts) rely on Claude Code's plan mode, and the [Model Picker](#model-picker) is Claude-only. Codex transcripts saved to a case land in the case's `codex_transcripts/` directory instead of `transcripts/`.
+Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), including [Auto-Approve](#auto-approve-skip-permissions) and a [Model Picker](#model-picker), with one exception: [Plan Artifacts](#plan-artifacts) rely on Claude Code's plan mode. Codex transcripts saved to a case land in the case's `codex_transcripts/` directory instead of `transcripts/`.
+
+### Codex model picker
+
+Codex models are chosen together with a reasoning effort, so the footer dropdown lists model + effort combinations rather than bare model families:
+
+- **GPT-6 Astra** at Low, Medium, High, Extra High, Max, and Ultra
+- **GPT-5.6 Sol** at Medium, High, Extra High, Max, and Ultra
+- **GPT-5.5**, **GPT-5.4**, **GPT-5.4 Mini**, and **GPT-5.3 Codex Spark** at their default effort
+
+Max and Ultra are the deepest efforts Codex exposes — what ChatGPT brands "Pro" (there is no separate "pro" setting). Ultra additionally lets the model delegate work to sub-agents automatically. **Default** means no override: the session runs the `model` and `model_reasoning_effort` from your `~/.codex/config.toml`.
+
+Switching to a model, or between models, is live: the override rides on your next turn, so the running Codex process keeps its thread and nothing restarts. Switching back to **Default** restarts the process once — Codex applies a per-turn override to every subsequent turn, so only a fresh process falls back to the config default — and the conversation resumes on your next message. The choice persists with the session.
+
+If Codex's API rejects a model/effort pair — usually because the installed `codex` CLI is too old for the model — the CLI reports the turn as completed with no output instead of raising an error. Trellis surfaces that as a failed turn with a message pointing at the model setting; upgrade the Codex CLI and try again.
 
 ## Under the hood
 

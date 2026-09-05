@@ -918,14 +918,21 @@ type ModelOption struct {
 }
 
 // ModelOptions are the model choices offered in the UI picker, sent to the
-// client on connect. GPT-5.6 Sol gets the full reasoning spread; older models
-// are offered at their default effort. Efforts must be ones the model
-// advertises (codex model/list) — an unknown effort (or a model the codex
-// binary is too old for, e.g. gpt-5.6-sol before 0.144) isn't rejected
-// anywhere: the API call fails upstream and the turn completes instantly with
-// zero items. Max and Ultra are Sol's top efforts — what ChatGPT brands "Sol
-// Pro"; codex has no "pro" effort value.
+// client on connect. GPT-6 Astra and GPT-5.6 Sol get their full reasoning
+// spread; older models are offered at their default effort. Efforts must be
+// ones the model advertises (codex model/list) — an unknown effort (or a
+// model the codex binary is too old for, e.g. gpt-5.6-sol before 0.144)
+// isn't rejected anywhere: the API call fails upstream and the turn completes
+// instantly with zero items. Max and Ultra are the top efforts — what ChatGPT
+// brands "Pro"; codex has no "pro" effort value. Ultra also enables automatic
+// task delegation (sub-agents).
 var ModelOptions = []ModelOption{
+	{Model: "gpt-6-astra", Effort: "low", Label: "GPT-6 Astra Low"},
+	{Model: "gpt-6-astra", Effort: "medium", Label: "GPT-6 Astra Medium"},
+	{Model: "gpt-6-astra", Effort: "high", Label: "GPT-6 Astra High"},
+	{Model: "gpt-6-astra", Effort: "xhigh", Label: "GPT-6 Astra Extra High"},
+	{Model: "gpt-6-astra", Effort: "max", Label: "GPT-6 Astra Max"},
+	{Model: "gpt-6-astra", Effort: "ultra", Label: "GPT-6 Astra Ultra"},
 	{Model: "gpt-5.6-sol", Effort: "medium", Label: "GPT-5.6 Sol Medium"},
 	{Model: "gpt-5.6-sol", Effort: "high", Label: "GPT-5.6 Sol High"},
 	{Model: "gpt-5.6-sol", Effort: "xhigh", Label: "GPT-5.6 Sol Extra High"},

@@ -33,7 +33,7 @@ Files are parsed once and cached by modification time, so refreshes are fast eve
 
 ## Daily Usage
 
-One row per calendar day across **all** Claude Code and Codex usage on the machine (not just this project): models used, input/output tokens, cache read/write tokens, and cost. Model badges (`opus-4-8`, `gpt-5.5`, ...) show which models drove the spend.
+One row per calendar day across **all** Claude Code and Codex usage on the machine (not just this project): models used, input/output tokens, cache read/write tokens, and cost. Model badges (`fable-5-1`, `gpt-6-astra`, ...) show which models drove the spend. A model Trellis has no price for still counts toward the token totals but contributes $0 to cost.
 
 ## By Worktree
 

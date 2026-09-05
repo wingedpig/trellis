@@ -137,6 +137,8 @@ func TestPricingFallbacks(t *testing.T) {
 		{"claude-sonnet-4-6", 3},
 		{"claude-haiku-4-5-20251001", 1},
 		{"claude-3-5-haiku-20241022", 0.8},
+		{"gpt-6-astra", 10},
+		{"gpt-5.6-sol", 5},
 	}
 	for _, c := range cases {
 		p, ok := pricingFor(c.model)
