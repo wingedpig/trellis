@@ -73,6 +73,13 @@ source: {
 files behind it, listed newest-first by mtime and used for scrollback and
 history search.
 
+For text logs, set `parser.timestamp_format` to their Go time layout. SSH
+history searches use it for the remote date prefilter as well as parsing;
+nginx access logs use `"02/Jan/2006:15:04:05 -0700"` and nginx error logs use
+`"2006/01/02 15:04:05"`. Unrecognized layouts skip the remote date prefilter
+and rely on parsed timestamps. Set `timezone` to the log host's timezone so
+the prefilter selects the correct hours.
+
 Some servers have no stable current file — they cycle through a fixed set of
 names instead. Postgres with `log_filename = 'postgresql-%a.log'` rotates
 through `postgresql-Mon.log` … `postgresql-Sun.log`, so the active file changes

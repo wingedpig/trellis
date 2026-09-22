@@ -77,6 +77,10 @@ func NewViewerWithSource(cfg config.LogViewerConfig, source LogSource) (*Viewer,
 		return nil, err
 	}
 
+	if ssh, ok := source.(*SSHSource); ok {
+		ssh.timestampFormat = cfg.Parser.TimestampFormat
+	}
+
 	// Create deriver for computed fields
 	var deriver *Deriver
 	if len(cfg.Derive) > 0 {

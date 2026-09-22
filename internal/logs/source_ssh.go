@@ -11,6 +11,7 @@ import (
 	"log"
 	"os/exec"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -25,6 +26,9 @@ type SSHSource struct {
 	// to build the timestamp grep window (buildTimestampGrepPattern). nil
 	// means the trellis host's local timezone.
 	loc *time.Location
+	// timestampFormat comes from the viewer's parser, so history prefiltering
+	// uses the same date representation as parsing.
+	timestampFormat string
 }
 
 // NewSSHSource creates a new SSH-based log source. loc is the timezone the
@@ -577,12 +581,46 @@ const dateTimeSep = "[T ]"
 // s.loc is nil (unconfigured) we fall back to the trellis-local timezone, which
 // is correct only when trellis and the remote host share a timezone.
 func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
-	if start.IsZero() && end.IsZero() {
-		return "" // No filtering
+	if start.IsZero() {
+		return "" // No lower bound from which to enumerate dates.
 	}
 
 	if end.IsZero() {
 		end = time.Now()
+	}
+
+	// Only prefilter formats whose date/hour prefix is known. An unfamiliar
+	// layout must pass through to the parser rather than silently lose lines.
+	dayLayout := ""
+	if s.timestampFormat != "" {
+		for _, prefix := range []string{
+			"2006-01-02T", "2006-01-02 ", "2006/01/02 ",
+			"02/Jan/2006:", "02 Jan 2006 ", "2 Jan 2006 ",
+		} {
+			if strings.HasPrefix(s.timestampFormat, prefix+"15:04") {
+				dayLayout = prefix
+				break
+			}
+		}
+		if dayLayout == "" {
+			return ""
+		}
+	}
+	prefixPattern := func(t time.Time, hourly bool) string {
+		if dayLayout != "" {
+			layout := dayLayout
+			if hourly {
+				layout += "15:"
+			}
+			return regexp.QuoteMeta(t.Format(layout))
+		}
+		// Unconfigured formats retain the ISO date prefilter, accepting both
+		// JSON's T and the space separator used by text logs.
+		pattern := t.Format("2006-01-02") + dateTimeSep
+		if hourly {
+			pattern += t.Format("15:")
+		}
+		return pattern
 	}
 
 	// Project into the log's timezone so the wall-clock digits we grep for match
@@ -621,7 +659,7 @@ func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 
 		if isFullDay {
 			// Full day: just use date prefix (e.g., "2026-01-10[T ]")
-			patterns = append(patterns, currentDay.Format("2006-01-02")+dateTimeSep)
+			patterns = append(patterns, prefixPattern(currentDay, false))
 		} else {
 			// Partial day: enumerate the hours within range
 			hourStart := 0
@@ -636,11 +674,11 @@ func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 
 			for h := hourStart; h <= hourEnd; h++ {
 				t := time.Date(currentDay.Year(), currentDay.Month(), currentDay.Day(), h, 0, 0, 0, currentDay.Location())
-				patterns = append(patterns, t.Format("2006-01-02")+dateTimeSep+t.Format("15:"))
+				patterns = append(patterns, prefixPattern(t, true))
 			}
 		}
 
-		currentDay = currentDay.Add(24 * time.Hour)
+		currentDay = currentDay.AddDate(0, 0, 1)
 	}
 
 	if len(patterns) == 0 {
