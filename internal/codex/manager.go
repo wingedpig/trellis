@@ -918,10 +918,10 @@ type ModelOption struct {
 }
 
 // ModelOptions are the model choices offered in the UI picker, sent to the
-// client on connect. GPT-6 Astra and GPT-5.6 Sol get their full reasoning
-// spread; older models are offered at their default effort. Efforts must be
-// ones the model advertises (codex model/list) — an unknown effort (or a
-// model the codex binary is too old for, e.g. gpt-5.6-sol before 0.144)
+// client on connect. GPT-6 Astra, Sol, Luna, and GPT-5.6 Sol get their full
+// reasoning spread; older models are offered at their default effort.
+// Efforts must match the advertised codex model/list catalog — an unknown
+// effort (or a model the codex binary is too old for, e.g. gpt-5.6-sol before 0.144)
 // isn't rejected anywhere: the API call fails upstream and the turn completes
 // instantly with zero items. Max and Ultra are the top efforts — what ChatGPT
 // brands "Pro"; codex has no "pro" effort value. Ultra also enables automatic
@@ -933,6 +933,17 @@ var ModelOptions = []ModelOption{
 	{Model: "gpt-6-astra", Effort: "xhigh", Label: "GPT-6 Astra Extra High"},
 	{Model: "gpt-6-astra", Effort: "max", Label: "GPT-6 Astra Max"},
 	{Model: "gpt-6-astra", Effort: "ultra", Label: "GPT-6 Astra Ultra"},
+	{Model: "gpt-6-sol", Effort: "low", Label: "GPT-6 Sol Low"},
+	{Model: "gpt-6-sol", Effort: "medium", Label: "GPT-6 Sol Medium"},
+	{Model: "gpt-6-sol", Effort: "high", Label: "GPT-6 Sol High"},
+	{Model: "gpt-6-sol", Effort: "xhigh", Label: "GPT-6 Sol Extra High"},
+	{Model: "gpt-6-sol", Effort: "max", Label: "GPT-6 Sol Max"},
+	{Model: "gpt-6-sol", Effort: "ultra", Label: "GPT-6 Sol Ultra"},
+	{Model: "gpt-6-luna", Effort: "low", Label: "GPT-6 Luna Low"},
+	{Model: "gpt-6-luna", Effort: "medium", Label: "GPT-6 Luna Medium"},
+	{Model: "gpt-6-luna", Effort: "high", Label: "GPT-6 Luna High"},
+	{Model: "gpt-6-luna", Effort: "xhigh", Label: "GPT-6 Luna Extra High"},
+	{Model: "gpt-6-luna", Effort: "max", Label: "GPT-6 Luna Max"},
 	{Model: "gpt-5.6-sol", Effort: "medium", Label: "GPT-5.6 Sol Medium"},
 	{Model: "gpt-5.6-sol", Effort: "high", Label: "GPT-5.6 Sol High"},
 	{Model: "gpt-5.6-sol", Effort: "xhigh", Label: "GPT-5.6 Sol Extra High"},
@@ -2053,4 +2064,3 @@ func newSessionStruct(id string) *Session {
 		approvalChans:    make(map[string]chan ApprovalDecision),
 	}
 }
-

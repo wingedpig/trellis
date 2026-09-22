@@ -26,10 +26,11 @@ var pricingTable = []struct {
 	// Anthropic (Claude Code)
 	{"fable", modelPricing{10, 0, 50}},
 	{"mythos", modelPricing{10, 0, 50}},
+	{"opus-5-5", modelPricing{4, 0.2, 20}}, // cache reads are 0.05× input
 	{"opus-4-1", modelPricing{15, 0, 75}},
 	{"opus-4-2025", modelPricing{15, 0, 75}}, // claude-opus-4-20250514
 	{"opus-4-0", modelPricing{15, 0, 75}},
-	{"opus", modelPricing{5, 0, 25}}, // Opus 4.5 and later
+	{"opus", modelPricing{5, 0, 25}}, // Opus 4.5 through Opus 5
 	{"sonnet", modelPricing{3, 0, 15}},
 	{"claude-3-5-haiku", modelPricing{0.8, 0, 4}},
 	{"claude-3-haiku", modelPricing{0.25, 0, 1.25}},
@@ -37,7 +38,9 @@ var pricingTable = []struct {
 
 	// OpenAI (Codex CLI) — codex variants (e.g. gpt-5.5-codex) fall through
 	// to their base-version entry via substring match.
-	{"gpt-6-astra", modelPricing{10, 1, 50}},   // flat across reasoning tiers
+	{"gpt-6-astra", modelPricing{10, 1, 50}}, // flat across reasoning tiers
+	{"gpt-6-sol", modelPricing{2, 0.2, 10}},
+	{"gpt-6-luna", modelPricing{0.1, 0.01, 0.5}},
 	{"gpt-5.6-sol", modelPricing{5, 0.5, 30}},  // flat across reasoning tiers
 	{"gpt-5.5-pro", modelPricing{30, 30, 180}}, // no cached rate offered
 	{"gpt-5.5", modelPricing{5, 0.5, 30}},

@@ -151,6 +151,49 @@ func TestPricingFallbacks(t *testing.T) {
 	}
 }
 
+// New model prices must include cache discounts without changing the costs
+// of historical sessions on older models in the same family.
+func TestCostForSeptemberModels(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry Entry
+		want  float64
+	}{
+		{
+			name:  "opus 5.5 input output and both cache write durations",
+			entry: Entry{Model: "claude-opus-5-5", Input: 1000, Output: 1000, CacheRead: 1000, Cache5m: 1000, Cache1h: 1000},
+			want:  0.0372, // $4 input + $20 output + $0.20 read + $5/$8 writes per MTok
+		},
+		{
+			name:  "opus 5 historical pricing",
+			entry: Entry{Model: "claude-opus-5", Input: 1000, Output: 1000, CacheRead: 1000, Cache5m: 1000, Cache1h: 1000},
+			want:  0.04675,
+		},
+		{
+			name:  "gpt 6 sol",
+			entry: Entry{Model: "gpt-6-sol", Input: 1000, Output: 1000, CacheRead: 1000},
+			want:  0.0122,
+		},
+		{
+			name:  "gpt 6 luna",
+			entry: Entry{Model: "gpt-6-luna", Input: 1000, Output: 1000, CacheRead: 1000},
+			want:  0.00061,
+		},
+		{
+			name:  "gpt 5.6 sol historical pricing",
+			entry: Entry{Model: "gpt-5.6-sol", Input: 1000, Output: 1000, CacheRead: 1000},
+			want:  0.0355,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := costFor(c.entry); math.Abs(got-c.want) > 1e-9 {
+				t.Errorf("costFor(%+v) = %v, want %v", c.entry, got, c.want)
+			}
+		})
+	}
+}
+
 func codexTokenLine(ts string, totalIn, totalCached, totalOut, lastIn, lastCached, lastOut int) string {
 	return fmt.Sprintf(`{"timestamp":%q,"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":%d,"cached_input_tokens":%d,"output_tokens":%d,"total_tokens":%d},"last_token_usage":{"input_tokens":%d,"cached_input_tokens":%d,"output_tokens":%d,"total_tokens":%d},"model_context_window":258400}}}`,
 		ts, totalIn, totalCached, totalOut, totalIn+totalOut, lastIn, lastCached, lastOut, lastIn+lastOut)

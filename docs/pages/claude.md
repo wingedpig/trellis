@@ -123,6 +123,8 @@ Cost accumulates across the whole session, including process restarts and `--res
 
 A model dropdown in the footer (Default, Opus, Sonnet, Haiku, Fable) forces the session onto a model family. Switching is applied live to the running Claude process — no restart, so background tasks and pending permission prompts survive — and takes effect from your next message. The choice persists with the session and is re-applied (via `--model`) whenever the process respawns.
 
+**Opus** uses Claude Code's `opus` alias, which selects **Opus 5.5** on the Anthropic API with Claude Code **2.1.280 or later**. The alias follows your provider's recommended version and honors any model overrides in your Claude Code configuration. See [Claude Code's model configuration](https://code.claude.com/docs/en/model-config) for provider mappings.
+
 Two things to know:
 
 - **Default** means no forced model: the session runs whatever your Claude Code settings (`~/.claude/settings.json` → `model`) resolve to. A fresh session starts on Default — if new sessions keep coming up on a model you don't expect, that settings default is what's choosing it. The picker reflects the forced model, or the model actually observed on the session's responses when no override is set.
@@ -214,10 +216,14 @@ Everything described above also exists on the Codex page (`/codex/{worktree}/{se
 Codex models are chosen together with a reasoning effort, so the footer dropdown lists model + effort combinations rather than bare model families:
 
 - **GPT-6 Astra** at Low, Medium, High, Extra High, Max, and Ultra
+- **GPT-6 Sol** at Low, Medium, High, Extra High, Max, and Ultra
+- **GPT-6 Luna** at Low, Medium, High, Extra High, and Max
 - **GPT-5.6 Sol** at Medium, High, Extra High, Max, and Ultra
 - **GPT-5.5**, **GPT-5.4**, **GPT-5.4 Mini**, and **GPT-5.3 Codex Spark** at their default effort
 
 Max and Ultra are the deepest efforts Codex exposes — what ChatGPT brands "Pro" (there is no separate "pro" setting). Ultra additionally lets the model delegate work to sub-agents automatically. **Default** means no override: the session runs the `model` and `model_reasoning_effort` from your `~/.codex/config.toml`.
+
+Luna supports efforts up to Max; it does not support Ultra. The GPT-6 Sol and Luna choices match the model catalog advertised by Codex CLI 0.155.1. See [OpenAI's model guide](https://learn.chatgpt.com/docs/models) for availability.
 
 Switching to a model, or between models, is live: the override rides on your next turn, so the running Codex process keeps its thread and nothing restarts. Switching back to **Default** restarts the process once — Codex applies a per-turn override to every subsequent turn, so only a fresh process falls back to the config default — and the conversation resumes on your next message. The choice persists with the session.
 
