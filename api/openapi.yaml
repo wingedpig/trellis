@@ -2201,14 +2201,17 @@ paths:
   /claude/sessions/{session}/move:
     post:
       tags: [Claude]
-      summary: Move a session to a fresh worktree
+      summary: Move a session and optional additional sessions to a fresh worktree
       description: |
         Creates a new git worktree on the given branch, copies the selected
         uncommitted files from the source worktree into it, reverts those files
         in the source (via `git checkout --` for tracked files or delete for
-        untracked files), and rebinds the Claude session to the new worktree.
-        The running Claude process is stopped; it will restart in the new
-        working directory on the next message.
+        untracked files), and rebinds the Claude session and any selected
+        additional Claude or Codex sessions to the new worktree. All sessions
+        must be active and belong to the same source worktree; the selection
+        is validated before creating the worktree or changing files.
+        Each running agent process is stopped and restarts in the new working
+        directory on the next message. Duplicate session selections are ignored.
       operationId: moveClaudeSession
       parameters:
         - $ref: '#/components/parameters/ClaudeSessionId'
@@ -2223,12 +2226,19 @@ paths:
                 branch:
                   type: string
                   description: Branch name for the new worktree (must not already exist)
+                additional_sessions:
+                  type: array
+                  description: Other active sessions in the source worktree to move along with the session in the URL
+                  items:
+                    $ref: '#/components/schemas/MoveSessionReference'
                 files:
                   type: array
                   description: |
                     Relative paths (from the source worktree root) of files to
                     move. May include modified, added, or untracked files.
-                    Directories and symlinks are not supported.
+                    Untracked directories expand to their non-ignored files,
+                    including nested files. Ignored files remain in the source.
+                    Symlinks are not supported.
                   items:
                     type: string
       responses:
@@ -2244,6 +2254,11 @@ paths:
                     properties:
                       session_id:
                         type: string
+                      sessions:
+                        type: array
+                        description: All moved sessions, including the primary session
+                        items:
+                          $ref: '#/components/schemas/MoveSessionReference'
                       worktree:
                         type: string
                         description: Name of the new worktree
@@ -2936,6 +2951,16 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    MoveSessionReference:
+      type: object
+      required: [agent, session_id]
+      properties:
+        agent:
+          type: string
+          enum: [claude, codex]
+        session_id:
+          type: string
+
     UsageTotals:
       type: object
       description: Token and cost totals across a set of API calls

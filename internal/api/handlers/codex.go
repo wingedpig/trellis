@@ -6,13 +6,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -494,157 +490,10 @@ func (h *CodexHandler) GitStatus(w http.ResponseWriter, r *http.Request) {
 	writeFilteredGitStatus(w, h.caseMgr, status, branch)
 }
 
-// MoveSessionAPI moves a Codex session to a fresh worktree along with
-// selected uncommitted files from the source worktree. Same shape as
-// Claude's MoveSessionAPI; helper functions safeJoinInsideRoot /
-// copyFilePreserveMode are shared at the handlers package level.
+// MoveSessionAPI moves a Codex session and optional additional sessions to a new worktree.
 func (h *CodexHandler) MoveSessionAPI(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	sessionID := vars["session"]
-
-	var body struct {
-		Branch string   `json:"branch"`
-		Files  []string `json:"files"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid JSON: "+err.Error())
-		return
-	}
-	if body.Branch == "" {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, "branch is required")
-		return
-	}
-
-	session := h.manager.GetSession(sessionID)
-	if session == nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
-		return
-	}
-	sourceWorktreeName := session.WorktreeName()
-	sourceWT, ok := h.worktreeMgr.GetByName(sourceWorktreeName)
-	if !ok {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "source worktree not found")
-		return
-	}
-
-	type selectedFile struct {
-		rel       string
-		srcAbs    string
-		untracked bool
-	}
-	selected := make([]selectedFile, 0, len(body.Files))
-	for _, f := range body.Files {
-		if f == "" {
-			continue
-		}
-		abs, err := safeJoinInsideRoot(sourceWT.Path, f)
-		if err != nil {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("invalid file %q: %s", f, err.Error()))
-			return
-		}
-		info, err := os.Lstat(abs)
-		if err != nil {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("file %q not found", f))
-			return
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("file %q is a symlink (unsupported)", f))
-			return
-		}
-		if info.IsDir() {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("file %q is a directory (unsupported)", f))
-			return
-		}
-		selected = append(selected, selectedFile{
-			rel:    filepath.ToSlash(filepath.Clean(f)),
-			srcAbs: abs,
-		})
-	}
-
-	ctx := r.Context()
-	git := worktree.NewRealGitExecutor()
-	status, err := git.Status(ctx, sourceWT.Path)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "git status failed: "+err.Error())
-		return
-	}
-	untrackedSet := make(map[string]struct{}, len(status.Untracked))
-	for _, u := range status.Untracked {
-		untrackedSet[filepath.ToSlash(filepath.Clean(u))] = struct{}{}
-	}
-	for i := range selected {
-		if _, ok := untrackedSet[selected[i].rel]; ok {
-			selected[i].untracked = true
-		}
-	}
-
-	if err := h.worktreeMgr.Create(ctx, body.Branch, false); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "create worktree: "+err.Error())
-		return
-	}
-	newWorktreeDir := h.worktreeMgr.ProjectName() + "-" + strings.ReplaceAll(body.Branch, "/", "-")
-	newWT, ok := h.worktreeMgr.GetByName(newWorktreeDir)
-	if !ok {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "new worktree not found after create")
-		return
-	}
-	newWorktreeKey := strings.TrimPrefix(newWT.Name(), h.worktreeMgr.ProjectName()+"-")
-
-	for _, sf := range selected {
-		dstAbs := filepath.Join(newWT.Path, filepath.FromSlash(sf.rel))
-		if err := copyFilePreserveMode(sf.srcAbs, dstAbs); err != nil {
-			WriteError(w, http.StatusInternalServerError, ErrInternalError,
-				fmt.Sprintf("copy %q: %s", sf.rel, err.Error()))
-			return
-		}
-	}
-
-	var revertErrs []string
-	for _, sf := range selected {
-		if sf.untracked {
-			if err := os.Remove(sf.srcAbs); err != nil {
-				revertErrs = append(revertErrs, fmt.Sprintf("%s: %s", sf.rel, err.Error()))
-			}
-			continue
-		}
-		if out, err := worktree.RunCommand(ctx, "-C", sourceWT.Path, "checkout", "--", sf.rel); err != nil {
-			revertErrs = append(revertErrs, fmt.Sprintf("%s: %s %s", sf.rel, err.Error(), strings.TrimSpace(out)))
-		}
-	}
-
-	if err := h.manager.MoveSession(sessionID, newWorktreeKey, newWT.Path); err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrInternalError, "move session: "+err.Error())
-		return
-	}
-
-	movedFiles := make([]string, len(selected))
-	for i, sf := range selected {
-		movedFiles[i] = sf.rel
-	}
-
-	if h.bus != nil {
-		h.bus.Publish(ctx, events.Event{
-			Type:     events.EventCodexSessionMoved,
-			Worktree: newWorktreeKey,
-			Payload: map[string]interface{}{
-				"session_id":       sessionID,
-				"from_worktree":    sourceWorktreeName,
-				"to_worktree":      newWorktreeKey,
-				"to_worktree_path": newWT.Path,
-				"to_branch":        newWT.Branch,
-				"files":            movedFiles,
-				"revert_errors":    revertErrs,
-			},
-		})
-	}
-
-	WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"session_id":    sessionID,
-		"worktree":      newWorktreeKey,
-		"branch":        newWT.Branch,
-		"path":          newWT.Path,
-		"revert_errors": revertErrs,
-	})
+	deps := moveSessionDeps{claudeMgr: h.claudeMgr, codexMgr: h.manager, worktreeMgr: h.worktreeMgr, bus: h.bus}
+	deps.moveSessionsToWorktree(w, r, "codex")
 }
 
 // SessionCase checks if a session is already linked to an open case.

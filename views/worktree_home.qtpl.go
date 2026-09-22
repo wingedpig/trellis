@@ -630,9 +630,9 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
     </div>
 </div>
 
-<!-- Move Claude Session Modal -->
+<!-- Move Session Modal -->
 <div class="modal fade" id="moveSessionModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="fa-solid fa-arrow-right-from-bracket"></i> Move Session to New Worktree</h5>
@@ -644,6 +644,80 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
                     <label for="moveSessionBranch" class="form-label">New branch name</label>
                     <input type="text" class="form-control" id="moveSessionBranch" placeholder="feature/my-branch">
                     <div class="form-text">A fresh git worktree will be created for this branch.</div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Additional sessions to move</label>
+                        <span class="small" id="moveSessionAdditionalToggle">
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionAdditionalList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionAdditionalList', false); return false;">none</a>
+                        </span>
+                    </div>
+                    <div class="form-text mt-0 mb-1">Choose other Claude or Codex sessions from this worktree to move with this session.</div>
+                    <div id="moveSessionAdditionalEmpty" class="text-muted small" hidden>No other sessions in this worktree.</div>
+                    <div id="moveSessionAdditionalList" class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                        `)
+//line views/worktree_home.qtpl:363
+	for _, sess := range p.ClaudeSessions {
+//line views/worktree_home.qtpl:363
+		qw422016.N().S(`
+                        <div class="form-check">
+                            <input class="form-check-input move-session-additional" type="checkbox" id="move-claude-`)
+//line views/worktree_home.qtpl:365
+		qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:365
+		qw422016.N().S(`" value="`)
+//line views/worktree_home.qtpl:365
+		qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:365
+		qw422016.N().S(`" data-agent="claude">
+                            <label class="form-check-label text-break" for="move-claude-`)
+//line views/worktree_home.qtpl:366
+		qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:366
+		qw422016.N().S(`"><span class="badge bg-secondary me-1">Claude</span>`)
+//line views/worktree_home.qtpl:366
+		qw422016.E().S(sess.DisplayName)
+//line views/worktree_home.qtpl:366
+		qw422016.N().S(`</label>
+                        </div>
+                        `)
+//line views/worktree_home.qtpl:368
+	}
+//line views/worktree_home.qtpl:368
+	qw422016.N().S(`
+                        `)
+//line views/worktree_home.qtpl:369
+	for _, sess := range p.CodexSessions {
+//line views/worktree_home.qtpl:369
+		qw422016.N().S(`
+                        <div class="form-check">
+                            <input class="form-check-input move-session-additional" type="checkbox" id="move-codex-`)
+//line views/worktree_home.qtpl:371
+		qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:371
+		qw422016.N().S(`" value="`)
+//line views/worktree_home.qtpl:371
+		qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:371
+		qw422016.N().S(`" data-agent="codex">
+                            <label class="form-check-label text-break" for="move-codex-`)
+//line views/worktree_home.qtpl:372
+		qw422016.E().S(sess.ID)
+//line views/worktree_home.qtpl:372
+		qw422016.N().S(`"><span class="badge bg-secondary me-1">Codex</span>`)
+//line views/worktree_home.qtpl:372
+		qw422016.E().S(sess.DisplayName)
+//line views/worktree_home.qtpl:372
+		qw422016.N().S(`</label>
+                        </div>
+                        `)
+//line views/worktree_home.qtpl:374
+	}
+//line views/worktree_home.qtpl:374
+	qw422016.N().S(`
+                    </div>
                 </div>
                 <div class="mb-2">
                     <div class="d-flex justify-content-between align-items-center">
@@ -699,19 +773,19 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script>
 // Top-level declarations use `)
-//line views/worktree_home.qtpl:220
+//line views/worktree_home.qtpl:374
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:220
+//line views/worktree_home.qtpl:374
 	qw422016.N().S(`var`)
-//line views/worktree_home.qtpl:220
+//line views/worktree_home.qtpl:374
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:220
+//line views/worktree_home.qtpl:374
 	qw422016.N().S(` so this script can be re-executed when the
 // SPA re-fetches this page (e.g. after LRU eviction from the page cache).
 var WORKTREE_NAME = '`)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(`';
 
 var newTerminalModal, newClaudeModal, newCodexModal, newCaseModal, renameModal, importTranscriptModal, moveSessionModal;
@@ -866,30 +940,30 @@ function renameCodexSession(sessionId, currentName) {
 
 // var (not let): SPA navigation re-injects and re-executes this inline script
 // in global scope, and a top-level `)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(`let`)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(`/`)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(`const`)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(` throws "already declared" on
 // the second run. `)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(`var`)
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S("`")
-//line views/worktree_home.qtpl:406
+//line views/worktree_home.qtpl:432
 	qw422016.N().S(` allows redeclaration; resetting to false matches the
 // freshly-rendered (collapsed) trash panel.
 var codexTrashedVisible = false;
@@ -1102,6 +1176,18 @@ function showMoveSessionModalFor(agent, sessionId, sessionName) {
     moveSessionState.agent = agent;
     document.getElementById('moveSessionSubtitle').textContent = 'Moving "' + sessionName + '" from ' + WORKTREE_NAME;
     document.getElementById('moveSessionBranch').value = '';
+    const sessionsList = document.getElementById('moveSessionAdditionalList');
+    let additionalCount = 0;
+    sessionsList.querySelectorAll('.move-session-additional').forEach(cb => {
+        const primary = cb.dataset.agent === agent && cb.value === sessionId;
+        cb.checked = false;
+        cb.disabled = primary;
+        cb.closest('.form-check').hidden = primary;
+        if (!primary) additionalCount++;
+    });
+    sessionsList.hidden = additionalCount === 0;
+    document.getElementById('moveSessionAdditionalEmpty').hidden = additionalCount !== 0;
+    document.getElementById('moveSessionAdditionalToggle').hidden = additionalCount === 0;
     const listEl = document.getElementById('moveSessionFilesList');
     const statusEl = document.getElementById('moveSessionFilesStatus');
     listEl.innerHTML = '';
@@ -1167,12 +1253,15 @@ function submitMoveSession() {
     const files = Array.from(document.querySelectorAll('.move-session-file'))
         .filter(cb => cb.checked)
         .map(cb => cb.value);
+    const additionalSessions = Array.from(document.querySelectorAll('.move-session-additional'))
+        .filter(cb => cb.checked && !cb.disabled)
+        .map(cb => ({ agent: cb.dataset.agent, session_id: cb.value }));
     const btn = document.getElementById('moveSessionConfirmBtn');
     btn.disabled = true;
     fetch('/api/v1/' + agent + '/sessions/' + encodeURIComponent(sessionId) + '/move', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ branch: branch, files: files })
+        body: JSON.stringify({ branch: branch, files: files, additional_sessions: additionalSessions })
     })
     .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Move failed'); });
@@ -1183,7 +1272,7 @@ function submitMoveSession() {
         const errs = data.revert_errors || [];
         moveSessionModal.hide();
         if (errs.length > 0) {
-            alert('Session moved, but some source files could not be reverted:\n' + errs.join('\n'));
+            alert('Move completed, but some source files could not be reverted:\n' + errs.join('\n'));
         }
         const target = data.worktree;
         if (target) {
@@ -1192,7 +1281,7 @@ function submitMoveSession() {
             window.location.reload();
         }
     })
-    .catch(err => alert('Failed to move session: ' + err))
+    .catch(err => alert('Failed to move sessions: ' + err))
     .finally(() => { btn.disabled = false; });
 }
 
@@ -1321,36 +1410,36 @@ function archiveCaseFromList(caseId) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/worktree_home.qtpl:990
+//line views/worktree_home.qtpl:1031
 	p.StreamFooter(qw422016)
-//line views/worktree_home.qtpl:990
+//line views/worktree_home.qtpl:1031
 	qw422016.N().S(`
 `)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 }
 
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 func (p *WorktreeHomePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	p.StreamRender(qw422016)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	qt422016.ReleaseWriter(qw422016)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 }
 
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 func (p *WorktreeHomePage) Render() string {
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	p.WriteRender(qb422016)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	qs422016 := string(qb422016.B)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 	return qs422016
-//line views/worktree_home.qtpl:991
+//line views/worktree_home.qtpl:1032
 }

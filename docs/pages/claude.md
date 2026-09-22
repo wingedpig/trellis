@@ -51,13 +51,14 @@ Use this when you want to explore an alternate path from a particular decision p
 
 ### Moving Sessions to a New Worktree
 
-Click the move icon (arrow leaving a box) next to a session on the worktree home page to move the session — and optionally some of the source worktree's uncommitted files — into a fresh git worktree.
+Click the move icon (arrow leaving a box) next to a Claude or Codex session on the worktree home page to move it into a fresh git worktree. You can also move additional sessions and uncommitted files from the same source worktree.
 
 The move modal:
 
 1. **Branch name** — Supply a branch name for the new worktree. A fresh worktree is created via the same flow as the regular "New Worktree" action (the branch must not already exist; `/` in names is converted to `-` for the worktree directory).
-2. **Files** — Lists the source worktree's modified, added, renamed, and untracked files as checkboxes. All are checked by default; uncheck any you want to leave behind. Directories and symlinks are not supported.
-3. **Move** — Creates the worktree, moves the selected files into it, reverts them in the source worktree, and rebinds the session. The Claude process restarts in the new directory on your next message.
+2. **Additional sessions to move** — Lists the other active Claude and Codex sessions in the source worktree, labeled by agent. All start unchecked; select any you want to bring along, or use **all** / **none**. The session you opened the dialog from is always included. Archived and trashed sessions are excluded.
+3. **Files** — Lists the source worktree's modified, added, renamed, and untracked files as checkboxes. All are checked by default; uncheck any you want to leave behind. Selecting an untracked directory moves its non-ignored files, including nested files. Ignored files stay in the source worktree. Symlinks are not supported.
+4. **Move** — Creates one worktree, moves the selected files into it, reverts them in the source worktree, and rebinds all selected sessions. Each session's process restarts in the new directory on your next message.
 
 After completion, you're redirected to the new worktree's home page. If any source files could not be reverted, the session move itself still succeeds and the per-file errors are shown.
 
@@ -227,7 +228,7 @@ If Codex's API rejects a model/effort pair — usually because the installed `co
 Mechanics you don't need day-to-day, collected here for the curious:
 
 - **Forking** — The Claude CLI's JSONL resume file is rewritten for the new session, so the process resumes from exactly the fork point on the next message.
-- **Moving a session** — The server creates the new worktree, copies the selected files (preserving mode and relative paths), reverts the source worktree — tracked files via `git checkout --`, untracked files via delete — then stops the running Claude process and rebinds the session. A `claude.session.moved` event is emitted.
+- **Moving sessions** — The server validates that all selected sessions are active and in the same source worktree, creates the new worktree, copies the selected files (preserving mode and relative paths), reverts the source worktree — tracked files via `git checkout --`, untracked files via delete — then stops and rebinds each selected session. A `claude.session.moved` or `codex.session.moved` event is emitted for each session.
 - **Plans** — Plan history is stored per session in `.trellis/claude/plans/<session-id>.json` and exposed at `GET/PUT /api/v1/claude/sessions/{session}/plan`.
 - **Commit** — On confirm the server resolves or creates the case, snapshots the session's transcript (if the case was just created), refreshes every attached transcript from its live source, `git add`s the selected files, `git commit`s, and appends a `CommitEntry` to `case.json` with the SHA, date, message, generated description, and files changed. The draft message comes from `claude -p`; inputs include the diff of your checked files (the staging area is not consulted), the case manifest, `notes.md`, and the last few user messages from the session.
 - **Wrap Up** — Runs the Commit steps, merges new links, saves selected traces, captures selected related sessions (transcript saved, session archived), generates the case summary via `claude -p` synchronously (with a timeout) so it lands in the same commit, moves the case directory from `cases/` to `cases-archived/`, `git add`s the selected files plus the archived directory, commits, and archives the active session. A failure between archive and commit rolls the archive back.

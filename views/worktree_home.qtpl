@@ -333,9 +333,9 @@ type WorktreeHomePage struct {
     </div>
 </div>
 
-<!-- Move Claude Session Modal -->
+<!-- Move Session Modal -->
 <div class="modal fade" id="moveSessionModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="fa-solid fa-arrow-right-from-bracket"></i> Move Session to New Worktree</h5>
@@ -347,6 +347,32 @@ type WorktreeHomePage struct {
                     <label for="moveSessionBranch" class="form-label">New branch name</label>
                     <input type="text" class="form-control" id="moveSessionBranch" placeholder="feature/my-branch">
                     <div class="form-text">A fresh git worktree will be created for this branch.</div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label mb-1">Additional sessions to move</label>
+                        <span class="small" id="moveSessionAdditionalToggle">
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionAdditionalList', true); return false;">all</a>
+                            /
+                            <a href="#" onclick="toggleAllCheckboxes('moveSessionAdditionalList', false); return false;">none</a>
+                        </span>
+                    </div>
+                    <div class="form-text mt-0 mb-1">Choose other Claude or Codex sessions from this worktree to move with this session.</div>
+                    <div id="moveSessionAdditionalEmpty" class="text-muted small" hidden>No other sessions in this worktree.</div>
+                    <div id="moveSessionAdditionalList" class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                        {% for _, sess := range p.ClaudeSessions %}
+                        <div class="form-check">
+                            <input class="form-check-input move-session-additional" type="checkbox" id="move-claude-{%s sess.ID %}" value="{%s sess.ID %}" data-agent="claude">
+                            <label class="form-check-label text-break" for="move-claude-{%s sess.ID %}"><span class="badge bg-secondary me-1">Claude</span>{%s sess.DisplayName %}</label>
+                        </div>
+                        {% endfor %}
+                        {% for _, sess := range p.CodexSessions %}
+                        <div class="form-check">
+                            <input class="form-check-input move-session-additional" type="checkbox" id="move-codex-{%s sess.ID %}" value="{%s sess.ID %}" data-agent="codex">
+                            <label class="form-check-label text-break" for="move-codex-{%s sess.ID %}"><span class="badge bg-secondary me-1">Codex</span>{%s sess.DisplayName %}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
                 <div class="mb-2">
                     <div class="d-flex justify-content-between align-items-center">
@@ -769,6 +795,18 @@ function showMoveSessionModalFor(agent, sessionId, sessionName) {
     moveSessionState.agent = agent;
     document.getElementById('moveSessionSubtitle').textContent = 'Moving "' + sessionName + '" from ' + WORKTREE_NAME;
     document.getElementById('moveSessionBranch').value = '';
+    const sessionsList = document.getElementById('moveSessionAdditionalList');
+    let additionalCount = 0;
+    sessionsList.querySelectorAll('.move-session-additional').forEach(cb => {
+        const primary = cb.dataset.agent === agent && cb.value === sessionId;
+        cb.checked = false;
+        cb.disabled = primary;
+        cb.closest('.form-check').hidden = primary;
+        if (!primary) additionalCount++;
+    });
+    sessionsList.hidden = additionalCount === 0;
+    document.getElementById('moveSessionAdditionalEmpty').hidden = additionalCount !== 0;
+    document.getElementById('moveSessionAdditionalToggle').hidden = additionalCount === 0;
     const listEl = document.getElementById('moveSessionFilesList');
     const statusEl = document.getElementById('moveSessionFilesStatus');
     listEl.innerHTML = '';
@@ -834,12 +872,15 @@ function submitMoveSession() {
     const files = Array.from(document.querySelectorAll('.move-session-file'))
         .filter(cb => cb.checked)
         .map(cb => cb.value);
+    const additionalSessions = Array.from(document.querySelectorAll('.move-session-additional'))
+        .filter(cb => cb.checked && !cb.disabled)
+        .map(cb => ({ agent: cb.dataset.agent, session_id: cb.value }));
     const btn = document.getElementById('moveSessionConfirmBtn');
     btn.disabled = true;
     fetch('/api/v1/' + agent + '/sessions/' + encodeURIComponent(sessionId) + '/move', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ branch: branch, files: files })
+        body: JSON.stringify({ branch: branch, files: files, additional_sessions: additionalSessions })
     })
     .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error?.message || 'Move failed'); });
@@ -850,7 +891,7 @@ function submitMoveSession() {
         const errs = data.revert_errors || [];
         moveSessionModal.hide();
         if (errs.length > 0) {
-            alert('Session moved, but some source files could not be reverted:\n' + errs.join('\n'));
+            alert('Move completed, but some source files could not be reverted:\n' + errs.join('\n'));
         }
         const target = data.worktree;
         if (target) {
@@ -859,7 +900,7 @@ function submitMoveSession() {
             window.location.reload();
         }
     })
-    .catch(err => alert('Failed to move session: ' + err))
+    .catch(err => alert('Failed to move sessions: ' + err))
     .finally(() => { btn.disabled = false; });
 }
 
