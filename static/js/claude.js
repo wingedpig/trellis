@@ -24,6 +24,7 @@
     let contextWindow = 200000;   // Context window size, updated per model
     let sessionModel = '';        // Most recent model id for this session
     let modelOverride = '';       // Forced model alias (--model), '' = CLI default
+    let effortOverride = '';      // Forced reasoning effort (--effort), '' = CLI default
     let sessionCostUSD = 0;       // Accumulated session cost from the server
     let tokenBreakdown = { base: 0, cacheCreate: 0, cacheRead: 0, total: 0 };
     let turnStartedAt = 0;        // ms timestamp the current turn began (0 when idle)
@@ -53,29 +54,32 @@
         updateModelSelect();
     }
 
-    // aliasFromModelId maps a full model id (e.g. "claude-opus-4-8") to the
-    // picker alias, so the dropdown can preselect the running model when no
-    // explicit override is set.
-    function aliasFromModelId(id) {
-        var m = (id || '').toLowerCase();
-        if (m.indexOf('opus') !== -1) return 'opus';
-        if (m.indexOf('sonnet') !== -1) return 'sonnet';
-        if (m.indexOf('haiku') !== -1) return 'haiku';
-        if (m.indexOf('fable') !== -1 || m.indexOf('mythos') !== -1) return 'fable';
-        return '';
+    function encodeModelValue(model, effort) {
+        return effort ? model + '|' + effort : (model || '');
     }
 
-    // updateModelSelect reflects the current model in the footer dropdown:
-    // the explicit override if set, otherwise the alias of the running model,
-    // otherwise "Default" (value ''). A fresh session must show Default — the
-    // old code left the select on its first option ("Opus"), claiming a model
-    // the spawn wasn't actually going to force, while the CLI default from
-    // the user's settings.json (e.g. fable) applied.
+    function populateModelSelect(options) {
+        var sel = document.getElementById('claude-model-select');
+        if (!sel) return;
+        if (options && options.length) {
+            sel.innerHTML = '<option value="">Default</option>';
+            options.forEach(function(o) {
+                var opt = document.createElement('option');
+                opt.value = encodeModelValue(o.model, o.effort);
+                opt.textContent = o.label;
+                sel.appendChild(opt);
+            });
+        }
+        sel.disabled = generating;
+        updateModelSelect();
+    }
+
+    // Default reflects the absence of an override, just as on the Codex page.
     function updateModelSelect() {
         var sel = document.getElementById('claude-model-select');
         if (!sel) return;
-        var current = modelOverride || aliasFromModelId(sessionModel);
-        if (sel.value !== current) sel.value = current;
+        sel.value = encodeModelValue(modelOverride, effortOverride);
+        if (sel.selectedIndex < 0) sel.value = '';
     }
 
     // ---------- Auto-approve (skip permissions) toggle ----------
@@ -87,6 +91,7 @@
         var cb = document.getElementById('claude-skip-perms-cb');
         if (!label || !cb) return;
         cb.checked = skipPermissions;
+        cb.disabled = false;
         label.classList.toggle('active', skipPermissions);
     }
 
@@ -110,23 +115,26 @@
         });
     }
 
-    // setModel forces the session onto a model alias, or clears the override
-    // (alias '') so the CLI default applies. The server switches the running
-    // claude process live (set_model control request), so the change applies
-    // from the next message without a restart.
-    function setModel(alias) {
-        if (alias === modelOverride) return;
-        var prev = modelOverride;
-        modelOverride = alias;          // optimistic — picker stays on the new choice
+    // Model and effort share the same model|effort encoding as Codex.
+    function setModel(value) {
+        if (value === encodeModelValue(modelOverride, effortOverride)) return;
+        var prevModel = modelOverride;
+        var prevEffort = effortOverride;
+        var parts = (value || '').split('|');
+        modelOverride = parts[0] || '';
+        effortOverride = parts[1] || '';
         updateModelSelect();
         fetch('/api/v1/claude/sessions/' + encodeURIComponent(CLAUDE_SESSION) + '/model', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: alias })
+            body: JSON.stringify({ model: modelOverride, effort: effortOverride })
         }).then(function(r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
+            if (!r.ok) return r.text().then(function(message) {
+                throw new Error(message || 'HTTP ' + r.status);
+            });
         }).catch(function(err) {
-            modelOverride = prev;        // revert on failure
+            modelOverride = prevModel;
+            effortOverride = prevEffort;
             updateModelSelect();
             alert('Failed to change model: ' + err);
         });
@@ -473,6 +481,8 @@
                     requestAnimationFrame(function() { inputEl.focus(); });
                 }
                 modelOverride = msg.model_override || '';
+                effortOverride = msg.effort || '';
+                populateModelSelect(msg.model_options);
                 setSessionModel(msg.model);
                 updateModelSelect();
                 skipPermissions = !!msg.skip_permissions;
@@ -2966,8 +2976,7 @@
         generating = value;
         sendBtn.style.display = value ? 'none' : 'flex';
         cancelBtn.style.display = value ? 'flex' : 'none';
-        // Switching models restarts the process and aborts the turn, so lock the
-        // picker while a turn is in flight.
+        // Effort changes restart an idle process, so lock the picker during a turn.
         var modelSel = document.getElementById('claude-model-select');
         if (modelSel) modelSel.disabled = value;
         inputEl.focus();

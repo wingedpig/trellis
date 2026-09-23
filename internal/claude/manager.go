@@ -241,6 +241,9 @@ type Session struct {
 	// spawn; a running process is switched live with a set_model
 	// control_request so the process (and its background tasks) survives.
 	modelOverride string
+	// effortOverride is applied with --effort on spawn. Changing it requires
+	// an idle process restart; model-only switches still use set_model live.
+	effortOverride string
 	// skipPermissions is true when the user toggled auto-approval on: the
 	// session runs in permission mode "auto" (auto-approve with a background
 	// safety classifier) instead of default. Applied via --permission-mode auto
@@ -431,17 +434,18 @@ func (m *Manager) loadFromDisk() {
 		}
 
 		s := &Session{
-			id:           rec.ID,
-			worktreeName: rec.WorktreeName,
-			displayName:  rec.DisplayName,
-			claudeSID:    rec.SessionID,
-			workDir:      rec.WorkDir,
-			createdAt:     rec.CreatedAt,
-			trashedAt:     rec.TrashedAt,
-			archivedAt:    rec.ArchivedAt,
+			id:              rec.ID,
+			worktreeName:    rec.WorktreeName,
+			displayName:     rec.DisplayName,
+			claudeSID:       rec.SessionID,
+			workDir:         rec.WorkDir,
+			createdAt:       rec.CreatedAt,
+			trashedAt:       rec.TrashedAt,
+			archivedAt:      rec.ArchivedAt,
 			costUSD:         rec.CostUSD,
 			model:           rec.Model,
 			modelOverride:   rec.ModelOverride,
+			effortOverride:  rec.EffortOverride,
 			skipPermissions: rec.SkipPermissions,
 			subscribers:     make(map[chan StreamEvent]struct{}),
 			manager:         m,
@@ -495,18 +499,19 @@ func (m *Manager) persist() {
 	for _, s := range m.sessions {
 		s.mu.Lock()
 		records = append(records, SessionRecord{
-			ID:           s.id,
-			WorktreeName: s.worktreeName,
-			DisplayName:  s.displayName,
-			SessionID:    s.claudeSID,
-			WorkDir:      s.workDir,
-			CreatedAt:        s.createdAt,
-			TrashedAt:        s.trashedAt,
-			ArchivedAt:       s.archivedAt,
-			CostUSD:          s.costUSD,
-			Model:            s.model,
-			ModelOverride:    s.modelOverride,
-			SkipPermissions:  s.skipPermissions,
+			ID:              s.id,
+			WorktreeName:    s.worktreeName,
+			DisplayName:     s.displayName,
+			SessionID:       s.claudeSID,
+			WorkDir:         s.workDir,
+			CreatedAt:       s.createdAt,
+			TrashedAt:       s.trashedAt,
+			ArchivedAt:      s.archivedAt,
+			CostUSD:         s.costUSD,
+			Model:           s.model,
+			ModelOverride:   s.modelOverride,
+			EffortOverride:  s.effortOverride,
+			SkipPermissions: s.skipPermissions,
 		})
 		s.mu.Unlock()
 	}
@@ -574,13 +579,14 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	}
 
 	s := &Session{
-		id:           id,
-		worktreeName: worktreeName,
-		displayName:  displayName,
-		workDir:      workDir,
-		createdAt:    time.Now(),
-		subscribers:  make(map[chan StreamEvent]struct{}),
-		manager:      m,
+		id:              id,
+		worktreeName:    worktreeName,
+		displayName:     displayName,
+		workDir:         workDir,
+		createdAt:       time.Now(),
+		skipPermissions: true,
+		subscribers:     make(map[chan StreamEvent]struct{}),
+		manager:         m,
 	}
 	s.persistFn = m.makePersistFn()
 	if m.messagesDir != "" {
@@ -1118,32 +1124,56 @@ func (s *Session) ModelOverride() string {
 	return s.modelOverride
 }
 
-// SetModel forces this session onto a model alias (e.g. "opus", "sonnet").
-// Pass "" to clear the override and fall back to the CLI default.
-//
-// A running process is switched live with a set_model control_request so the
-// process — and any background tasks it is tracking — survives; the alias is
-// also recorded so the next spawn passes it via --model. Only if the live
-// switch cannot be delivered (stdin write fails, or the CLI rejects it via a
-// control_response error) is the process restarted the old way.
-func (s *Session) SetModel(alias string) error {
-	if !IsValidModelAlias(alias) {
-		return fmt.Errorf("unknown model alias %q", alias)
-	}
+// EffortOverride returns the session's --effort override, or the CLI default.
+func (s *Session) EffortOverride() string {
 	s.mu.Lock()
-	if s.modelOverride == alias {
+	defer s.mu.Unlock()
+	return s.effortOverride
+}
+
+// SetModel selects a model alias with its configured default effort.
+func (s *Session) SetModel(alias string) error {
+	return s.SetModelOption(alias, "")
+}
+
+// SetModelOption selects a model and optional effort. Model-only changes use
+// set_model live; effort changes restart an idle process so --effort applies
+// on the next spawn. Busy sessions reject effort changes to preserve work.
+func (s *Session) SetModelOption(alias, effort string) error {
+	if !IsValidModelOption(alias, effort) {
+		return fmt.Errorf("unknown model option %q (effort %q)", alias, effort)
+	}
+	// Keep a concurrent spawn from reading the old overrides.
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+	s.mu.Lock()
+	if s.modelOverride == alias && s.effortOverride == effort {
 		s.mu.Unlock()
 		return nil
 	}
+	effortChanged := s.effortOverride != effort
+	if effortChanged && (s.generating || len(s.backgroundTasks) > 0 || len(s.pendingControlRequests) > 0) {
+		s.mu.Unlock()
+		return fmt.Errorf("wait for Claude's running work and permission requests to finish before changing effort")
+	}
 	s.modelOverride = alias
+	s.effortOverride = effort
 	running := s.stdin != nil
+	if running && effortChanged {
+		// Check for running work and stop the idle process under the same
+		// lock, so a concurrent Send cannot start a turn between them.
+		s.restartProcessLocked()
+	}
 	persist := s.persistFn
 	s.mu.Unlock()
 	if persist != nil {
 		persist()
 	}
 	if !running {
-		// No process; --model applies on the next spawn.
+		// No process; --model and --effort apply on the next spawn.
+		return nil
+	}
+	if effortChanged {
 		return nil
 	}
 	// The CLI accepts the same aliases as --model; an omitted model field
@@ -1223,6 +1253,16 @@ func (s *Session) SetSkipPermissions(skip bool) error {
 func (s *Session) restartProcess() {
 	s.mu.Lock()
 	wasGenerating := s.generating
+	s.restartProcessLocked()
+	s.mu.Unlock()
+	// See Cancel: clients only leave the generating state on a result event.
+	if wasGenerating {
+		s.fanOut(StreamEvent{Type: "result", Subtype: "process_restarted"})
+	}
+}
+
+// restartProcessLocked resets the process while the caller holds s.mu.
+func (s *Session) restartProcessLocked() {
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -1235,11 +1275,6 @@ func (s *Session) restartProcess() {
 	s.cmd = nil
 	s.cancel = nil
 	s.publishStateLocked()
-	s.mu.Unlock()
-	// See Cancel: clients only leave the generating state on a result event.
-	if wasGenerating {
-		s.fanOut(StreamEvent{Type: "result", Subtype: "process_restarted"})
-	}
 }
 
 // PendingControlRequests returns the pending control_request events (oldest
@@ -1632,6 +1667,7 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	workDir := s.workDir
 	resumeSID := s.claudeSID
 	modelOverride := s.modelOverride
+	effortOverride := s.effortOverride
 	skipPermissions := s.skipPermissions
 	msgs := make([]Message, len(s.messages))
 	copy(msgs, s.messages)
@@ -1680,6 +1716,9 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	// Force a specific model when the session has an override (alias).
 	if modelOverride != "" {
 		args = append(args, "--model", modelOverride)
+	}
+	if effortOverride != "" {
+		args = append(args, "--effort", effortOverride)
 	}
 
 	// The caller's ctx gates only the spawn attempt. The process context is

@@ -16,6 +16,7 @@ type ClaudePage struct {
 {%= p.Header() %}
 
 <link href="/static/css/claude.css" rel="stylesheet">
+<link href="/static/css/agent-controls.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
 <script>
@@ -60,16 +61,12 @@ type ClaudePage struct {
         <div class="claude-input-footer">
             <div class="claude-input-hint">Enter to send, Shift+Enter for newline, Esc to stop</div>
             <div class="claude-footer-right">
-                <label class="claude-skip-perms" id="claude-skip-perms" title="Auto-approve tool use — Claude stops asking permission. Deny rules in .claude/settings.json still apply.">
-                    <input type="checkbox" id="claude-skip-perms-cb" onchange="claudeSetSkipPermissions(this.checked)"> auto-approve
-                </label>
-                <select id="claude-model-select" class="claude-model-select" title="Model — switches live, applies from your next message. Default = the model from your Claude Code settings." onchange="claudeSetModel(this.value)">
+                <select id="claude-model-select" class="claude-model-select" aria-label="Model and reasoning effort" disabled title="Model and effort — applies from your next message. Changing effort restarts an idle session. Default = your Claude Code settings." onchange="claudeSetModel(this.value)">
                     <option value="">Default</option>
-                    <option value="opus">Opus</option>
-                    <option value="sonnet">Sonnet</option>
-                    <option value="haiku">Haiku</option>
-                    <option value="fable">Fable</option>
                 </select>
+                <label class="claude-skip-perms" id="claude-skip-perms" title="Auto-approve tool use — Claude stops asking permission. Deny rules in .claude/settings.json still apply.">
+                    <input type="checkbox" id="claude-skip-perms-cb" disabled onchange="claudeSetSkipPermissions(this.checked)"> Auto-approve
+                </label>
                 <div id="claude-context-usage" class="claude-context-usage"></div>
             </div>
         </div>

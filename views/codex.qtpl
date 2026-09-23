@@ -16,6 +16,7 @@ type CodexPage struct {
 {%= p.Header() %}
 
 <link href="/static/css/codex.css" rel="stylesheet">
+<link href="/static/css/agent-controls.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light-codex">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark-codex" disabled>
 <script>
@@ -58,11 +59,11 @@ type CodexPage struct {
             <div class="codex-footer-right">
                 <!-- Options beyond Default are filled in by codex.js from the
                      model_options catalog on the WS history message. -->
-                <select id="codex-model-select" class="codex-model-select" title="Model — applies from your next message. Default = the model from your ~/.codex/config.toml." onchange="codexSetModel(this.value)">
+                <select id="codex-model-select" class="codex-model-select" aria-label="Model and reasoning effort" disabled title="Model — applies from your next message. Default = the model from your ~/.codex/config.toml." onchange="codexSetModel(this.value)">
                     <option value="">Default</option>
                 </select>
                 <label class="codex-skip-perms" id="codex-skip-perms" title="Auto-approve tool use — Codex stops asking approval and runs without a sandbox. Execpolicy forbidden rules in ~/.codex/rules/ still apply.">
-                    <input type="checkbox" id="codex-skip-perms-cb" onchange="codexSetSkipPermissions(this.checked)"> auto-approve
+                    <input type="checkbox" id="codex-skip-perms-cb" disabled onchange="codexSetSkipPermissions(this.checked)"> Auto-approve
                 </label>
                 <div id="codex-context-usage" class="codex-context-usage"></div>
             </div>

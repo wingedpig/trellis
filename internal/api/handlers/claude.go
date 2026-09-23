@@ -59,22 +59,24 @@ type clientMessage struct {
 
 // serverMessage is a message to the client.
 type serverMessage struct {
-	Type                     string              `json:"type"`
-	Messages                 []claude.Message    `json:"messages,omitempty"`
-	Event                    *claude.StreamEvent `json:"event,omitempty"`
-	Message                  string              `json:"message,omitempty"`
-	Generating               bool                `json:"generating,omitempty"`
-	InputTokens              int                 `json:"input_tokens,omitempty"`
-	InputTokensBase          int                 `json:"input_tokens_base,omitempty"`
-	CacheCreationInputTokens int                 `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int                 `json:"cache_read_input_tokens,omitempty"`
-	CostUSD                  float64             `json:"cost_usd,omitempty"`
-	Model                    string              `json:"model,omitempty"`
-	ModelOverride            string              `json:"model_override,omitempty"`
-	SkipPermissions          bool                `json:"skip_permissions,omitempty"`
-	SlashCommands            []string            `json:"slash_commands,omitempty"`
-	Skills                   []string            `json:"skills,omitempty"`
-	Activity                 string              `json:"activity,omitempty"`
+	Type                     string               `json:"type"`
+	Messages                 []claude.Message     `json:"messages,omitempty"`
+	Event                    *claude.StreamEvent  `json:"event,omitempty"`
+	Message                  string               `json:"message,omitempty"`
+	Generating               bool                 `json:"generating,omitempty"`
+	InputTokens              int                  `json:"input_tokens,omitempty"`
+	InputTokensBase          int                  `json:"input_tokens_base,omitempty"`
+	CacheCreationInputTokens int                  `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int                  `json:"cache_read_input_tokens,omitempty"`
+	CostUSD                  float64              `json:"cost_usd,omitempty"`
+	Model                    string               `json:"model,omitempty"`
+	ModelOverride            string               `json:"model_override,omitempty"`
+	Effort                   string               `json:"effort,omitempty"`
+	ModelOptions             []claude.ModelOption `json:"model_options,omitempty"`
+	SkipPermissions          bool                 `json:"skip_permissions,omitempty"`
+	SlashCommands            []string             `json:"slash_commands,omitempty"`
+	Skills                   []string             `json:"skills,omitempty"`
+	Activity                 string               `json:"activity,omitempty"`
 }
 
 // WebSocket handles a Claude chat WebSocket connection for a specific session.
@@ -149,6 +151,8 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 		CostUSD:                  session.CostUSD(),
 		Model:                    session.Model(),
 		ModelOverride:            session.ModelOverride(),
+		Effort:                   session.EffortOverride(),
+		ModelOptions:             claude.ModelOptions,
 		SkipPermissions:          session.SkipPermissions(),
 		SlashCommands:            cmds,
 		Skills:                   skills,
@@ -425,15 +429,14 @@ func (h *ClaudeHandler) RenameSessionAPI(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SetModelAPI forces the session onto a model alias. A running process is
-// switched live (set_model control_request); otherwise the alias applies via
-// --model on the next spawn.
+// SetModelAPI sets a model alias and optional reasoning effort.
 func (h *ClaudeHandler) SetModelAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["session"]
 
 	var body struct {
-		Model string `json:"model"`
+		Model  string `json:"model"`
+		Effort string `json:"effort"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		WriteError(w, http.StatusBadRequest, ErrInternalError, "invalid JSON: "+err.Error())
@@ -445,7 +448,7 @@ func (h *ClaudeHandler) SetModelAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-	if err := session.SetModel(body.Model); err != nil {
+	if err := session.SetModelOption(body.Model, body.Effort); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

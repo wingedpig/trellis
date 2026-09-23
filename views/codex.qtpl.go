@@ -42,6 +42,7 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 	qw422016.N().S(`
 
 <link href="/static/css/codex.css" rel="stylesheet">
+<link href="/static/css/agent-controls.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light-codex">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark-codex" disabled>
 <script>
@@ -56,13 +57,13 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
      identify their session from their own .page-container instead of window
      globals, which go stale when the SPA swaps pages. -->
 <div id="codex-chat" class="codex-chat-container" data-agent="codex" data-session="`)
-//line views/codex.qtpl:32
+//line views/codex.qtpl:33
 	qw422016.E().S(p.SessionID)
-//line views/codex.qtpl:32
+//line views/codex.qtpl:33
 	qw422016.N().S(`" data-worktree="`)
-//line views/codex.qtpl:32
+//line views/codex.qtpl:33
 	qw422016.E().S(p.WorktreeName)
-//line views/codex.qtpl:32
+//line views/codex.qtpl:33
 	qw422016.N().S(`">
     <div id="codex-messages" class="codex-messages"></div>
     <div id="codex-input-area" class="codex-input-area">
@@ -92,11 +93,11 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
             <div class="codex-footer-right">
                 <!-- Options beyond Default are filled in by codex.js from the
                      model_options catalog on the WS history message. -->
-                <select id="codex-model-select" class="codex-model-select" title="Model — applies from your next message. Default = the model from your ~/.codex/config.toml." onchange="codexSetModel(this.value)">
+                <select id="codex-model-select" class="codex-model-select" aria-label="Model and reasoning effort" disabled title="Model — applies from your next message. Default = the model from your ~/.codex/config.toml." onchange="codexSetModel(this.value)">
                     <option value="">Default</option>
                 </select>
                 <label class="codex-skip-perms" id="codex-skip-perms" title="Auto-approve tool use — Codex stops asking approval and runs without a sandbox. Execpolicy forbidden rules in ~/.codex/rules/ still apply.">
-                    <input type="checkbox" id="codex-skip-perms-cb" onchange="codexSetSkipPermissions(this.checked)"> auto-approve
+                    <input type="checkbox" id="codex-skip-perms-cb" disabled onchange="codexSetSkipPermissions(this.checked)"> Auto-approve
                 </label>
                 <div id="codex-context-usage" class="codex-context-usage"></div>
             </div>
@@ -113,37 +114,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:81
+//line views/codex.qtpl:82
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:81
+//line views/codex.qtpl:82
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:82
+//line views/codex.qtpl:83
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:82
+//line views/codex.qtpl:83
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:83
+//line views/codex.qtpl:84
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:83
+//line views/codex.qtpl:84
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:84
+//line views/codex.qtpl:85
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:85
+//line views/codex.qtpl:86
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:85
+//line views/codex.qtpl:86
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:85
+//line views/codex.qtpl:86
 	} else {
-//line views/codex.qtpl:85
+//line views/codex.qtpl:86
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:85
+//line views/codex.qtpl:86
 	}
-//line views/codex.qtpl:85
+//line views/codex.qtpl:86
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -439,36 +440,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:379
+//line views/codex.qtpl:380
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:379
+//line views/codex.qtpl:380
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 }
 
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 }
 
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 	return qs422016
-//line views/codex.qtpl:380
+//line views/codex.qtpl:381
 }

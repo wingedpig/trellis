@@ -750,54 +750,6 @@ pre:hover .claude-code-copy {
     flex-shrink: 0;
 }
 
-.claude-input-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.25rem;
-}
-
-.claude-input-hint {
-    font-size: 0.75rem;
-    color: var(--trellis-text-muted);
-}
-
-.claude-footer-right {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-
-.claude-skip-perms {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.72rem;
-    color: var(--trellis-text-muted);
-    cursor: pointer;
-    margin-bottom: 0;
-    user-select: none;
-    white-space: nowrap;
-}
-.claude-skip-perms.active {
-    color: #ffc107;
-    font-weight: 600;
-}
-
-.claude-model-select {
-    font-size: 0.72rem;
-    color: var(--bs-body-color);
-    background: var(--trellis-input-bg);
-    border: 1px solid var(--trellis-input-border, var(--trellis-card-border));
-    border-radius: 0.25rem;
-    padding: 0.1rem 0.35rem;
-    cursor: pointer;
-}
-.claude-model-select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 .claude-context-usage {
     font-size: 0.75rem;
     color: var(--trellis-text-muted);
@@ -1380,10 +1332,6 @@ pre:hover .claude-code-copy {
         font-size: 16px; /* 16px prevents iOS auto-zoom on focus */
         padding: 0.4rem 0.6rem;
     }
-    .claude-input-footer {
-        font-size: 0.75rem;
-    }
-    .claude-input-hint { display: none; }
     .claude-empty { padding: 1rem; }
     .claude-tool-body pre,
     .claude-bubble-assistant pre { font-size: 0.75rem; }

@@ -1666,6 +1666,7 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	}
 
 	s := newSessionStruct(id)
+	s.skipPermissions = true
 	s.manager = m
 	s.worktreeName = worktreeName
 	s.displayName = displayName

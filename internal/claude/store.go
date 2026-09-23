@@ -25,11 +25,12 @@ type SessionRecord struct {
 	// ArchivedAt marks a session the user filed away for later reference.
 	// Unlike TrashedAt it is never auto-purged — the archive is meant to be
 	// searched long after the work is done.
-	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
-	CostUSD      float64    `json:"cost_usd,omitempty"`        // accumulated API cost across the session's turns
-	Model        string     `json:"model,omitempty"`           // most recent model id seen
-	ModelOverride string    `json:"model_override,omitempty"`  // model alias forced via --model (e.g. "opus")
-	SkipPermissions bool    `json:"skip_permissions,omitempty"` // auto-approve toggle (permission mode "auto")
+	ArchivedAt      *time.Time `json:"archived_at,omitempty"`
+	CostUSD         float64    `json:"cost_usd,omitempty"`         // accumulated API cost across the session's turns
+	Model           string     `json:"model,omitempty"`            // most recent model id seen
+	ModelOverride   string     `json:"model_override,omitempty"`   // model alias forced via --model (e.g. "opus")
+	EffortOverride  string     `json:"effort_override,omitempty"`  // reasoning effort forced via --effort
+	SkipPermissions bool       `json:"skip_permissions,omitempty"` // auto-approve toggle (permission mode "auto")
 }
 
 // loadRecords reads session records from disk.

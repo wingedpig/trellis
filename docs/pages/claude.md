@@ -121,18 +121,22 @@ Cost accumulates across the whole session, including process restarts and `--res
 
 ### Model Picker
 
-A model dropdown in the footer (Default, Opus, Sonnet, Haiku, Fable) forces the session onto a model family. Switching is applied live to the running Claude process — no restart, so background tasks and pending permission prompts survive — and takes effect from your next message. The choice persists with the session and is re-applied (via `--model`) whenever the process respawns.
+A model dropdown in the footer selects a model family and optional reasoning effort. **Opus**, **Sonnet**, and **Fable** each offer Low, Medium, High, Extra High, and Max. Their bare model names use the configured default effort. **Haiku** has no effort control. Claude Code may clamp the selected effort for an older provider model or an organization limit.
+
+Model-only changes with the same effort switch live. Changing or clearing an effort override restarts an idle process, then resumes the conversation with the selected `--model` and `--effort` on your next message. The picker is disabled during a turn; the server also rejects effort changes while background tasks or permission prompts are pending. Both choices persist with the session.
 
 **Opus** uses Claude Code's `opus` alias, which selects **Opus 5.5** on the Anthropic API with Claude Code **2.1.280 or later**. The alias follows your provider's recommended version and honors any model overrides in your Claude Code configuration. See [Claude Code's model configuration](https://code.claude.com/docs/en/model-config) for provider mappings.
 
 Two things to know:
 
-- **Default** means no forced model: the session runs whatever your Claude Code settings (`~/.claude/settings.json` → `model`) resolve to. A fresh session starts on Default — if new sessions keep coming up on a model you don't expect, that settings default is what's choosing it. The picker reflects the forced model, or the model actually observed on the session's responses when no override is set.
+- **Default** means no model or effort override: the session uses your Claude Code settings. The picker stays on Default unless you choose an override, matching the Codex page.
 - After a live switch the model may still *introduce itself* by the old name if asked — its identity line was written into the system prompt when the process started. The switch is real regardless: every subsequent response is generated (and billed) by the model you picked, which is what the picker and the [Usage page](/docs/pages/usage/) report.
 
 ### Auto-Approve (Skip Permissions)
 
-An **auto-approve** checkbox in the footer switches the session into Claude Code's `auto` mode: tool calls stop raising permission prompts and run immediately, with a background safety classifier vetting each action (and silently declining risky ones). This is deliberately *not* `bypassPermissions` — the classifier and the guardrails below stay in force, so it is safer than skipping the checks entirely. The label turns amber while it's on, and the setting persists with the session.
+An **Auto-approve** checkbox in the footer switches the session into Claude Code's `auto` mode: tool calls stop raising permission prompts and run immediately, with a background safety classifier vetting each action (and silently declining risky ones). This is deliberately *not* `bypassPermissions` — the classifier and the guardrails below stay in force, so it is safer than skipping the checks entirely. The label is emphasized while it's on, and the setting persists with the session.
+
+New Claude and Codex sessions start with **Auto-approve checked**. Existing sessions keep their saved setting. Both pages use the same footer order and styling: model and effort, Auto-approve, then usage. Controls wrap onto additional lines on narrow screens.
 
 Toggling is live where the CLI allows it: turning auto-approve **off** never restarts the process (background tasks survive, and any prompts that were already pending still need answers). Turning it **on** restarts the process once if it wasn't started in auto mode — the conversation resumes automatically on your next message.
 

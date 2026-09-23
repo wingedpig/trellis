@@ -220,6 +220,7 @@
         var cb = document.getElementById('codex-skip-perms-cb');
         if (!label || !cb) return;
         cb.checked = skipPermissions;
+        cb.disabled = false;
         label.classList.toggle('active', skipPermissions);
     }
 
@@ -266,6 +267,7 @@
                 sel.appendChild(opt);
             });
         }
+        sel.disabled = generating;
         sel.value = modelOverride;
         if (sel.value !== modelOverride) sel.value = '';  // unknown override — show Default
     }

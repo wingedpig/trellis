@@ -1,0 +1,83 @@
+/* Shared Claude and Codex composer controls. */
+.claude-input-footer,
+.codex-input-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.claude-input-hint,
+.codex-input-hint {
+    font-size: 0.75rem;
+    color: var(--trellis-text-muted);
+}
+
+.claude-footer-right,
+.codex-footer-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem 0.6rem;
+    min-width: 0;
+    max-width: 100%;
+    margin-left: auto;
+}
+
+.claude-model-select,
+.codex-model-select {
+    width: 12rem;
+    max-width: 100%;
+    min-height: 1.75rem;
+    font-size: 0.75rem;
+    color: var(--bs-body-color);
+    background: var(--trellis-input-bg);
+    border: 1px solid var(--trellis-input-border, var(--trellis-card-border));
+    border-radius: 0.25rem;
+    padding: 0.15rem 0.35rem;
+    cursor: pointer;
+}
+
+.claude-model-select:disabled,
+.codex-model-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.claude-skip-perms,
+.codex-skip-perms {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 1.75rem;
+    font-size: 0.75rem;
+    color: var(--trellis-text-muted);
+    cursor: pointer;
+    margin: 0;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.claude-skip-perms input,
+.codex-skip-perms input {
+    width: 0.9rem;
+    height: 0.9rem;
+    margin: 0;
+    cursor: inherit;
+}
+
+.claude-skip-perms.active,
+.codex-skip-perms.active {
+    color: var(--bs-body-color);
+    font-weight: 600;
+}
+
+@media (max-width: 576px) {
+    .claude-input-hint,
+    .codex-input-hint {
+        display: none;
+    }
+}
