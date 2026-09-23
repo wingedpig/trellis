@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wingedpig/trellis/internal/claude"
+	"github.com/wingedpig/trellis/internal/codex"
 )
 
 // Validator validates configuration against schema rules.
@@ -65,6 +68,7 @@ func (v *Validator) Validate(cfg *Config) error {
 	v.validateTraceGroups(cfg, errs)
 	v.validateLogViewers(cfg, errs)
 	v.validateProxy(cfg, errs)
+	v.validateAgent(cfg, errs)
 
 	if errs.IsEmpty() {
 		return nil
@@ -512,4 +516,13 @@ func parseDurationWithDays(s string) (time.Duration, error) {
 		}
 	}
 	return time.ParseDuration(s)
+}
+
+func (v *Validator) validateAgent(cfg *Config, errs *ValidationError) {
+	if c := cfg.Agent.Claude; !claude.IsValidModelOption(c.Model, c.Effort) {
+		errs.Add("agent.claude", fmt.Sprintf("unknown model %q with effort %q (models: opus, sonnet, haiku, fable; efforts: low, medium, high, xhigh, max; haiku takes no effort)", c.Model, c.Effort))
+	}
+	if c := cfg.Agent.Codex; !codex.IsValidModelOption(c.Model, c.Effort) {
+		errs.Add("agent.codex", fmt.Sprintf("unknown model %q with effort %q (must match a Codex model picker option)", c.Model, c.Effort))
+	}
 }

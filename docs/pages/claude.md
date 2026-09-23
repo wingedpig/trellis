@@ -129,7 +129,7 @@ Model-only changes with the same effort switch live. Changing or clearing an eff
 
 Two things to know:
 
-- **Default** means no model or effort override: the session uses your Claude Code settings. The picker stays on Default unless you choose an override, matching the Codex page.
+- **Default** means no model or effort override: the session uses your Claude Code settings. New sessions start on Default unless `agent.claude` in `trellis.hjson` sets a starting model and effort (see [config reference](/docs/reference/config/#agent)); the Codex page's equivalent is `agent.codex`.
 - After a live switch the model may still *introduce itself* by the old name if asked — its identity line was written into the system prompt when the process started. The switch is real regardless: every subsequent response is generated (and billed) by the model you picked, which is what the picker and the [Usage page](/docs/pages/usage/) report.
 
 ### Auto-Approve (Skip Permissions)

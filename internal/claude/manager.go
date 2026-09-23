@@ -382,6 +382,20 @@ type Manager struct {
 	// tests, land in a temp directory that has already been cleaned up.
 	// Shutdown waits on this.
 	persistWG sync.WaitGroup
+
+	// defaultModel / defaultEffort seed the model override of each new
+	// session (config agent.claude). Empty means the CLI default.
+	defaultModel  string
+	defaultEffort string
+}
+
+// SetDefaultModel sets the model and effort new sessions start with. Existing
+// sessions keep their own choice. The pair must satisfy IsValidModelOption.
+func (m *Manager) SetDefaultModel(model, effort string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.defaultModel = model
+	m.defaultEffort = effort
 }
 
 // SetEventBus wires the bus used for publishing inbox session-state events.
@@ -585,6 +599,8 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 		workDir:         workDir,
 		createdAt:       time.Now(),
 		skipPermissions: true,
+		modelOverride:   m.defaultModel,
+		effortOverride:  m.defaultEffort,
 		subscribers:     make(map[chan StreamEvent]struct{}),
 		manager:         m,
 	}

@@ -765,12 +765,26 @@ cases: {
 ```hjson
 agent: {
   install_skill: true         // Install the trellis skill file for coding agents
+  claude: {                   // Model new Claude sessions start with
+    model: "opus"
+    effort: "high"
+  }
+  codex: {                    // Model new Codex sessions start with
+    model: "gpt-6-astra"
+    effort: "xhigh"
+  }
 }
 ```
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `install_skill` | `true` | Whether Trellis installs its skill file at `.claude/skills/trellis/SKILL.md` in the repo and each worktree (on startup and on worktree creation), teaching coding agents to use `trellis-ctl`. Installed copies carry a `managed-by: trellis` marker and are refreshed when the bundled skill changes; copies without the marker (user-edited) are never touched. |
+| `claude.model` | `""` | Model alias new Claude sessions start with: `opus`, `sonnet`, `haiku`, or `fable`. Empty uses your Claude Code settings (the picker's **Default**). |
+| `claude.effort` | `""` | Effort for `claude.model`: `low`, `medium`, `high`, `xhigh`, or `max`. Empty uses the model's default effort. Haiku takes no effort. |
+| `codex.model` | `""` | Model new Codex sessions start with, e.g. `gpt-6-astra`. Empty uses the model from `~/.codex/config.toml`. |
+| `codex.effort` | `""` | Reasoning effort for `codex.model`. The pair must match an entry in the [Codex model picker](/docs/pages/claude/#codex-model-picker); models offered only at their default effort take no effort. |
+
+The `claude` and `codex` defaults apply only to sessions created after startup (including forks and imports); existing sessions keep their saved choice, and the footer picker can still change any session. Unknown model/effort pairs fail config validation.
 
 ### logging_defaults
 

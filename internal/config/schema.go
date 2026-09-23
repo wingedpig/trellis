@@ -44,6 +44,19 @@ type AgentConfig struct {
 	// .claude/skills/trellis/SKILL.md in the repo and each worktree so
 	// agents discover trellis-ctl. Defaults to true.
 	InstallSkill *bool `json:"install_skill"`
+	// Claude is the model/effort new Claude Code sessions start with.
+	// Empty uses the CLI default (your Claude Code settings).
+	Claude AgentModelConfig `json:"claude"`
+	// Codex is the model/effort new Codex sessions start with. Empty uses
+	// the model from ~/.codex/config.toml.
+	Codex AgentModelConfig `json:"codex"`
+}
+
+// AgentModelConfig is a default model picker choice for new sessions. Model
+// and Effort must match an option offered by that agent's model picker.
+type AgentModelConfig struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort"`
 }
 
 // InstallSkillEnabled reports whether skill installation is enabled

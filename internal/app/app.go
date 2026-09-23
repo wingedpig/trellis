@@ -341,11 +341,13 @@ func (app *App) Initialize(ctx context.Context) error {
 	claudeStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "claude")
 	app.claudeManager = claude.NewManager(claudeStateDir)
 	app.claudeManager.SetEventBus(app.eventBus)
+	app.claudeManager.SetDefaultModel(cfg.Agent.Claude.Model, cfg.Agent.Claude.Effort)
 
 	// Initialize Codex session manager (sibling to Claude state)
 	codexStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "codex")
 	app.codexManager = codex.NewManager(codexStateDir)
 	app.codexManager.SetEventBus(app.eventBus)
+	app.codexManager.SetDefaultModel(cfg.Agent.Codex.Model, cfg.Agent.Codex.Effort)
 
 	// Inbox aggregator — merges claude + codex sessions for the popup window
 	if agg, err := inbox.NewAggregator(app.claudeManager, app.codexManager, app.eventBus); err == nil {

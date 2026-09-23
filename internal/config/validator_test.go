@@ -821,3 +821,30 @@ func TestValidationError_IsEmpty(t *testing.T) {
 	err.Errors = append(err.Errors, FieldError{Field: "test", Message: "error"})
 	assert.False(t, err.IsEmpty())
 }
+
+func TestValidator_Validate_AgentModels(t *testing.T) {
+	validator := NewValidator()
+	base := func() *Config {
+		return &Config{Version: "1.0", Project: ProjectConfig{Name: "test"}}
+	}
+
+	cfg := base()
+	assert.NoError(t, validator.Validate(cfg), "empty = agent defaults")
+
+	cfg = base()
+	cfg.Agent.Claude = AgentModelConfig{Model: "opus", Effort: "high"}
+	cfg.Agent.Codex = AgentModelConfig{Model: "gpt-6-astra", Effort: "xhigh"}
+	assert.NoError(t, validator.Validate(cfg))
+
+	cfg = base()
+	cfg.Agent.Claude = AgentModelConfig{Model: "haiku", Effort: "high"}
+	err := validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent.claude")
+
+	cfg = base()
+	cfg.Agent.Codex = AgentModelConfig{Model: "gpt-9"}
+	err = validator.Validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent.codex")
+}
