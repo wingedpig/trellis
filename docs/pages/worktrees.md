@@ -52,9 +52,14 @@ Use the **Create New Worktree** form to create a new worktree:
 2. Trellis creates:
    - A new git branch from your default branch
    - A new worktree directory at `../<project>-<branch>`
-3. Optionally check **Switch to new worktree** to immediately activate it
+3. **Start agent session** picks Claude (the default), Codex, or None. With an agent, you can type an optional first message. Trellis opens the new session once it's started, and the session is listed on the new worktree's home page
+4. Optionally check **Switch to new worktree** to immediately activate it
 
 The branch name must start with a letter or number and can contain letters, numbers, hyphens, and underscores.
+
+## Finishing Worktrees
+
+Click **Finish** to merge a worktree's branch into the default branch and clean up. Pick a strategy: rebase then fast-forward (the default), merge commit, or squash. You can also choose to keep the branch, or merge without removing the worktree. The result dialog shows the output of each `pre_merge`, `post_merge`, and `pre_remove` hook. If the rebase or merge conflicts, it lists the conflicting files and nothing changes. See [`trellis-ctl task finish`](/docs/reference/trellis-ctl/#task-commands) for the full sequence.
 
 ## Removing Worktrees
 

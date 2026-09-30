@@ -225,6 +225,11 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	api.HandleFunc("/worktrees/{name}", worktreeHandler.Remove).Methods("DELETE")
 	api.HandleFunc("/worktrees/{name}/activate", worktreeHandler.Activate).Methods("POST")
 
+	// Task lifecycle: worktree + agent session in one step, and merge + cleanup
+	taskHandler := handlers.NewTaskHandler(deps.WorktreeManager, deps.ClaudeManager, deps.CodexManager, deps.CaseManager, deps.EventBus)
+	api.HandleFunc("/tasks/start", taskHandler.Start).Methods("POST")
+	api.HandleFunc("/tasks/finish", taskHandler.Finish).Methods("POST")
+
 	// Workflow handlers
 	workflowHandler := handlers.NewWorkflowHandler(deps.WorkflowRunner, deps.WorktreeManager)
 	workflowHandler.SetUpgrader(ws)

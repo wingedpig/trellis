@@ -74,6 +74,8 @@ type Manager interface {
 	Activate(ctx context.Context, name string) (*ActivateResult, error) // Set active with lifecycle hooks
 	Create(ctx context.Context, branchName string, switchTo bool) error
 	Remove(ctx context.Context, name string, deleteBranch bool) error
+	RemoveWithOptions(ctx context.Context, name string, opts RemoveOptions) (*RemoveResult, error)
+	Merge(ctx context.Context, name string, opts MergeOptions) (*MergeResult, error)
 	Refresh() error
 	GetByName(name string) (WorktreeInfo, bool)
 	GetByPath(path string) (WorktreeInfo, bool)

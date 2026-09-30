@@ -62,6 +62,11 @@ type WorktreesPage struct {
                 <small class="text-muted">Branch: {%s wt.Branch %}</small>
             </div>
             <div>
+                {% if !isMain %}
+                <button class="btn btn-sm btn-success" onclick="showFinishModal('{%s JSAttr(wt.Name()) %}', '{%s JSAttr(wt.Branch) %}', {% if isActive %}true{% else %}false{% endif %})" title="Merge into the default branch and clean up">
+                    <i class="fa-solid fa-flag-checkered"></i> Finish
+                </button>
+                {% endif %}
                 {% if !isActive %}
                 <a href="#" class="btn btn-sm btn-primary" onclick="promptSwitchWorktree('{%s JSAttr(wt.Name()) %}'); return false;">
                     <i class="fa-solid fa-sign-in-alt"></i> Switch
@@ -105,6 +110,21 @@ type WorktreesPage struct {
                         <li>New branch: <code><span id="branchPreview">feature-x</span></code></li>
                         <li>New worktree directory: <code>../<span id="dirPreview">{%s p.ProjectName %}-feature-x</span></code></li>
                     </ul>
+                </div>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-sm-3">
+                    <label for="taskAgent" class="form-label">Start agent session:</label>
+                    <select class="form-select" id="taskAgent">
+                        <option value="claude" selected>Claude</option>
+                        <option value="codex">Codex</option>
+                        <option value="">None</option>
+                    </select>
+                </div>
+                <div class="col-sm-9" id="taskPromptGroup">
+                    <label for="taskPrompt" class="form-label">First message (optional):</label>
+                    <textarea class="form-control" id="taskPrompt" rows="3"
+                              placeholder="e.g., Investigate the newest crash report, find the root cause, and fix it."></textarea>
                 </div>
             </div>
             <div class="form-check mb-3">
@@ -204,6 +224,54 @@ type WorktreesPage struct {
             </div>
             <div class="modal-footer" id="activationFooter" style="display: none;">
                 <button type="button" class="btn btn-primary" id="activationOkBtn">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Finish Worktree Modal -->
+<div class="modal fade" id="finishWorktreeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Finish Worktree</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Merge <strong id="finishBranchName"></strong> into the default branch and clean up <strong id="finishWorktreeName"></strong>.</p>
+                <div class="mb-3">
+                    <label for="finishStrategy" class="form-label">Merge strategy:</label>
+                    <select class="form-select" id="finishStrategy">
+                        <option value="ff" selected>Rebase, then fast-forward (linear history)</option>
+                        <option value="merge">Merge commit</option>
+                        <option value="squash">Squash into one commit</option>
+                    </select>
+                </div>
+                <div class="mb-3" id="finishMessageGroup" style="display: none;">
+                    <label for="finishMessage" class="form-label">Commit message (optional):</label>
+                    <input type="text" class="form-control" id="finishMessage" placeholder="Derived from the branch when empty">
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="finishKeepWorktree">
+                    <label class="form-check-label" for="finishKeepWorktree">Merge only; keep the worktree and its sessions</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="finishKeepBranch">
+                    <label class="form-check-label" for="finishKeepBranch">Keep the branch after removing the worktree</label>
+                </div>
+                <p class="small text-muted mb-1">Both worktrees must be clean and the case wrapped up. Then:</p>
+                <ol class="small text-muted mb-0">
+                    <li>pre_merge hooks run in the worktree; a failure stops here</li>
+                    <li>the branch is merged and post_merge hooks run on the default branch</li>
+                    <li id="finishActiveNote">Trellis switches to the default branch's worktree</li>
+                    <li>agent sessions are archived, pre_remove hooks run, and the worktree is removed (after any running agent turn ends)</li>
+                </ol>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmFinishBtn">
+                    <i class="fa-solid fa-flag-checkered"></i> Finish
+                </button>
             </div>
         </div>
     </div>
@@ -412,14 +480,24 @@ function validateAndConfirmCreate(event) {
     }
 
     var switchTo = document.getElementById('switchToWorktree').checked;
+    var agent = document.getElementById('taskAgent').value;
+    var prompt = document.getElementById('taskPrompt').value;
     var message = 'Create new worktree with branch "' + branchName + '"?\n\nThis will create a new git branch and worktree directory.';
+    if (agent) {
+        message += '\n\nA ' + (agent === 'codex' ? 'Codex' : 'Claude') + ' session will be started in it' +
+            (prompt.trim() ? ' with your message.' : '.');
+    }
     if (switchTo) {
         message += '\n\nThe new worktree will be activated and services will restart.';
     }
 
     showConfirm(message, 'Create Worktree').then(function(confirmed) {
         if (confirmed) {
-            createWorktree(branchName, switchTo);
+            if (agent) {
+                startTask(branchName, agent, prompt, switchTo);
+            } else {
+                createWorktree(branchName, switchTo);
+            }
         }
     });
 
@@ -476,6 +554,195 @@ function createWorktree(branchName, switchTo) {
         document.getElementById('activationOkBtn').onclick = function() { modal.hide(); };
     });
 }
+
+// showResultModal reuses the activation modal to show an outcome.
+function showResultModal(modal, title, ok, message, sections) {
+    document.getElementById('activationProgress').style.display = 'none';
+    document.getElementById('activationResults').style.display = 'block';
+    document.getElementById('activationFooter').style.display = 'flex';
+    document.getElementById('activationSpinner').style.display = 'none';
+    document.getElementById('activationTitle').textContent = title;
+    document.getElementById('activationStatusAlert').className = 'alert ' + (ok ? 'alert-success' : 'alert-danger');
+    var status = document.getElementById('activationStatus');
+    status.textContent = message;
+    status.style.whiteSpace = 'pre-wrap';
+    document.getElementById('activationDuration').textContent = '';
+    var container = document.getElementById('hookResultsContainer');
+    container.innerHTML = '';
+    (sections || []).forEach(function(sec) {
+        if (!sec.hooks || !sec.hooks.length) return;
+        var heading = document.createElement('h6');
+        heading.textContent = sec.title;
+        container.appendChild(heading);
+        sec.hooks.forEach(function(hook) {
+            var card = document.createElement('div');
+            card.className = 'card mb-2';
+            var header = document.createElement('div');
+            header.className = 'card-header d-flex justify-content-between align-items-center py-2';
+            var name = document.createElement('span');
+            var icon = document.createElement('i');
+            icon.className = hook.Success ? 'fa-solid fa-check text-success' : 'fa-solid fa-xmark text-danger';
+            name.appendChild(icon);
+            name.appendChild(document.createTextNode(' ' + hook.Name));
+            header.appendChild(name);
+            var dur = document.createElement('span');
+            dur.className = 'text-muted small';
+            dur.textContent = (hook.Duration / 1e9).toFixed(1) + 's';
+            header.appendChild(dur);
+            card.appendChild(header);
+            if (hook.Output) {
+                var body = document.createElement('div');
+                body.className = 'card-body py-2';
+                var pre = document.createElement('pre');
+                pre.className = 'mb-0 small';
+                pre.style.maxHeight = '200px';
+                pre.style.overflow = 'auto';
+                pre.textContent = hook.Output;
+                body.appendChild(pre);
+                card.appendChild(body);
+            }
+            container.appendChild(card);
+        });
+    });
+    var okBtn = document.getElementById('activationOkBtn');
+    okBtn.onclick = function() {
+        modal.hide();
+        if (ok) location.reload();
+    };
+    okBtn.focus();
+}
+
+function showProgressModal(title, text) {
+    var modal = new bootstrap.Modal(document.getElementById('activationModal'));
+    document.getElementById('activationTitle').textContent = title;
+    var progress = document.getElementById('activationProgress');
+    progress.innerHTML = '';
+    var p = document.createElement('p');
+    p.textContent = text;
+    progress.appendChild(p);
+    progress.style.display = 'block';
+    document.getElementById('activationResults').style.display = 'none';
+    document.getElementById('activationFooter').style.display = 'none';
+    document.getElementById('activationSpinner').style.display = 'inline-block';
+    modal.show();
+    return modal;
+}
+
+function startTask(branchName, agent, prompt, switchTo) {
+    var modal = showProgressModal('Starting task...', 'Creating worktree ' + branchName + ' and starting ' + agent + '...');
+    fetch('/api/v1/tasks/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: branchName, agent: agent, prompt: prompt, activate: switchTo })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.error) {
+            showResultModal(modal, 'Start Failed', false, resp.error.message || String(resp.error));
+            return;
+        }
+        var data = resp.data || {};
+        if (data.warnings && data.warnings.length) {
+            showResultModal(modal, 'Task Started', true, data.warnings.join('\n'));
+            document.getElementById('activationOkBtn').onclick = function() { location.href = data.session_url; };
+            return;
+        }
+        location.href = data.session_url;
+    })
+    .catch(function(err) {
+        showResultModal(modal, 'Error', false, 'Error: ' + err);
+    });
+}
+
+var currentFinishWorktree = '';
+
+function showFinishModal(worktreeName, branchName, isActive) {
+    currentFinishWorktree = worktreeName;
+    document.getElementById('finishWorktreeName').textContent = worktreeName;
+    document.getElementById('finishBranchName').textContent = branchName;
+    document.getElementById('finishActiveNote').style.display = isActive ? '' : 'none';
+    document.getElementById('finishMessage').value = '';
+    var modalEl = document.getElementById('finishWorktreeModal');
+    new bootstrap.Modal(modalEl).show();
+    modalEl.addEventListener('shown.bs.modal', function() {
+        document.getElementById('confirmFinishBtn').focus();
+    }, { once: true });
+}
+
+document.getElementById('finishStrategy').addEventListener('change', function(e) {
+    document.getElementById('finishMessageGroup').style.display = e.target.value === 'ff' ? 'none' : 'block';
+});
+
+document.getElementById('confirmFinishBtn').onclick = function() {
+    var worktreeName = currentFinishWorktree;
+    var req = {
+        worktree: worktreeName,
+        strategy: document.getElementById('finishStrategy').value,
+        message: document.getElementById('finishMessage').value.trim(),
+        keep_branch: document.getElementById('finishKeepBranch').checked,
+        keep_worktree: document.getElementById('finishKeepWorktree').checked
+    };
+    bootstrap.Modal.getInstance(document.getElementById('finishWorktreeModal')).hide();
+    var modal = showProgressModal('Finishing ' + worktreeName + '...', 'Merging and running hooks...');
+
+    fetch('/api/v1/tasks/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+        if (resp.error) {
+            var details = resp.error.details || {};
+            var msg = resp.error.message || String(resp.error);
+            if (details.conflicts && details.conflicts.length) {
+                msg += '\n\nConflicting files:\n  ' + details.conflicts.join('\n  ');
+            }
+            showResultModal(modal, 'Finish Failed', false, msg, [{ title: 'pre_merge hooks', hooks: details.hook_results }]);
+            return;
+        }
+        var data = resp.data || {};
+        var m = data.merge || {};
+        var lines = [];
+        if (m.merged) {
+            lines.push('Merged ' + m.branch + ' into ' + m.base + ' (' + m.strategy + ', ' + m.commits + ' commit' + (m.commits === 1 ? '' : 's') + ').');
+        } else {
+            lines.push('Nothing to merge: ' + m.branch + ' has no commits beyond ' + m.base + '.');
+        }
+        if (m.post_merge_error) lines.push('Warning: ' + m.post_merge_error + ' (the merge stands).');
+        var ok = true;
+        var sections = [
+            { title: 'pre_merge hooks', hooks: m.pre_merge_hooks },
+            { title: 'post_merge hooks', hooks: m.post_merge_hooks }
+        ];
+        if (data.kept_worktree) {
+            lines.push('Kept worktree ' + m.worktree + '.');
+        } else if (data.cleanup_deferred) {
+            lines.push('An agent session is mid-turn; the worktree will be archived and removed once its sessions are idle.');
+        } else if (data.cleanup) {
+            var c = data.cleanup;
+            if (c.activated) lines.push('Switched to ' + c.activated + '.');
+            if (c.archived_sessions) lines.push('Archived ' + c.archived_sessions + ' session(s).');
+            if (c.error) {
+                ok = false;
+                lines.push('Cleanup failed: ' + c.error);
+            } else {
+                lines.push('Removed worktree ' + m.worktree + '.');
+                if (c.remove && c.remove.branch_deleted) lines.push('Deleted branch ' + m.branch + '.');
+                if (c.remove && c.remove.branch_error) lines.push('Kept branch ' + m.branch + ': ' + c.remove.branch_error);
+            }
+            sections.push({ title: 'pre_remove hooks', hooks: c.pre_remove_hooks || (c.remove && c.remove.pre_remove_hooks) });
+        }
+        showResultModal(modal, ok ? 'Finished' : 'Merged, Cleanup Failed', ok, lines.join('\n'), sections);
+    })
+    .catch(function(err) {
+        showResultModal(modal, 'Error', false, 'Error: ' + err);
+    });
+};
+
+document.getElementById('taskAgent').addEventListener('change', function(e) {
+    document.getElementById('taskPromptGroup').style.display = e.target.value ? '' : 'none';
+});
 
 function showRemoveModal(worktreeName, branchName) {
     currentRemoveWorktree = worktreeName;

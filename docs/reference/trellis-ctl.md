@@ -234,6 +234,53 @@ myproject            main                 *        ready                /Users/d
 myproject-feature    feature                       ready                /Users/dev/src/myproject-feature
 ```
 
+### Task Commands
+
+`task start` and `task finish` bracket a unit of work: a branch in its own worktree with an agent session, then a merge back into the default branch and cleanup.
+
+```bash
+# Create worktree + branch fix-digest-crash and start a Claude session in it
+trellis-ctl task start fix-digest-crash -prompt "Investigate the newest crash report and fix it"
+
+# Use Codex instead, with a model override and the prompt read from a file
+trellis-ctl task start fix-digest-crash -agent codex -model gpt-6-astra -effort high -prompt-file prompt.md
+
+# Merge the worktree containing the current directory, then clean up
+trellis-ctl task finish
+
+# Name the worktree, squash, and keep the branch
+trellis-ctl task finish fix-digest-crash -strategy squash -m "Fix digest crash" -keep-branch
+```
+
+**`task start <branch>`** creates the branch and worktree (running `on_create` hooks), opens a session, and sends the first message. The session appears on the worktree's home page and in the navigation picker as `@<branch>`, like one created from the UI. The command prints its URL.
+
+| Flag | Description |
+|------|-------------|
+| `-agent claude\|codex` | Agent to start (default `claude`) |
+| `-prompt <text>` / `-prompt-file <path\|->` | First message; `-` reads stdin. Without one the session waits for input |
+| `-model <m>`, `-effort <e>` | Model option (as offered in the session's model picker); validated before anything is created |
+| `-name <name>` | Session display name |
+| `-activate` | Switch to the new worktree (restarts services) |
+
+**`task finish [worktree]`** defaults to the worktree containing the current directory. It:
+
+1. Refuses if the worktree has uncommitted changes (untracked files included, since they would be deleted), if the default branch's worktree has uncommitted changes to tracked files, or if the worktree has a case that isn't wrapped up
+2. With the default `ff` strategy, rebases the branch onto the default branch. On conflict, it aborts the rebase, lists the conflicting files, and leaves everything as it was
+3. Runs `pre_merge` hooks in the worktree; a failure stops here
+4. Merges: fast-forward (`ff`), merge commit (`merge`), or squash (`squash`); then runs `post_merge` hooks in the default branch's worktree
+5. Switches to the default branch's worktree if the finished one was active, archives its Claude and Codex sessions (still searchable), runs `pre_remove` hooks, removes the worktree, and deletes the branch. For `ff` and `merge`, `git branch -d` is used, so git refuses to delete a branch that isn't merged
+
+If an agent session in the worktree is mid-turn (typically because the agent ran `task finish` itself), the merge happens immediately and step 5 waits until every session there is idle.
+
+| Flag | Description |
+|------|-------------|
+| `-strategy ff\|merge\|squash` | Default `ff` (rebase, then fast-forward) |
+| `-m <message>` | Merge or squash commit message (default: derived from the branch) |
+| `-keep-branch` | Don't delete the branch |
+| `-keep-worktree` | Merge only; leave the worktree and its sessions |
+
+A branch with no commits beyond the default branch is not merged; the worktree is still cleaned up. `task` commands use a 30-minute HTTP timeout by default so long hooks can finish.
+
 ### Event Commands
 
 ```bash

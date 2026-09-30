@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 
@@ -39,20 +40,36 @@ func NewLifecycleRunner(bus events.EventBus, workdir string) *LifecycleRunner {
 
 // RunOnCreate runs all on_create hooks.
 func (r *LifecycleRunner) RunOnCreate(ctx context.Context, wt *WorktreeInfo, hooks []config.HookConfig) ([]HookResult, error) {
-	return r.runHooks(ctx, wt, "on_create", hooks)
+	return r.runHooks(ctx, wt, "on_create", hooks, nil)
 }
 
 // RunPreActivate runs all pre_activate hooks.
 func (r *LifecycleRunner) RunPreActivate(ctx context.Context, wt *WorktreeInfo, hooks []config.HookConfig) ([]HookResult, error) {
-	return r.runHooks(ctx, wt, "pre_activate", hooks)
+	return r.runHooks(ctx, wt, "pre_activate", hooks, nil)
 }
 
-// runHooks executes a list of hooks in sequence.
-func (r *LifecycleRunner) runHooks(ctx context.Context, wt *WorktreeInfo, phase string, hooks []config.HookConfig) ([]HookResult, error) {
+// RunPreMerge runs all pre_merge hooks in the worktree of the branch about to
+// be merged. env carries the merge's TRELLIS_* variables.
+func (r *LifecycleRunner) RunPreMerge(ctx context.Context, wt *WorktreeInfo, hooks []config.HookConfig, env []string) ([]HookResult, error) {
+	return r.runHooks(ctx, wt, "pre_merge", hooks, env)
+}
+
+// RunPostMerge runs all post_merge hooks in the default branch's worktree.
+func (r *LifecycleRunner) RunPostMerge(ctx context.Context, wt *WorktreeInfo, hooks []config.HookConfig, env []string) ([]HookResult, error) {
+	return r.runHooks(ctx, wt, "post_merge", hooks, env)
+}
+
+// RunPreRemove runs all pre_remove hooks in the worktree about to be removed.
+func (r *LifecycleRunner) RunPreRemove(ctx context.Context, wt *WorktreeInfo, hooks []config.HookConfig) ([]HookResult, error) {
+	return r.runHooks(ctx, wt, "pre_remove", hooks, nil)
+}
+
+// runHooks executes a list of hooks in sequence, stopping at the first failure.
+func (r *LifecycleRunner) runHooks(ctx context.Context, wt *WorktreeInfo, phase string, hooks []config.HookConfig, env []string) ([]HookResult, error) {
 	results := make([]HookResult, 0, len(hooks))
 
 	for _, hook := range hooks {
-		result := r.runHook(ctx, wt, phase, hook)
+		result := r.runHook(ctx, wt, phase, hook, env)
 		results = append(results, result)
 
 		if !result.Success {
@@ -64,7 +81,7 @@ func (r *LifecycleRunner) runHooks(ctx context.Context, wt *WorktreeInfo, phase 
 }
 
 // runHook executes a single hook.
-func (r *LifecycleRunner) runHook(ctx context.Context, wt *WorktreeInfo, phase string, hook config.HookConfig) HookResult {
+func (r *LifecycleRunner) runHook(ctx context.Context, wt *WorktreeInfo, phase string, hook config.HookConfig, env []string) HookResult {
 	start := time.Now()
 
 	// Determine timeout
@@ -107,6 +124,13 @@ func (r *LifecycleRunner) runHook(ctx context.Context, wt *WorktreeInfo, phase s
 
 	// Set working directory to worktree path
 	cmd.Dir = wt.Path
+	cmd.Env = append(os.Environ(),
+		"TRELLIS_HOOK_PHASE="+phase,
+		"TRELLIS_WORKTREE_NAME="+wt.Name(),
+		"TRELLIS_WORKTREE_PATH="+wt.Path,
+		"TRELLIS_BRANCH="+wt.Branch,
+	)
+	cmd.Env = append(cmd.Env, env...)
 
 	// Capture output
 	var stdout, stderr bytes.Buffer

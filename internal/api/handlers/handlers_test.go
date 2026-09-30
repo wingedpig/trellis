@@ -248,6 +248,17 @@ func (m *mockWorktreeManager) Remove(ctx context.Context, name string, deleteBra
 	return &worktreeNotFoundError{name: name}
 }
 
+func (m *mockWorktreeManager) RemoveWithOptions(ctx context.Context, name string, opts worktree.RemoveOptions) (*worktree.RemoveResult, error) {
+	if err := m.Remove(ctx, name, opts.DeleteBranch); err != nil {
+		return nil, err
+	}
+	return &worktree.RemoveResult{BranchDeleted: opts.DeleteBranch}, nil
+}
+
+func (m *mockWorktreeManager) Merge(ctx context.Context, name string, opts worktree.MergeOptions) (*worktree.MergeResult, error) {
+	return nil, fmt.Errorf("merge not supported by mock")
+}
+
 type worktreeNotFoundError struct {
 	name string
 }

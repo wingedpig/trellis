@@ -324,23 +324,25 @@ func (v *Validator) validateDurations(cfg *Config, errs *ValidationError) {
 	}
 
 	// Validate lifecycle hook timeouts
-	for i, hook := range cfg.Worktree.Lifecycle.OnCreate {
-		if hook.Timeout != "" {
-			d, err := time.ParseDuration(hook.Timeout)
-			if err != nil {
-				errs.Add(fmt.Sprintf("worktree.lifecycle.on_create[%d].timeout", i), fmt.Sprintf("invalid duration format: %s", err))
-			} else if d < 0 {
-				errs.Add(fmt.Sprintf("worktree.lifecycle.on_create[%d].timeout", i), "must be positive")
-			}
-		}
-	}
-	for i, hook := range cfg.Worktree.Lifecycle.PreActivate {
-		if hook.Timeout != "" {
-			d, err := time.ParseDuration(hook.Timeout)
-			if err != nil {
-				errs.Add(fmt.Sprintf("worktree.lifecycle.pre_activate[%d].timeout", i), fmt.Sprintf("invalid duration format: %s", err))
-			} else if d < 0 {
-				errs.Add(fmt.Sprintf("worktree.lifecycle.pre_activate[%d].timeout", i), "must be positive")
+	lc := cfg.Worktree.Lifecycle
+	for _, phase := range []struct {
+		name  string
+		hooks []HookConfig
+	}{
+		{"on_create", lc.OnCreate},
+		{"pre_activate", lc.PreActivate},
+		{"pre_merge", lc.PreMerge},
+		{"post_merge", lc.PostMerge},
+		{"pre_remove", lc.PreRemove},
+	} {
+		for i, hook := range phase.hooks {
+			if hook.Timeout != "" {
+				d, err := time.ParseDuration(hook.Timeout)
+				if err != nil {
+					errs.Add(fmt.Sprintf("worktree.lifecycle.%s[%d].timeout", phase.name, i), fmt.Sprintf("invalid duration format: %s", err))
+				} else if d < 0 {
+					errs.Add(fmt.Sprintf("worktree.lifecycle.%s[%d].timeout", phase.name, i), "must be positive")
+				}
 			}
 		}
 	}

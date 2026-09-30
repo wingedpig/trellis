@@ -394,6 +394,15 @@ worktree: {
     pre_activate: [                 // Run before each activation
       { name: "build", command: ["make", "build"], timeout: "2m" }
     ]
+    pre_merge: [                    // Run in the branch's worktree before `task finish` merges it
+      { name: "test", command: ["make", "test"], timeout: "10m" }
+    ]
+    post_merge: [                   // Run in the default branch's worktree after the merge
+      { name: "build", command: ["make", "build"] }
+    ]
+    pre_remove: [                   // Run in a worktree before it is removed
+      { name: "drop-db", command: ["./scripts/drop-dev-db.sh"] }
+    ]
   }
 }
 ```
@@ -404,6 +413,18 @@ worktree: {
 | `create_dir` | `".."` (parent directory) | Directory where new worktrees are created |
 | `discovery.mode` | `"git"` | Discovery mode. Currently only `"git"` is supported. |
 | `binaries.path` | `"{{.Worktree.Root}}/bin"` | Path to compiled binaries |
+
+Each lifecycle hook is `{ name, command, timeout }` (timeout defaults to `5m`). Hooks in a phase run in order and stop at the first failure.
+
+| Phase | Runs in | On failure |
+|-------|---------|------------|
+| `on_create` | the new worktree, once | logged; the worktree is still created |
+| `pre_activate` | the worktree being activated | activation stops |
+| `pre_merge` | the branch's worktree, after the rebase (for the `ff` strategy), before the merge | nothing is merged |
+| `post_merge` | the default branch's worktree, after the merge | reported; the merge stands |
+| `pre_remove` | the worktree being removed (by Remove or `task finish`) | the worktree is not removed |
+
+Hooks get `TRELLIS_HOOK_PHASE`, `TRELLIS_WORKTREE_NAME`, `TRELLIS_WORKTREE_PATH`, and `TRELLIS_BRANCH` in their environment. `pre_merge` and `post_merge` also get `TRELLIS_MERGE_BRANCH`, `TRELLIS_MERGE_BASE`, `TRELLIS_MERGE_STRATEGY`, and `TRELLIS_MERGE_WORKTREE_PATH`, since `post_merge` runs outside the branch's worktree.
 
 ### watch
 

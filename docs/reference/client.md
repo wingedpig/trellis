@@ -85,6 +85,7 @@ c := client.New("http://localhost:1234",
 | `c.Trace` | Distributed tracing (execute, list/get/delete reports, list groups) |
 | `c.Crashes` | Crash history (list, get, newest, delete, clear) |
 | `c.Notify` | Notifications (send) |
+| `c.Tasks` | Task lifecycle (start a branch with an agent session; merge and clean up) |
 
 ## Service Operations
 
@@ -120,10 +121,44 @@ wt, _ := c.Worktrees.Get(ctx, "feature-branch")
 result, _ := c.Worktrees.Activate(ctx, "feature-branch")
 fmt.Printf("Activated %s in %s\n", result.Worktree.Name(), result.Duration)
 
-// Remove a worktree
+// Remove a worktree (runs pre_remove hooks first; a failing hook blocks removal)
 _ = c.Worktrees.Remove(ctx, "old-branch", &client.RemoveOptions{
     DeleteBranch: true,  // Also delete the git branch
 })
+```
+
+## Task Operations
+
+`Tasks.Start` creates a branch and worktree and opens an agent session in it. `Tasks.Finish` merges the branch into the default branch and cleans up. They're the API behind [`trellis-ctl task`](/docs/reference/trellis-ctl/#task-commands). Both can run lifecycle hooks (tests, builds), so give the client a long timeout.
+
+```go
+c := client.New(url, client.WithTimeout(30*time.Minute))
+
+// Start: Agent defaults to "claude"; Prompt is optional
+res, err := c.Tasks.Start(ctx, client.TaskStartRequest{
+    Branch: "fix-digest-crash",
+    Agent:  "codex",
+    Prompt: "Investigate the newest crash report and fix it",
+})
+// res.SessionURL is a path relative to the Trellis base URL,
+// keyed by the worktree's short name: /codex/fix-digest-crash/<id>
+fmt.Println(c.BaseURL() + res.SessionURL)
+
+// Finish: rebase + fast-forward by default ("merge" or "squash" also accepted)
+fin, err := c.Tasks.Finish(ctx, client.TaskFinishRequest{Worktree: "fix-digest-crash"})
+if err != nil {
+    if apiErr, ok := err.(*client.APIError); ok {
+        // Details may carry "conflicts" and "hook_results" (failed pre_merge hooks)
+        fmt.Println(apiErr.Message, apiErr.Details["conflicts"])
+    }
+    return err
+}
+switch {
+case fin.CleanupDeferred:
+    // An agent in the worktree was mid-turn; cleanup runs once it's idle
+case fin.Cleanup != nil && fin.Cleanup.Error != "":
+    // Merged, but cleanup failed (e.g. a pre_remove hook)
+}
 ```
 
 ## Workflow Operations
@@ -276,6 +311,9 @@ Key types exported by the client library:
 | `TraceRequest` | Trace query parameters |
 | `TraceReport` | Complete trace results with entries |
 | `TraceGroup` | Group of log viewers for tracing |
+| `TaskStartRequest` / `TaskStartResult` | Task start input; created worktree, session ID and URL, warnings |
+| `TaskFinishRequest` / `TaskFinishResult` | Task finish input; merge result, cleanup result, deferral flag |
+| `HookResult` | Lifecycle hook outcome (Name, Success, Duration, Output) |
 
 ## Documentation
 

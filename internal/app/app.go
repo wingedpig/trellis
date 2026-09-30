@@ -458,6 +458,11 @@ func (app *App) Initialize(ctx context.Context) error {
 
 	// Compute API base URL for trellis-ctl (set as TRELLIS_API in tmux sessions).
 	apiBaseURL := cfg.APIBaseURL()
+	// Child processes (Claude/Codex sessions, hooks, workflows) inherit it too,
+	// so an agent can run trellis-ctl (e.g. `task finish`) from a worktree with
+	// no trellis.hjson above it. Override any inherited value: this server may
+	// have been started from another instance's terminal.
+	os.Setenv("TRELLIS_API", apiBaseURL)
 
 	terminalStateDir := filepath.Join(filepath.Dir(app.configPath), ".trellis", "terminal")
 	app.terminalManager = terminal.NewManager(tmuxExecutor, terminal.TerminalConfig{

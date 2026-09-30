@@ -22,6 +22,7 @@ import (
 type WorktreeManager struct {
 	mu            sync.RWMutex
 	activateMu    sync.Mutex // Serializes Activate operations
+	mergeMu       sync.Mutex // Serializes Merge operations
 	git           GitExecutor
 	bus           events.EventBus
 	cfg           config.WorktreeConfig
@@ -495,23 +496,44 @@ func (m *WorktreeManager) Create(ctx context.Context, branchName string, switchT
 	return nil
 }
 
-// Remove removes a worktree and optionally deletes the branch.
+// Remove removes a worktree and optionally force-deletes the branch.
 func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch bool) error {
+	_, err := m.RemoveWithOptions(ctx, name, RemoveOptions{DeleteBranch: deleteBranch})
+	return err
+}
+
+// RemoveWithOptions runs pre_remove hooks, then removes a worktree and
+// optionally its branch.
+func (m *WorktreeManager) RemoveWithOptions(ctx context.Context, name string, opts RemoveOptions) (*RemoveResult, error) {
+	result := &RemoveResult{}
+
 	// Get the worktree info
 	wt, found := m.GetByName(name)
 	if !found {
-		return fmt.Errorf("worktree %q not found", name)
+		return nil, fmt.Errorf("worktree %q not found", name)
 	}
 
 	// Check if this is the active worktree
 	active := m.Active()
 	if active != nil && active.Path == wt.Path {
-		return fmt.Errorf("cannot remove the active worktree")
+		return nil, fmt.Errorf("cannot remove the active worktree")
 	}
 
 	// Check if this is the main repository
 	if wt.Path == m.repoDir {
-		return fmt.Errorf("cannot remove the main repository")
+		return nil, fmt.Errorf("cannot remove the main repository")
+	}
+
+	// Run pre_remove hooks. Skipped when the directory is already gone
+	// (hooks could only fail, and would block cleaning up the stale entry).
+	if len(m.cfg.Lifecycle.PreRemove) > 0 && m.lifecycle != nil {
+		if _, err := os.Stat(wt.Path); err == nil {
+			hooks, err := m.lifecycle.RunPreRemove(ctx, &wt, m.cfg.Lifecycle.PreRemove)
+			result.PreRemoveHooks = hooks
+			if err != nil {
+				return nil, &RemoveError{Msg: "pre_remove " + err.Error() + "; worktree not removed", Hooks: hooks}
+			}
+		}
 	}
 
 	// Kill any tmux session for this worktree (use canonical wt.Name(), not
@@ -538,14 +560,21 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 	cmd := exec.CommandContext(ctx, "git", "-C", m.repoDir, "worktree", "remove", "--force", wt.Path)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to remove worktree: %s: %w", string(output), err)
+		return nil, fmt.Errorf("failed to remove worktree: %s: %w", string(output), err)
 	}
 
 	// Optionally delete the branch
-	if deleteBranch && wt.Branch != "" && wt.Branch != "main" && wt.Branch != "master" {
-		deleteBranchCmd := exec.CommandContext(ctx, "git", "-C", m.repoDir, "branch", "-D", wt.Branch)
+	if opts.DeleteBranch && wt.Branch != "" && wt.Branch != "main" && wt.Branch != "master" {
+		flag := "-D"
+		if opts.SafeBranchDelete {
+			flag = "-d"
+		}
+		deleteBranchCmd := exec.CommandContext(ctx, "git", "-C", m.repoDir, "branch", flag, wt.Branch)
 		if output, err := deleteBranchCmd.CombinedOutput(); err != nil {
+			result.BranchError = strings.TrimSpace(string(output))
 			fmt.Printf("Warning: failed to delete branch %s: %s\n", wt.Branch, string(output))
+		} else {
+			result.BranchDeleted = true
 		}
 	}
 
@@ -555,7 +584,7 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 	// sees the post-delete state and doesn't accidentally find the
 	// just-removed worktree still listed.
 	if err := m.Refresh(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Emit event
@@ -568,10 +597,10 @@ func (m *WorktreeManager) Remove(ctx context.Context, name string, deleteBranch 
 				"canonicalName": wt.Name(),
 				"path":          wt.Path,
 				"branch":        wt.Branch,
-				"branchDeleted": deleteBranch,
+				"branchDeleted": result.BranchDeleted,
 			},
 		})
 	}
 
-	return nil
+	return result, nil
 }

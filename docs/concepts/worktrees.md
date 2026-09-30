@@ -123,6 +123,9 @@ With worktrees, you can:
 | `worktree.activated` | Switched to a worktree |
 | `worktree.created` | New worktree discovered |
 | `worktree.deleted` | Worktree removed |
+| `worktree.merged` | A worktree's branch was merged into the default branch |
+| `worktree.finished` | `task finish` removed a worktree after merging it |
+| `worktree.finish_failed` | Deferred `task finish` cleanup failed or timed out |
 | `worktree.hook.started` | Lifecycle hook started |
 | `worktree.hook.finished` | Lifecycle hook completed |
 
@@ -134,9 +137,14 @@ The [home page](/docs/pages/worktrees/) has a **Create New Worktree** form. Ente
 
 New worktrees also get the [agent skill file](/docs/reference/trellis-ctl/#claude-code-integration) installed at `.claude/skills/trellis/SKILL.md` automatically (unless disabled via `agent.install_skill`), so Claude Code sessions in the worktree can drive `trellis-ctl` right away.
 
+The form can also start a Claude (the default) or Codex session in the new worktree, with an optional first message; Trellis opens the session when it's ready. Choose **None** for a plain worktree.
+
 ### From the Command Line
 
 ```bash
+# Create worktree + branch and start an agent session (see trellis-ctl task start)
+trellis-ctl task start feature-branch -prompt "..."
+
 # Create worktree with new branch
 git worktree add ../myapp-feature -b feature-branch
 
@@ -146,11 +154,15 @@ git worktree add ../myapp-hotfix hotfix-branch
 
 Trellis will discover the new worktree automatically.
 
+## Finishing Worktrees
+
+**Finish** (on the [home page](/docs/pages/worktrees/), or [`trellis-ctl task finish`](/docs/reference/trellis-ctl/#task-commands)) merges a worktree's branch into the default branch and cleans up: it rebases and fast-forwards by default (or makes a merge or squash commit), runs `pre_merge`, `post_merge`, and `pre_remove` [lifecycle hooks](/docs/reference/config/#worktree), archives the worktree's agent sessions, and removes the worktree and branch. Both worktrees must be clean and any case wrapped up first.
+
 ## Removing Worktrees
 
 ### From the Web UI
 
-Click the **Remove** button on the [home page](/docs/pages/worktrees/) to delete a worktree. You'll be asked whether to also delete the associated git branch. Trellis will remove the worktree directory, its binaries directory, and kill the tmux session.
+Click the **Remove** button on the [home page](/docs/pages/worktrees/) to delete a worktree. You'll be asked whether to also delete the associated git branch. Trellis will run any `pre_remove` hooks, then remove the worktree directory, its binaries directory, and kill the tmux session.
 
 You cannot remove the currently active worktree or the main project worktree.
 

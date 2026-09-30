@@ -148,6 +148,21 @@ Switching worktrees will:
 2. Re-expand config templates with new paths
 3. Restart all services
 
+### Tasks
+Start work on a new branch in its own worktree, with a Claude (default) or Codex session:
+```bash
+trellis-ctl task start fix-login -prompt "Investigate and fix the login redirect loop"
+trellis-ctl task start fix-login -agent codex -prompt-file prompt.md
+```
+
+When the work in your worktree is committed and the user has asked you to merge it, finish the task:
+```bash
+trellis-ctl task finish                    # merge this worktree into the default branch, then clean up
+trellis-ctl task finish -strategy squash   # or: merge (merge commit); default ff rebases then fast-forwards
+trellis-ctl task finish -keep-worktree     # merge only
+```
+`task finish` requires a clean worktree (commit everything first, untracked files included) and a wrapped-up case. It runs the project's `pre_merge` hooks (often the test suite). If they fail or the rebase conflicts, nothing is merged: fix the problem, commit, and run it again. When you run it from your own session, the merge happens right away and the worktree is removed once your turn ends. So make `task finish` your last action, and don't run it unless the user asked for the merge.
+
 ### Events
 View recent system events:
 ```bash

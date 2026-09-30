@@ -154,6 +154,9 @@ type BinariesConfig struct {
 type LifecycleConfig struct {
 	OnCreate    []HookConfig `json:"on_create"`    // Run once when worktree is first created
 	PreActivate []HookConfig `json:"pre_activate"` // Run before each activation
+	PreMerge    []HookConfig `json:"pre_merge"`    // Run in the branch's worktree before it is merged into the default branch; failure aborts the merge
+	PostMerge   []HookConfig `json:"post_merge"`   // Run in the default branch's worktree after a merge; failure is reported but the merge stands
+	PreRemove   []HookConfig `json:"pre_remove"`   // Run in a worktree before it is removed; failure aborts the removal
 }
 
 // HookConfig defines a lifecycle hook command.

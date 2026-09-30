@@ -40,6 +40,8 @@ tags:
     description: Service lifecycle management
   - name: Worktrees
     description: Git worktree management
+  - name: Tasks
+    description: Task lifecycle — start a branch with an agent session, then merge it and clean up
   - name: Workflows
     description: Workflow execution
   - name: Events
@@ -375,6 +377,10 @@ paths:
     delete:
       tags: [Worktrees]
       summary: Remove a worktree
+      description: |
+        Runs the configured `pre_remove` lifecycle hooks in the worktree first;
+        if one fails, the worktree is not removed and a 400 is returned. The
+        active worktree and the main repository cannot be removed.
       operationId: removeWorktree
       parameters:
         - $ref: '#/components/parameters/WorktreeName'
@@ -434,6 +440,114 @@ paths:
                     $ref: '#/components/schemas/ResponseMeta'
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  # ==================== TASKS ====================
+  /tasks/start:
+    post:
+      tags: [Tasks]
+      summary: Start a task
+      description: |
+        Creates a branch and worktree (running `on_create` hooks), opens a
+        Claude or Codex session in it, and sends `prompt` as the first message
+        when given. The agent, model, and effort are validated before anything
+        is created.
+
+        The session is keyed by the worktree's short name (the directory name
+        without the `<project>-` prefix), the same key the worktree's home page
+        and the navigation picker use. `session_url` is the session page path.
+      operationId: startTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskStartRequest'
+      responses:
+        '201':
+          description: Worktree and session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TaskStartResult'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          description: The requested agent is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tasks/finish:
+    post:
+      tags: [Tasks]
+      summary: Finish a task
+      description: |
+        Merges a worktree's branch into the default branch, then cleans up:
+
+        1. Refuses (409) if the worktree has a case that is not wrapped up,
+           unless `keep_worktree` is set. Refuses (400) if the worktree has
+           uncommitted changes (untracked files included; Trellis's installed
+           skill file and the live cases directory are ignored), or if the
+           default branch's worktree has uncommitted changes to tracked files.
+        2. For the `ff` strategy, rebases the branch onto the default branch.
+           On conflict the rebase is aborted and a 409 lists the conflicting
+           files in `error.details.conflicts`.
+        3. Runs `pre_merge` hooks in the branch's worktree. A failure returns
+           409 with the results in `error.details.hook_results`; nothing is
+           merged.
+        4. Merges (fast-forward, merge commit, or squash), then runs
+           `post_merge` hooks in the default branch's worktree. A post_merge
+           failure is reported in `merge.post_merge_error`; the merge stands.
+        5. Unless `keep_worktree` is set: activates the default branch's
+           worktree if the finished one was active, archives its Claude and
+           Codex sessions, runs `pre_remove` hooks, removes the worktree, and
+           deletes the branch (`git branch -d` for `ff` and `merge`, so an
+           unmerged branch is kept and reported in `cleanup.remove.branch_error`).
+
+        If any agent session in the worktree is mid-turn, step 5 is deferred
+        until all of them are idle (`cleanup_deferred: true`). The outcome is
+        published as a `worktree.finished` or `worktree.finish_failed` event.
+
+        A branch with no commits beyond the default branch is not merged
+        (`merge.merged: false`, no hooks run), but is still cleaned up.
+      operationId: finishTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskFinishRequest'
+      responses:
+        '200':
+          description: Merged (and cleaned up, deferred, or kept)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TaskFinishResult'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Unwrapped case, rebase/merge conflict, or pre_merge hook failure.
+            `error.details` may carry `conflicts` (array of paths) and
+            `hook_results` (array of HookResult).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   # ==================== WORKFLOWS ====================
   /workflows:
@@ -3159,16 +3273,171 @@ components:
     HookResult:
       type: object
       properties:
-        name:
+        Name:
           type: string
-        success:
+        Success:
           type: boolean
-        output:
+        Output:
           type: string
+          description: Combined stdout and stderr
+        Duration:
+          type: integer
+          format: int64
+          description: Run time in nanoseconds
+        Error:
+          type: object
+          nullable: true
+          description: Opaque; non-null when the hook failed. Use Success and Output instead.
+
+    TaskStartRequest:
+      type: object
+      required: [branch]
+      properties:
+        branch:
+          type: string
+          description: New branch; its worktree is created from the main repository's HEAD
+        agent:
+          type: string
+          enum: [claude, codex]
+          default: claude
+        prompt:
+          type: string
+          description: First message for the session. Omit to leave the session waiting for input.
+        model:
+          type: string
+          description: Model override, as offered in the session's model picker
+        effort:
+          type: string
+          description: Reasoning effort to pair with model
+        session_name:
+          type: string
+          description: Session display name (default auto-numbered)
+        activate:
+          type: boolean
+          default: false
+          description: Switch to the new worktree (restarts services)
+
+    TaskStartResult:
+      type: object
+      properties:
+        worktree:
+          $ref: '#/components/schemas/Worktree'
+        agent:
+          type: string
+          enum: [claude, codex]
+        session_id:
+          type: string
+        session_url:
+          type: string
+          description: Session page path, e.g. /claude/fix-login/<session_id>
+        prompt_sent:
+          type: boolean
+          description: False when no prompt was given, sending failed, or the agent was still starting after 90s (see warnings)
+        warnings:
+          type: array
+          items:
+            type: string
+
+    TaskFinishRequest:
+      type: object
+      required: [worktree]
+      properties:
+        worktree:
+          type: string
+          description: Worktree name, short name, or branch
+        strategy:
+          type: string
+          enum: [ff, merge, squash]
+          default: ff
+          description: "ff: rebase onto the default branch, then fast-forward. merge: merge commit (--no-ff). squash: one commit."
+        message:
+          type: string
+          description: Merge or squash commit message (default derived from the branch; ignored for ff)
+        keep_branch:
+          type: boolean
+          default: false
+        keep_worktree:
+          type: boolean
+          default: false
+          description: Merge only; leave the worktree and its sessions in place
+
+    TaskMergeResult:
+      type: object
+      properties:
+        worktree:
+          type: string
+        branch:
+          type: string
+        base:
+          type: string
+          description: Default branch merged into
+        base_worktree:
+          type: string
+        strategy:
+          type: string
+          enum: [ff, merge, squash]
+        merged:
+          type: boolean
+          description: False when the branch had no commits beyond the base
+        commits:
+          type: integer
+        head:
+          type: string
+          description: Default branch commit after the merge
+        pre_merge_hooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HookResult'
+        post_merge_hooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HookResult'
+        post_merge_error:
+          type: string
+
+    TaskCleanupResult:
+      type: object
+      properties:
+        activated:
+          type: string
+          description: Worktree activated because the finished one was active
+        archived_sessions:
+          type: integer
+        removed:
+          type: boolean
+        remove:
+          type: object
+          properties:
+            pre_remove_hooks:
+              type: array
+              items:
+                $ref: '#/components/schemas/HookResult'
+            branch_deleted:
+              type: boolean
+            branch_error:
+              type: string
+              description: Why the branch was kept (e.g. git reports it not fully merged)
         error:
           type: string
-        duration:
-          type: string
+          description: Cleanup failure; the merge has already happened
+        pre_remove_hooks:
+          type: array
+          description: Hook results when a pre_remove hook blocked the removal
+          items:
+            $ref: '#/components/schemas/HookResult'
+
+    TaskFinishResult:
+      type: object
+      properties:
+        merge:
+          $ref: '#/components/schemas/TaskMergeResult'
+        cleanup:
+          $ref: '#/components/schemas/TaskCleanupResult'
+        cleanup_deferred:
+          type: boolean
+          description: An agent session was mid-turn; cleanup runs once all sessions in the worktree are idle
+        kept_worktree:
+          type: boolean
 
     Workflow:
       type: object

@@ -120,6 +120,10 @@ type Client struct {
 	// Crashes provides access to crash history operations.
 	// Crashes store context from service crashes for debugging.
 	Crashes *CrashClient
+
+	// Tasks provides access to the task lifecycle: start a branch with an
+	// agent session, then merge it and clean up.
+	Tasks *TaskClient
 }
 
 // Option configures a [Client]. Options are passed to [New] to customize
@@ -158,6 +162,7 @@ func New(baseURL string, opts ...Option) *Client {
 	c.Trace = &TraceClient{c: c}
 	c.Notify = &NotifyClient{c: c}
 	c.Crashes = &CrashClient{c: c}
+	c.Tasks = &TaskClient{c: c}
 
 	return c
 }

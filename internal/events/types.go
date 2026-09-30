@@ -71,6 +71,9 @@ const (
 	EventWorktreeActivated    = "worktree.activated"
 	EventWorktreeCreated      = "worktree.created"
 	EventWorktreeDeleted      = "worktree.deleted"
+	EventWorktreeMerged       = "worktree.merged"
+	EventWorktreeFinished     = "worktree.finished"
+	EventWorktreeFinishFailed = "worktree.finish_failed"
 	EventWorktreeHookStarted  = "worktree.hook.started"
 	EventWorktreeHookFinished = "worktree.hook.finished"
 

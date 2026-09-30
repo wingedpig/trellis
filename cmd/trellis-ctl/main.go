@@ -104,6 +104,8 @@ func main() {
 		clientOpts = append(clientOpts, client.WithTimeout(d))
 	} else if cmd == "logs" {
 		clientOpts = append(clientOpts, client.WithTimeout(5*time.Minute))
+	} else if cmd == "task" {
+		clientOpts = append(clientOpts, client.WithTimeout(taskTimeout))
 	}
 
 	// Initialize API client
@@ -125,6 +127,8 @@ func main() {
 		err = cmdWorkflow(args)
 	case "worktree":
 		err = cmdWorktree(args)
+	case "task":
+		err = cmdTask(args)
 	case "events":
 		err = cmdEvents(args)
 	case "trace":
@@ -181,7 +185,7 @@ Usage:
 Global Flags:
   -json            Output in JSON format
   -config <path>   Path to trellis.hjson (overrides auto-discovery)
-  -timeout <dur>   HTTP timeout (e.g., 30s, 5m). Default: 30s, or 5m for "logs"
+  -timeout <dur>   HTTP timeout (e.g., 30s, 5m). Default: 30s, 5m for "logs", 30m for "task"
 
 Connection:
   trellis-ctl resolves the API URL in this order:
@@ -230,6 +234,21 @@ Commands:
 
   worktree list            List all worktrees
   worktree activate <name> Activate a worktree
+
+  task start <branch> [options]  Create a worktree and start an agent session in it
+    -agent claude|codex    Agent to start (default: claude)
+    -prompt <text>         First message to send to the agent
+    -prompt-file <path|->  Read the first message from a file (- for stdin)
+    -model <m>             Model override (e.g., opus); -effort <e> sets reasoning effort
+    -name <name>           Session display name
+    -activate              Switch to the new worktree (restarts services)
+
+  task finish [worktree] [options]  Merge into the default branch and clean up
+                           (worktree defaults to the one containing the cwd)
+    -strategy ff|merge|squash  ff: rebase then fast-forward (default)
+    -m <message>           Merge/squash commit message
+    -keep-branch           Don't delete the branch
+    -keep-worktree         Merge only; keep the worktree and its sessions
 
   events [-n N]            Show recent events (default: 50)
 
