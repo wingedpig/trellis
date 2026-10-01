@@ -308,6 +308,18 @@ trellis-ctl crash delete <id>
 trellis-ctl crash clear
 ```
 
+### Tailscale Node Commands
+
+```bash
+# Show embedded Tailscale nodes (see tailscale_nodes in the config reference)
+trellis-ctl tailscale-nodes
+
+# All fields, including key expiry and certificate details
+trellis-ctl tailscale-nodes -json
+```
+
+The table lists each node's hostname, state, FQDN and tailnet IPs. Below each node it shows, where relevant, the login URL (while in `needs-login`), a hostname-mismatch or key-expiry warning, certificate status, the last error and the state directory. Only nodes referenced by a proxy listener are listed. The command reads `GET /api/v1/tailscale-nodes`.
+
 ### Trace Commands
 
 ```bash

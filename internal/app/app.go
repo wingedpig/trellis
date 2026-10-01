@@ -31,6 +31,7 @@ import (
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/pair"
 	"github.com/wingedpig/trellis/internal/proxy"
+	"github.com/wingedpig/trellis/internal/tsnode"
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/skill"
 	"github.com/wingedpig/trellis/internal/terminal"
@@ -67,6 +68,7 @@ type App struct {
 	pairRegistry      *pair.Registry
 	checklistRegistry *checklist.Registry
 	proxyManager      *proxy.Manager
+	tsnodes           *tsnode.Registry
 	apiServer         *api.Server
 
 	done     chan struct{}
@@ -774,9 +776,24 @@ func (app *App) Initialize(ctx context.Context) error {
 		}
 	}
 
+	// Create the Tailscale node registry. Structurally invalid node config
+	// aborts startup; only nodes a proxy listener references are started.
+	if len(app.config.TailscaleNodes) > 0 {
+		var debugf func(string, ...any)
+		if app.config.Logging.Level == "debug" {
+			debugf = log.Printf
+		}
+		reg, err := tsnode.NewRegistry(app.config.TailscaleNodes,
+			config.ReferencedTailscaleNodes(app.config.Proxy), tsnode.TSNetBackend(debugf))
+		if err != nil {
+			return fmt.Errorf("failed to initialize tailscale nodes: %w", err)
+		}
+		app.tsnodes = reg
+	}
+
 	// Initialize proxy manager if configured (use expanded config for template values)
 	if len(app.config.Proxy) > 0 {
-		pm, err := proxy.NewManager(app.config.Proxy)
+		pm, err := proxy.NewManager(app.config.Proxy, app.tsnodes)
 		if err != nil {
 			return fmt.Errorf("failed to initialize proxy: %w", err)
 		}
@@ -878,6 +895,7 @@ func (app *App) Initialize(ctx context.Context) error {
 			InboxAggregator:   app.inboxAggregator,
 			PairRegistry:      app.pairRegistry,
 			ChecklistRegistry: app.checklistRegistry,
+			TailscaleNodes:    app.tsnodes,
 			VSCodeHandler:     app.vsCodeHandler,
 			Shortcuts:         shortcuts,
 			Notifications:     notifications,

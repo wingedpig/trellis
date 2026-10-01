@@ -23,17 +23,20 @@ import (
 
 	"github.com/tailscale/tscert"
 	"github.com/wingedpig/trellis/internal/config"
+	"github.com/wingedpig/trellis/internal/tsnode"
 )
 
 // Manager manages multiple proxy listeners.
 type Manager struct {
 	listeners []*Listener
+	registry  *tsnode.Registry
 	mu        sync.Mutex
 }
 
 // Listener represents a single proxy listener with routes.
 type Listener struct {
 	addr   string
+	node   string // tailscale node hostname; empty for host listeners
 	server *http.Server
 	routes []route
 }
@@ -47,9 +50,23 @@ type route struct {
 
 // NewManager creates a new proxy manager from config.
 // Compiles regexes and sets up reverse proxies. Returns an error if any
-// regex is invalid (fail fast at startup).
-func NewManager(configs []config.ProxyListenerConfig) (*Manager, error) {
-	m := &Manager{}
+// regex is invalid or any tailscale_node listener is structurally invalid
+// (fail fast at startup). registry may be nil when no listener sets
+// tailscale_node.
+func NewManager(configs []config.ProxyListenerConfig, registry *tsnode.Registry) (*Manager, error) {
+	m := &Manager{registry: registry}
+
+	declared := make(map[string]bool)
+	for _, cfg := range configs {
+		if cfg.TailscaleNode != "" && registry.Has(cfg.TailscaleNode) {
+			declared[cfg.TailscaleNode] = true
+		}
+	}
+	nodeErrs := config.CheckProxyTailscaleNodes(configs, declared)
+	nodeErrs = append(nodeErrs, config.CheckTailscaleNodePortConflicts(configs)...)
+	if err := config.FieldErrorsToError(nodeErrs); err != nil {
+		return nil, err
+	}
 
 	for i, cfg := range configs {
 		listener, err := newListener(cfg)
@@ -65,6 +82,7 @@ func NewManager(configs []config.ProxyListenerConfig) (*Manager, error) {
 func newListener(cfg config.ProxyListenerConfig) (*Listener, error) {
 	l := &Listener{
 		addr: cfg.Listen,
+		node: cfg.TailscaleNode,
 	}
 
 	for j, routeCfg := range cfg.Routes {
@@ -84,13 +102,14 @@ func newListener(cfg config.ProxyListenerConfig) (*Listener, error) {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	// Configure TLS
-	if cfg.TLSTailscale {
+	// Configure TLS. Node listeners leave TLSConfig nil: the listener the
+	// registry returns already does TLS.
+	if cfg.TailscaleNode == "" && cfg.TLSTailscale {
 		// Use Tailscale daemon for automatic TLS certificates
 		l.server.TLSConfig = &tls.Config{
 			GetCertificate: tscert.GetCertificate,
 		}
-	} else if cfg.TLSCert != "" && cfg.TLSKey != "" {
+	} else if cfg.TailscaleNode == "" && cfg.TLSCert != "" && cfg.TLSKey != "" {
 		certPath := expandPath(cfg.TLSCert)
 		keyPath := expandPath(cfg.TLSKey)
 
@@ -313,12 +332,22 @@ func isWebSocket(r *http.Request) bool {
 }
 
 // Start starts all proxy listeners. Each listener runs in its own goroutine.
+// Host listeners bind immediately; node listeners wait in the background
+// for their Tailscale node to become ready and never delay host listeners.
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.registry != nil {
+		m.registry.Start()
+	}
+
 	for _, l := range m.listeners {
 		listener := l // capture for goroutine
+		if listener.node != "" {
+			go m.serveNode(ctx, listener)
+			continue
+		}
 		go func() {
 			var err error
 			if listener.server.TLSConfig != nil {
@@ -338,15 +367,52 @@ func (m *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-// Shutdown gracefully shuts down all proxy listeners.
+// serveNode waits for the listener's Tailscale node and serves on its
+// netstack. If shutdown won the race, Serve returns http.ErrServerClosed.
+func (m *Manager) serveNode(ctx context.Context, l *Listener) {
+	ln, err := m.registry.Listener(ctx, l.node, l.addr)
+	if err != nil {
+		if !errors.Is(err, tsnode.ErrShuttingDown) && ctx.Err() == nil {
+			log.Printf("Proxy listener %s on tailscale node %s not started: %v", l.addr, l.node, err)
+		}
+		return
+	}
+	l.serveTailscale(ln)
+}
+
+// serveTailscale serves on a node listener and closes it when done.
+func (l *Listener) serveTailscale(ln net.Listener) {
+	defer ln.Close()
+	log.Printf("Proxy listener starting on %s via tailscale node %s (TLS)", l.addr, l.node)
+	if err := l.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+		log.Printf("Proxy listener %s on tailscale node %s error: %v", l.addr, l.node, err)
+	}
+}
+
+// Shutdown gracefully shuts down all proxy listeners and Tailscale nodes:
+// first forbid new node listeners, then drain HTTP servers, then close node
+// listeners and let each node tear itself down.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.registry != nil {
+		m.registry.BeginShutdown()
+	}
 
 	var firstErr error
 	for _, l := range m.listeners {
 		if err := l.server.Shutdown(ctx); err != nil {
 			log.Printf("Error shutting down proxy listener %s: %v", l.addr, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+
+	if m.registry != nil {
+		if err := m.registry.Shutdown(ctx); err != nil {
+			log.Printf("Error shutting down tailscale nodes: %v", err)
 			if firstErr == nil {
 				firstErr = err
 			}

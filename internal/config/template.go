@@ -186,6 +186,10 @@ func (e *TemplateExpander) ExpandConfig(cfg *Config, ctx *TemplateContext) (*Con
 		}
 		expanded.Proxy = expandedProxy
 	}
+	if len(cfg.TailscaleNodes) > 0 {
+		expanded.TailscaleNodes = make([]TailscaleNodeConfig, len(cfg.TailscaleNodes))
+		copy(expanded.TailscaleNodes, cfg.TailscaleNodes)
+	}
 
 	return &expanded, nil
 }

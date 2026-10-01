@@ -139,6 +139,8 @@ func main() {
 		err = cmdNotify(args)
 	case "crash":
 		err = cmdCrash(args)
+	case "tailscale-nodes":
+		err = cmdTailscaleNodes(args)
 	case "version", "-v", "--version":
 		fmt.Printf("trellis-ctl %s\n", version)
 	case "help", "-h", "--help":
@@ -271,6 +273,8 @@ Commands:
   crash <id>               Get a specific crash by ID
   crash delete <id>        Delete a crash by ID
   crash clear              Clear all crashes
+
+  tailscale-nodes          Show embedded Tailscale node status (-json for all fields)
 
   version                  Show version
   help                     Show this help`)
@@ -1776,6 +1780,46 @@ func cmdTraceGroups() error {
 		fmt.Printf("%-20s %s\n", g.Name, strings.Join(g.LogViewers, ", "))
 	}
 
+	return nil
+}
+
+func cmdTailscaleNodes(args []string) error {
+	nodes, err := apiClient.TailscaleNodes.List(context.Background())
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		printJSON(nodes)
+		return nil
+	}
+	if len(nodes) == 0 {
+		fmt.Println("No tailscale nodes running")
+		return nil
+	}
+
+	fmt.Printf("%-20s %-15s %-40s %s\n", "HOSTNAME", "STATE", "FQDN", "IPS")
+	fmt.Println(strings.Repeat("-", 100))
+	for _, n := range nodes {
+		fmt.Printf("%-20s %-15s %-40s %s\n", n.Hostname, n.State, n.FQDN, strings.Join(n.TailscaleIPs, ", "))
+		if n.LoginURL != "" {
+			fmt.Printf("  login:   %s\n", n.LoginURL)
+		}
+		if n.HostnameMismatch {
+			fmt.Printf("  warning: tailnet name %s does not match hostname %s; remove the stale machine in the admin console\n", n.FQDN, n.Hostname)
+		}
+		if n.KeyExpiresSoon && n.KeyExpiry != nil {
+			fmt.Printf("  warning: node key expires %s; disable key expiry in the admin console\n", n.KeyExpiry.Local().Format(time.RFC1123))
+		}
+		if n.CertError != "" {
+			fmt.Printf("  cert:    %s\n", n.CertError)
+		} else if n.CertNotAfter != nil {
+			fmt.Printf("  cert:    valid until %s\n", n.CertNotAfter.Local().Format(time.RFC1123))
+		}
+		if n.LastError != "" {
+			fmt.Printf("  error:   %s\n", n.LastError)
+		}
+		fmt.Printf("  dir:     %s\n", n.StateDir)
+	}
 	return nil
 }
 

@@ -30,6 +30,7 @@ import (
 	"github.com/wingedpig/trellis/internal/service"
 	"github.com/wingedpig/trellis/internal/terminal"
 	"github.com/wingedpig/trellis/internal/trace"
+	"github.com/wingedpig/trellis/internal/tsnode"
 	"github.com/wingedpig/trellis/internal/usage"
 	"github.com/wingedpig/trellis/internal/workflow"
 	"github.com/wingedpig/trellis/internal/worktree"
@@ -73,6 +74,7 @@ type Dependencies struct {
 	InboxAggregator   *inbox.Aggregator   // Cross-agent session inbox
 	PairRegistry      *pair.Registry      // Paired review loops
 	ChecklistRegistry *checklist.Registry // Phased-checklist outer loops
+	TailscaleNodes    *tsnode.Registry    // Embedded Tailscale nodes (may be nil)
 	VSCodeHandler     *handlers.VSCodeHandler
 	Shortcuts         []handlers.ShortcutConfig   // Keyboard shortcuts for terminal windows
 	Notifications     handlers.NotificationConfig // Browser notification settings
@@ -413,6 +415,10 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/trace/reports/{name:.+}", traceHandler.GetReport).Methods("GET")
 		api.HandleFunc("/trace/reports/{name:.+}", traceHandler.DeleteReport).Methods("DELETE")
 	}
+
+	// Tailscale node status
+	tsnodesHandler := handlers.NewTailscaleNodesHandler(deps.TailscaleNodes)
+	api.HandleFunc("/tailscale-nodes", tsnodesHandler.List).Methods("GET")
 
 	// Crash handlers
 	if deps.CrashManager != nil {

@@ -124,6 +124,10 @@ type Client struct {
 	// Tasks provides access to the task lifecycle: start a branch with an
 	// agent session, then merge it and clean up.
 	Tasks *TaskClient
+
+	// TailscaleNodes reports the status of embedded Tailscale nodes that
+	// proxy listeners bind on.
+	TailscaleNodes *TailscaleNodeClient
 }
 
 // Option configures a [Client]. Options are passed to [New] to customize
@@ -163,6 +167,7 @@ func New(baseURL string, opts ...Option) *Client {
 	c.Notify = &NotifyClient{c: c}
 	c.Crashes = &CrashClient{c: c}
 	c.Tasks = &TaskClient{c: c}
+	c.TailscaleNodes = &TailscaleNodeClient{c: c}
 
 	return c
 }

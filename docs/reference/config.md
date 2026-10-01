@@ -360,6 +360,7 @@ proxy: [
 | `tls_tailscale` | no | Use Tailscale daemon for automatic TLS certificates. |
 | `tls_cert` | no | Path to TLS certificate. Supports `~` expansion. |
 | `tls_key` | no | Path to TLS private key. Supports `~` expansion. |
+| `tailscale_node` | no | Bind this listener on an additional embedded Tailscale node (see [tailscale_nodes](#tailscale_nodes)) instead of host interfaces. |
 | `routes` | yes | Ordered list of route rules. First match wins. |
 
 `tls_tailscale` and `tls_cert`/`tls_key` are mutually exclusive. When `tls_tailscale` is true, certificates are fetched automatically from the local Tailscale daemon — no cert files needed. This matches Caddy's built-in Tailscale TLS behavior.
@@ -374,6 +375,87 @@ proxy: [
 Routes are evaluated in order — the first matching route handles the request. A route without `path_regexp` matches all requests (catch-all). Place catch-all routes last.
 
 Template variables (`{{.Worktree.*}}`) are supported in `listen` and `upstream` values.
+
+### tailscale_nodes
+
+`tls_tailscale` can only serve the host machine's own Tailscale name, because the local `tailscaled` issues certificates only for its own node. `tailscale_nodes` adds **extra Tailscale nodes embedded in the Trellis process** (via `tsnet`), each with its own hostname, tailnet IP, MagicDNS name and Let's Encrypt certificate. From any tailnet device, each node looks like a separate machine. Use this when you need a second HTTPS site on port 443 under a *different hostname*, for example because cookies, WebAuthn RP IDs or host-based routing ignore the port.
+
+```hjson
+tailscale_nodes: [
+  {
+    hostname: "markbook-ent"                        // becomes markbook-ent.<tailnet>.ts.net
+    state_dir: "~/.trellis/tsnet/markbook-ent"      // optional; this is the default
+    auth_key_env: "TRELLIS_TS_AUTHKEY"              // optional; only used for first registration
+    ephemeral: false                                // optional
+  }
+]
+
+proxy: [
+  {
+    listen: ":443"
+    tailscale_node: "markbook-ent"
+    routes: [
+      { path_regexp: "^/api/v1/.*$", upstream: "localhost:3001" }
+      { upstream: "localhost:3000" }
+    ]
+  }
+]
+```
+
+**Node fields:**
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `hostname` | yes | — | Node name on the tailnet. A DNS label: `[a-z0-9-]`, 1–63 chars, no leading or trailing hyphen. Unique within `tailscale_nodes`. |
+| `state_dir` | no | `~/.trellis/tsnet/<hostname>` | Persistent node state: keys, machine identity, certificate cache. Created with mode 0700. Must be exclusive (see below). |
+| `auth_key_env` | no | (none) | Name of an environment variable holding a Tailscale auth key. The key itself never goes in the config and is never logged. Ignored once `state_dir` holds a logged-in node. Without it, a login URL is shown instead. |
+| `ephemeral` | no | `false` | Ephemeral nodes are removed from the tailnet when they go offline. A dev hostname should normally be stable. |
+
+**Listeners on a node.** When a proxy listener sets `tailscale_node`:
+
+- It binds on the node's tailnet netstack only, never on host interfaces. `listen` must be a bare port (`":443"`, `":1003"`); a host part is an error.
+- TLS is automatic, with a certificate for `<hostname>.<tailnet>.ts.net`. `tls_tailscale`, `tls_cert` and `tls_key` must be unset.
+- Routes, `Host` preservation, `X-Forwarded-*` headers and WebSocket tunneling work as on host listeners. Upstreams are still dialed from the host, so `localhost:3000` is the Mac's loopback.
+- Port conflicts are checked per node: `:443` on the host and `:443` on `markbook-ent` don't conflict, but two listeners on the same node and port do. Ports are compared as numbers, so `:443` and `:0443` count as the same port. Several listeners can share one node.
+- Host listeners never wait for nodes. A node listener starts serving as soon as its node is ready, with no restart needed.
+
+A node that no listener references is not started and never joins the tailnet (the config loader logs a warning).
+
+**Structural errors abort startup.** Unlike most config warnings, these stop Trellis from starting: a missing, invalid or duplicate `hostname`; a duplicate or nested `state_dir`; a `tailscale_node` that isn't declared; `tailscale_node` combined with `tls_tailscale`/`tls_cert`/`tls_key`; a node `listen` with a host part or no port; and two listeners on the same node and port. Runtime problems (login, certificates, a held lock, key expiry) never abort startup. They show up in the node's status instead.
+
+**State directory exclusivity.** Each node needs its own `state_dir`. Two servers sharing one would share a node identity and overwrite each other's state.
+
+- Within one config, directories are compared after `~` expansion, making them absolute, cleaning them and resolving symlinks, so `~/x`, `/Users/me/x/` and a symlinked parent all count as the same directory. Equal or nested directories are an error.
+- Across processes (a second Trellis instance, or another project using the default path with the same hostname), each node takes an exclusive lock on `<state_dir>/.trellis.lock` before starting. If another process holds it, that node goes to `failed` with an error naming the directory. Other nodes and listeners are unaffected. The lock is released automatically if the process dies.
+
+**First run and login.**
+
+1. Start Trellis. With no auth key, the node enters `needs-login` and Trellis logs a prominent line with a login URL:
+   `tailscale node markbook-ent: NEEDS LOGIN — visit https://login.tailscale.com/a/… to add this node to your tailnet`.
+   The same URL is shown by `trellis-ctl tailscale-nodes`.
+2. Open the URL and approve the machine. If your tailnet requires device approval, the node shows `needs-approval` until you approve it in the admin console.
+3. The node reaches `running` and its listeners start serving, with no restart.
+4. The tailnet must have MagicDNS and HTTPS certificates enabled. If either is off, the node shows `error` with a pointer to the admin-console setting, and recovers on its own once you enable it.
+
+Restarting Trellis brings the node back without logging in again, with the same FQDN. The first HTTPS request triggers certificate issuance, which takes a few seconds; after that the certificate is cached in `state_dir` and renewed automatically.
+
+To skip the interactive login, create an auth key in the admin console (preferably one-off and non-reusable), then `export TRELLIS_TS_AUTHKEY=tskey-…` before starting Trellis. An untagged (user) key makes a user-owned node with the same ACL reachability as your machine, which is the recommended setup for dev. A tagged key gives a node with key expiry disabled by default, but it needs ACL rules granting access to the tag.
+
+**Key expiry.** A user-owned node's key expires after the tailnet's expiry period (180 days by default). Trellis sets `key_expires_soon` and logs a daily warning in the last 14 days. On expiry the node drops to `needs-login` and a fresh login URL is surfaced. Listeners stay open and resume once you log in again. To avoid this, **disable key expiry for the node** in the admin console (Machines → … → Disable key expiry).
+
+**Hostname mismatch.** If a stale machine with the same name is still registered (for example, after deleting `state_dir`), the tailnet assigns `markbook-ent-1` instead. The node still serves, but Trellis logs an error and sets `hostname_mismatch`. To fix it, remove the stale machine in the admin console and rename the new one.
+
+**Node states** (as reported by `trellis-ctl tailscale-nodes` and `GET /api/v1/tailscale-nodes`): `starting`, `needs-login`, `needs-approval`, `running`, `stopped`, `error` (recoverable) and `failed` (terminal: lock held or start error; restart Trellis after fixing the cause).
+
+Notes: the node's hostname appears in public Certificate Transparency logs, as your host's ts.net name already does. Funnel is never used; node listeners are reachable only from your tailnet. Tailscale nodes are supported on macOS and Linux.
+
+**Manual verification checklist:**
+
+1. First run: the login URL appears in the log and in `trellis-ctl tailscale-nodes`; after approval the node reaches `running` with no restart.
+2. From another tailnet device, `curl -v https://markbook-ent.<tailnet>.ts.net/` shows a valid certificate, and the upstream sees the correct `Host`.
+3. Restarting Trellis brings the node back without a login and with the same FQDN.
+4. Starting a second Trellis on the same config leaves the node `failed` (lock held).
+5. Deleting `state_dir` while the old machine is still registered produces `markbook-ent-1` and the mismatch error.
 
 ### worktree
 

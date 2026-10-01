@@ -67,6 +67,7 @@ func (v *Validator) Validate(cfg *Config) error {
 	v.validateCrossReferences(cfg, errs)
 	v.validateTraceGroups(cfg, errs)
 	v.validateLogViewers(cfg, errs)
+	v.validateTailscaleNodes(cfg, errs)
 	v.validateProxy(cfg, errs)
 	v.validateAgent(cfg, errs)
 
@@ -106,39 +107,54 @@ func (v *Validator) validateServer(cfg *Config, errs *ValidationError) {
 }
 
 // validatePortConflicts flags the API server and proxy listeners (or two
-// proxy listeners) configured to bind the same port. Binds on different
-// specific hosts are allowed; a wildcard host conflicts with any other bind
-// on the same port. Templated listen addresses are skipped — they can't be
-// resolved until expansion.
+// proxy listeners) configured to bind the same port within one bind
+// namespace. The API server and ordinary listeners share the "host"
+// namespace, where binds on different specific hosts are allowed and a
+// wildcard host conflicts with any other bind on the same port. Listeners on
+// a Tailscale node live in "tsnet:<hostname>", so ":443" on the host and
+// ":443" on a node don't conflict. Templated listen addresses are skipped —
+// they can't be resolved until expansion.
 func (v *Validator) validatePortConflicts(cfg *Config, errs *ValidationError) {
-	type bind struct{ host, port, field string }
+	type bind struct{ namespace, host, port, field string }
 	var binds []bind
 	isWildcard := func(h string) bool {
 		return h == "" || h == "0.0.0.0" || h == "::" || h == "[::]"
 	}
 
-	add := func(field, host, port string) {
+	add := func(field, namespace, host, port string) {
+		// Normalize numeric ports so ":443" and ":0443" compare equal.
+		if n, err := strconv.Atoi(port); err == nil {
+			port = strconv.Itoa(n)
+		}
 		if port == "" || port == "0" {
 			return
 		}
 		for _, b := range binds {
-			if b.port != port {
+			if b.namespace != namespace || b.port != port {
 				continue
 			}
 			if b.host == host || isWildcard(b.host) || isWildcard(host) {
-				errs.Add(field, fmt.Sprintf("listen address conflicts with %s (both bind port %s)", b.field, port))
+				msg := fmt.Sprintf("listen address conflicts with %s (both bind port %s)", b.field, port)
+				if namespace != "host" {
+					msg = fmt.Sprintf("listen address conflicts with %s (both bind port %s on tailscale node %s)", b.field, port, strings.TrimPrefix(namespace, "tsnet:"))
+				}
+				errs.Add(field, msg)
 				return
 			}
 		}
-		binds = append(binds, bind{host: host, port: port, field: field})
+		binds = append(binds, bind{namespace: namespace, host: host, port: port, field: field})
 	}
 
 	if cfg.Server.Port > 0 {
-		add("server.port", cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
+		add("server.port", "host", cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
 	}
 	for i, listener := range cfg.Proxy {
 		if listener.Listen == "" || strings.Contains(listener.Listen, "{{") {
 			continue
+		}
+		namespace := "host"
+		if listener.TailscaleNode != "" {
+			namespace = "tsnet:" + listener.TailscaleNode
 		}
 		host, port, err := net.SplitHostPort(listener.Listen)
 		if err != nil {
@@ -150,7 +166,7 @@ func (v *Validator) validatePortConflicts(cfg *Config, errs *ValidationError) {
 				continue
 			}
 		}
-		add(fmt.Sprintf("proxy[%d].listen", i), host, port)
+		add(fmt.Sprintf("proxy[%d].listen", i), namespace, host, port)
 	}
 }
 
@@ -474,7 +490,31 @@ func (v *Validator) validateLogViewers(cfg *Config, errs *ValidationError) {
 	}
 }
 
+// validateTailscaleNodes reports structural problems in tailscale_nodes
+// (the same rules tsnode.NewRegistry enforces) and nodes no listener uses.
+func (v *Validator) validateTailscaleNodes(cfg *Config, errs *ValidationError) {
+	_, fieldErrs := CheckTailscaleNodes(cfg.TailscaleNodes)
+	errs.Errors = append(errs.Errors, fieldErrs...)
+
+	referenced := make(map[string]bool)
+	for _, name := range ReferencedTailscaleNodes(cfg.Proxy) {
+		referenced[name] = true
+	}
+	for i, n := range cfg.TailscaleNodes {
+		if n.Hostname != "" && !referenced[n.Hostname] {
+			errs.Add(fmt.Sprintf("tailscale_nodes[%d]", i),
+				fmt.Sprintf("tailscale node %s is declared but not used by any proxy listener", n.Hostname))
+		}
+	}
+}
+
 func (v *Validator) validateProxy(cfg *Config, errs *ValidationError) {
+	declared := make(map[string]bool)
+	for _, n := range cfg.TailscaleNodes {
+		declared[n.Hostname] = true
+	}
+	errs.Errors = append(errs.Errors, CheckProxyTailscaleNodes(cfg.Proxy, declared)...)
+
 	for i, listener := range cfg.Proxy {
 		prefix := fmt.Sprintf("proxy[%d]", i)
 

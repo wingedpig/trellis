@@ -29,6 +29,7 @@ type Config struct {
 	TraceGroups       []TraceGroupConfig    `json:"trace_groups"`
 	Crashes           CrashesConfig         `json:"crashes"`
 	Proxy             []ProxyListenerConfig `json:"proxy"`
+	TailscaleNodes    []TailscaleNodeConfig `json:"tailscale_nodes"`
 	Cases             CasesConfig           `json:"cases"`
 	Agent             AgentConfig           `json:"agent"`
 }
@@ -123,6 +124,19 @@ type ProxyListenerConfig struct {
 	TLSKey       string             `json:"tls_key"`       // Path to TLS private key (supports ~ expansion)
 	TLSTailscale bool               `json:"tls_tailscale"` // Use Tailscale daemon for automatic TLS certificates
 	Routes       []ProxyRouteConfig `json:"routes"`        // Ordered route rules (first match wins)
+	// TailscaleNode, if set, binds this listener on the named embedded
+	// Tailscale node (tailscale_nodes[].hostname) instead of host
+	// interfaces. TLS is automatic; listen must be a bare ":port".
+	TailscaleNode string `json:"tailscale_node"`
+}
+
+// TailscaleNodeConfig declares an additional Tailscale node embedded in the
+// Trellis process (via tsnet) that proxy listeners can bind on.
+type TailscaleNodeConfig struct {
+	Hostname   string `json:"hostname"`     // Node name on the tailnet (DNS label)
+	StateDir   string `json:"state_dir"`    // Persistent node state (default: ~/.trellis/tsnet/<hostname>)
+	AuthKeyEnv string `json:"auth_key_env"` // Env var holding an auth key for first registration
+	Ephemeral  bool   `json:"ephemeral"`    // Remove the node from the tailnet when it goes offline
 }
 
 // ProxyRouteConfig configures a single proxy route rule.
