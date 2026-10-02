@@ -101,8 +101,10 @@ func WriteCLISessionFile(projectPath, workDir, gitBranch string, messages []Mess
 	cliSessionID := uuid.New().String()
 	jsonlPath := filepath.Join(projDir, cliSessionID+".jsonl")
 
-	// Convert messages to JSONL lines
-	lines, err := messagesToJSONL(cliSessionID, workDir, gitBranch, messages)
+	// Convert messages to JSONL lines. A forked session can begin with an
+	// assistant message, and every rebuild of it (fork, resume-target repair,
+	// stale-session rebuild) passes through here, so the lead-in goes here.
+	lines, err := messagesToJSONL(cliSessionID, workDir, gitBranch, cliLeadIn(messages))
 	if err != nil {
 		return "", fmt.Errorf("convert messages to JSONL: %w", err)
 	}

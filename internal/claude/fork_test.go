@@ -183,3 +183,66 @@ func TestCLILeadInForAssistantStart(t *testing.T) {
 		t.Fatalf("cliLeadIn did not prepend a user turn: %+v", got)
 	}
 }
+
+// A fork that opens with an assistant message keeps its placeholder user turn
+// only in the CLI transcript. Splitting it again must give the source side a
+// transcript that still opens with a user turn.
+func TestForkSessionResplitKeepsLeadIn(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	work := t.TempDir()
+	m := NewManager("")
+	src := m.CreateSession("wt", work, "src")
+	src.mu.Lock()
+	src.messages = forkTestMessages()
+	src.mu.Unlock()
+
+	first, err := m.ForkSession(src.ID(), 3, "first") // first = [a3 q4 a5]
+	if err != nil {
+		t.Fatalf("first fork: %v", err)
+	}
+	if _, err := m.ForkSession(first.ID(), 1, "second"); err != nil { // first keeps [a3]
+		t.Fatalf("second fork: %v", err)
+	}
+	first.mu.Lock()
+	sid := first.claudeSID
+	first.mu.Unlock()
+	want := []string{"(This conversation was split off from an earlier session.)", "a3"}
+	if got := cliTranscriptTexts(t, work, sid); !equalStrings(got, want) {
+		t.Errorf("re-split source CLI transcript = %v, want %v", got, want)
+	}
+}
+
+// The source's messages file is rewritten on fork; a message appended right
+// after must survive on disk rather than being clobbered by the rewrite.
+func TestForkSessionPersistsLaterAppends(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for i := 0; i < 50; i++ {
+		work := t.TempDir()
+		m := NewManager(t.TempDir())
+		src := m.CreateSession("wt", work, "src")
+		src.mu.Lock()
+		src.messages = forkTestMessages()
+		src.persistAllMessages()
+		src.mu.Unlock()
+
+		if _, err := m.ForkSession(src.ID(), 2, "fork"); err != nil {
+			t.Fatalf("ForkSession: %v", err)
+		}
+		next := Message{Role: "user", Content: []ContentBlock{{Type: "text", Text: "after"}}}
+		src.mu.Lock()
+		src.messages = append(src.messages, next)
+		src.persistMessage(next)
+		file := src.messagesFile
+		src.mu.Unlock()
+		m.Shutdown()
+
+		got, err := loadMessages(file)
+		if err != nil {
+			t.Fatalf("loadMessages: %v", err)
+		}
+		want := []string{"q0", "a1", "after"}
+		if texts := messageTexts(got); !equalStrings(texts, want) {
+			t.Fatalf("iteration %d: messages on disk = %v, want %v", i, texts, want)
+		}
+	}
+}

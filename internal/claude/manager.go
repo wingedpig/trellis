@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/events"
+	"github.com/wingedpig/trellis/internal/serialq"
 )
 
 // debugEvents gates raw NDJSON event logging in readLoop. Raw events can
@@ -205,6 +206,10 @@ type Session struct {
 	// other, so a session is exactly one of active / archived / trashed.
 	archivedAt    *time.Time
 	messages      []Message
+	// persistQ runs messages-file writes in the order they were queued.
+	// Writes are queued under s.mu, so the file follows the in-memory order —
+	// a rewrite (fork, reset) can't land after, and clobber, a later append.
+	persistQ      serialq.Queue
 	cmd           *exec.Cmd
 	stdin         io.WriteCloser
 	cancel        context.CancelFunc
@@ -706,7 +711,9 @@ func (m *Manager) DeleteSession(sessionID string) {
 	plansFile := s.plansFile
 	s.mu.Unlock()
 
-	// Remove messages and plans files
+	// Remove messages and plans files, after any queued write that would
+	// otherwise recreate the messages file.
+	s.persistQ.Wait()
 	if msgFile != "" {
 		os.Remove(msgFile)
 	}
@@ -942,11 +949,18 @@ func (m *Manager) Shutdown() {
 		s.closeAllSubscribers()
 		s.mu.Unlock()
 	}
+	sessions := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
 	m.mu.Unlock()
 
 	// Drain background persists outside m.mu — they need it themselves — so
 	// the newest snapshot is on disk before we return.
 	m.persistWG.Wait()
+	for _, s := range sessions {
+		s.persistQ.Wait()
+	}
 }
 
 // persistMessage appends a single message to disk. Must be called with s.mu held.
@@ -956,11 +970,11 @@ func (s *Session) persistMessage(msg Message) {
 	}
 	file := s.messagesFile
 	id := s.id
-	go func() {
+	s.persistQ.Submit(func() {
 		if err := appendMessage(file, msg); err != nil {
 			log.Printf("claude: failed to persist message for session %s: %v", id, err)
 		}
-	}()
+	})
 }
 
 // persistAllMessages rewrites the entire messages file. Must be called with s.mu held.
@@ -973,11 +987,11 @@ func (s *Session) persistAllMessages() {
 	copy(msgs, s.messages)
 	file := s.messagesFile
 	id := s.id
-	go func() {
+	s.persistQ.Submit(func() {
 		if err := rewriteMessages(file, msgs); err != nil {
 			log.Printf("claude: failed to rewrite messages for session %s: %v", id, err)
 		}
-	}()
+	})
 }
 
 // Messages returns the conversation history.
@@ -2734,7 +2748,7 @@ func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayN
 	if err != nil {
 		return nil, fmt.Errorf("write CLI session for source: %w", err)
 	}
-	tailSID, err := WriteCLISessionFile(workDir, workDir, "", cliLeadIn(tail))
+	tailSID, err := WriteCLISessionFile(workDir, workDir, "", tail)
 	if err != nil {
 		return nil, fmt.Errorf("write CLI session for fork: %w", err)
 	}
@@ -2803,7 +2817,8 @@ func (s *Session) forkableLocked() error {
 // cliLeadIn returns messages suitable for a CLI transcript. The Messages API
 // requires a conversation to open with a user turn, so a transcript that would
 // start with an assistant message gets a short synthetic user message first.
-// It only exists in the CLI's JSONL; Trellis never shows it.
+// It only exists in the CLI's JSONL; Trellis never shows it, so a session that
+// opens with an assistant message gets it again on every rebuild.
 func cliLeadIn(messages []Message) []Message {
 	if len(messages) == 0 || messages[0].Role == "user" {
 		return messages

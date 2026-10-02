@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/agentmsg"
+	"github.com/wingedpig/trellis/internal/serialq"
 	"github.com/wingedpig/trellis/internal/events"
 )
 
@@ -117,6 +118,10 @@ type Session struct {
 
 	messages    []Message
 	subscribers map[chan StreamEvent]struct{}
+	// persistQ runs messages-file writes in the order they were queued.
+	// Writes are queued under s.mu, so the file follows the in-memory order —
+	// a rewrite (fork) can't land after, and clobber, a later append.
+	persistQ serialq.Queue
 
 	// Most recent thread-level token usage from thread/tokenUsage/updated.
 	tokenUsage TokenUsage
@@ -627,18 +632,19 @@ func (s *Session) fanOut(ev StreamEvent) {
 	}
 }
 
-// persistMessage appends a message to disk asynchronously. Caller may hold s.mu.
+// persistMessage appends a message to disk asynchronously. Callers hold s.mu so
+// the write queues in the same order the message joined s.messages.
 func (s *Session) persistMessage(msg Message) {
 	if s.messagesFile == "" {
 		return
 	}
 	file := s.messagesFile
 	id := s.id
-	go func() {
+	s.persistQ.Submit(func() {
 		if err := appendMessage(file, msg); err != nil {
 			log.Printf("codex [%s]: failed to persist message: %v", id, err)
 		}
-	}()
+	})
 }
 
 func (s *Session) persistAllMessages() {
@@ -649,11 +655,11 @@ func (s *Session) persistAllMessages() {
 	copy(msgs, s.messages)
 	file := s.messagesFile
 	id := s.id
-	go func() {
+	s.persistQ.Submit(func() {
 		if err := rewriteMessages(file, msgs); err != nil {
 			log.Printf("codex [%s]: failed to rewrite messages: %v", id, err)
 		}
-	}()
+	})
 }
 
 // ---------------- process lifecycle ----------------
@@ -1904,6 +1910,8 @@ func (m *Manager) DeleteSession(sessionID string) {
 	s.closeAllSubscribers()
 	msgFile := s.messagesFile
 	s.mu.Unlock()
+	// Wait out any queued write that would otherwise recreate the file.
+	s.persistQ.Wait()
 	if msgFile != "" {
 		os.Remove(msgFile)
 	}
@@ -1986,6 +1994,12 @@ func (m *Manager) ForkSession(sourceID string, messageIndex int, displayName str
 	copy(head, src.messages[:split])
 	tail := make([]Message, total-split)
 	copy(tail, src.messages[split:])
+	lastTurn := lastKeptTurnID(head, tail)
+	// The new session starts on a fresh thread, so the moved turn ids name
+	// turns it doesn't have; a later fork must never pass one to thread/fork.
+	for i := range tail {
+		tail[i].TurnID = ""
+	}
 	worktreeName := src.worktreeName
 	workDir := src.workDir
 	threadID := src.threadID
@@ -1994,14 +2008,18 @@ func (m *Manager) ForkSession(sourceID string, messageIndex int, displayName str
 	// Truncate the source's thread before mutating anything, so a failure
 	// leaves the source intact. With no complete turn left to keep, the source
 	// simply starts a fresh thread on its next Send.
-	var srcThreadID string
-	if lastTurn := lastKeptTurnID(head, tail); threadID != "" && lastTurn != "" {
+	var srcThreadID, keptTurn string
+	if threadID != "" && lastTurn != "" {
 		var err error
 		srcThreadID, err = src.forkThreadThrough(threadID, lastTurn)
 		if err != nil {
 			return nil, fmt.Errorf("truncate codex thread: %w", err)
 		}
+		keptTurn = lastTurn
 	}
+	// Messages after the last kept turn (a turn the split cut through) aren't
+	// in the source's new thread either.
+	clearTurnIDsAfter(head, keptTurn)
 
 	// startMu (held through the shutdown) keeps a concurrent Send from
 	// starting a turn on the old process and thread while we swap them out.
@@ -2069,6 +2087,24 @@ func lastKeptTurnID(head, tail []Message) string {
 	return ""
 }
 
+// clearTurnIDsAfter blanks the turn id of every message after the last one
+// belonging to keptTurn — all of them when keptTurn is empty — so the
+// session only holds ids its current thread actually has.
+func clearTurnIDsAfter(msgs []Message, keptTurn string) {
+	start := 0
+	if keptTurn != "" {
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].TurnID == keptTurn {
+				start = i + 1
+				break
+			}
+		}
+	}
+	for i := start; i < len(msgs); i++ {
+		msgs[i].TurnID = ""
+	}
+}
+
 // forkThreadThrough asks the app-server to copy threadID through lastTurnID
 // into a new thread and returns its id. It starts the session's app-server if
 // it isn't running; the caller shuts it down afterwards.
@@ -2128,11 +2164,18 @@ func (m *Manager) Shutdown() {
 		s.closeAllSubscribers()
 		s.mu.Unlock()
 	}
+	sessions := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
 	m.mu.Unlock()
 
 	// Drain background persists outside mu — they need it themselves — so the
 	// newest snapshot is on disk before we return.
 	m.persistWG.Wait()
+	for _, s := range sessions {
+		s.persistQ.Wait()
+	}
 }
 
 // newSessionStruct returns a Session with maps initialized. Other fields are

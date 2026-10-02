@@ -78,3 +78,82 @@ func TestForkSessionSplits(t *testing.T) {
 		t.Errorf("fork threadID = %q, want a fresh thread", tid)
 	}
 }
+
+// Turn ids are only meaningful on the thread that owns them. The fork starts
+// a fresh thread, so the moved messages lose theirs; the source loses the ids
+// of a turn the split cut through (here it has no thread, so all of them).
+func TestForkSessionClearsForeignTurnIDs(t *testing.T) {
+	u, a := agentmsg.RoleUser, agentmsg.RoleAssistant
+	m := NewManager("")
+	src := m.CreateSession("wt", t.TempDir(), "src")
+	src.mu.Lock()
+	src.messages = []Message{
+		forkMsg(u, "q0", ""),
+		forkMsg(a, "a1", "t1"),
+		forkMsg(u, "q2", ""),
+		forkMsg(a, "a3a", "t2"),
+		forkMsg(a, "a3b", "t2"),
+	}
+	src.mu.Unlock()
+
+	fork, err := m.ForkSession(src.ID(), 4, "fork")
+	if err != nil {
+		t.Fatalf("ForkSession: %v", err)
+	}
+	for _, msgs := range [][]Message{src.Messages(), fork.Messages()} {
+		for _, msg := range msgs {
+			if msg.TurnID != "" {
+				t.Errorf("message %q kept turn id %q", msg.Items[0].Text, msg.TurnID)
+			}
+		}
+	}
+}
+
+func TestClearTurnIDsAfter(t *testing.T) {
+	u, a := agentmsg.RoleUser, agentmsg.RoleAssistant
+	msgs := []Message{
+		forkMsg(u, "q0", ""),
+		forkMsg(a, "a1", "t1"),
+		forkMsg(u, "q2", ""),
+		forkMsg(a, "a3a", "t2"), // the turn the split cut through
+	}
+	clearTurnIDsAfter(msgs, "t1")
+	if msgs[1].TurnID != "t1" || msgs[3].TurnID != "" {
+		t.Errorf("turn ids = %q, %q; want t1 kept and t2 cleared", msgs[1].TurnID, msgs[3].TurnID)
+	}
+}
+
+func TestForkSessionPersistsLaterAppends(t *testing.T) {
+	u, a := agentmsg.RoleUser, agentmsg.RoleAssistant
+	for i := 0; i < 50; i++ {
+		m := NewManager(t.TempDir())
+		src := m.CreateSession("wt", t.TempDir(), "src")
+		src.mu.Lock()
+		src.messages = []Message{forkMsg(u, "q0", ""), forkMsg(a, "a1", ""), forkMsg(u, "q2", "")}
+		src.persistAllMessages()
+		src.mu.Unlock()
+
+		if _, err := m.ForkSession(src.ID(), 2, "fork"); err != nil {
+			t.Fatalf("ForkSession: %v", err)
+		}
+		next := forkMsg(u, "after", "")
+		src.mu.Lock()
+		src.messages = append(src.messages, next)
+		src.persistMessage(next)
+		file := src.messagesFile
+		src.mu.Unlock()
+		m.Shutdown()
+
+		got, err := loadMessages(file)
+		if err != nil {
+			t.Fatalf("loadMessages: %v", err)
+		}
+		if len(got) != 3 || got[2].Items[0].Text != "after" {
+			texts := make([]string, len(got))
+			for j, g := range got {
+				texts[j] = g.Items[0].Text
+			}
+			t.Fatalf("iteration %d: messages on disk = %v, want [q0 a1 after]", i, texts)
+		}
+	}
+}
