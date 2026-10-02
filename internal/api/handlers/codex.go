@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,19 +127,22 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 	// tens of MB and lock up the browser's main thread on JSON.parse + GC.
 	// Truncated items carry markers; the client fetches full content lazily
 	// via /api/v1/codex/sessions/{id}/items/{itemId}/output.
-	usage := session.TokenUsage()
-	model, effort := session.ModelOverride()
-	writeJSON(codexServerMessage{
-		Type:            "history",
-		Messages:        session.MessagesForWire(),
-		Generating:      session.IsGenerating(),
-		TokenUsage:      &usage,
-		Activity:        session.CurrentActivity(),
-		SkipPermissions: session.SkipPermissions(),
-		Model:           model,
-		Effort:          effort,
-		ModelOptions:    codex.ModelOptions,
-	})
+	sendHistory := func() {
+		usage := session.TokenUsage()
+		model, effort := session.ModelOverride()
+		writeJSON(codexServerMessage{
+			Type:            "history",
+			Messages:        session.MessagesForWire(),
+			Generating:      session.IsGenerating(),
+			TokenUsage:      &usage,
+			Activity:        session.CurrentActivity(),
+			SkipPermissions: session.SkipPermissions(),
+			Model:           model,
+			Effort:          effort,
+			ModelOptions:    codex.ModelOptions,
+		})
+	}
+	sendHistory()
 
 	// Re-send any pending approval prompts.
 	for _, ev := range session.PendingApprovals() {
@@ -149,6 +153,12 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 	subCh := session.Subscribe()
 	go func() {
 		for ev := range subCh {
+			// A fork moved messages out of this session: re-send the
+			// truncated history rather than the bare marker.
+			if ev.Type == "history_changed" {
+				sendHistory()
+				continue
+			}
 			writeJSON(codexServerMessage{Type: "stream", Event: &ev})
 			if ev.Type == "turn_completed" || ev.Type == "turn_failed" {
 				writeJSON(codexServerMessage{Type: "done"})
@@ -416,7 +426,9 @@ func (h *CodexHandler) ListTrashedSessionsAPI(w http.ResponseWriter, r *http.Req
 	WriteJSON(w, http.StatusOK, h.manager.ListTrashedSessions(vars["worktree"]))
 }
 
-// ForkSessionAPI creates a new session pre-populated with messages[0..idx].
+// ForkSessionAPI splits a session at the specified message index: that
+// message and everything after it move into a new session in the same
+// worktree, and the source keeps the ones before it.
 func (h *CodexHandler) ForkSessionAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	var body struct {
@@ -433,7 +445,11 @@ func (h *CodexHandler) ForkSessionAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := h.manager.ForkSession(vars["session"], body.MessageIndex, body.DisplayName)
 	if err != nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		if strings.Contains(err.Error(), "not found") {
+			WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		} else {
+			WriteError(w, http.StatusConflict, ErrConflict, err.Error())
+		}
 		return
 	}
 	WriteJSON(w, http.StatusCreated, session.Info())

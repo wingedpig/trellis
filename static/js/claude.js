@@ -1568,13 +1568,17 @@
             for (var mi = 0; mi < messages.length; mi++) {
                 var msg = messages[mi];
                 var isLast = mi === messages.length - 1;
+                // A fork moves this message and everything after it into a new
+                // session, so the first message can't be forked — the source
+                // would be left empty.
+                var forkIndex = mi > 0 ? mi : undefined;
                 if (msg.role === 'user') {
-                    renderUserMessage(msg, mi);
+                    renderUserMessage(msg, forkIndex);
                 } else if (msg.role === 'assistant') {
                     // The server synthesizes an in-progress assistant message as the
                     // trailing entry when generating=true. Treat that one as pending
                     // so subsequent stream deltas append to its bubble.
-                    renderAssistantMessage(msg, toolResults, planWrites, generating && isLast, mi);
+                    renderAssistantMessage(msg, toolResults, planWrites, generating && isLast, forkIndex);
                 }
             }
         } finally {
@@ -1614,9 +1618,9 @@
         // Buttons go BEFORE the bubble in the DOM — flex-end right-aligns the
         // row, so the buttons appear to the left of the bubble.
         attachCopyButton(wrapper, function() { return text; });
-        // No fork button on user messages: forking at a question would carry an
-        // unanswered prompt into the new session. Fork is offered on assistant
-        // answers only (see the attachForkButton call in the assistant renderer).
+        if (typeof messageIndex === 'number') {
+            attachForkButton(wrapper, messageIndex);
+        }
         wrapper.appendChild(bubble);
         messagesEl.appendChild(wrapper);
     }
@@ -1636,8 +1640,8 @@
 
     // attachForkButton creates a branch-icon button that opens the fork dialog
     // at this message's index. messageIndex is the 0-based index of the
-    // message in the session's history; forking at index N creates a new
-    // session containing messages[0..N] (inclusive).
+    // message in the session's history. Forking splits the session: this
+    // message and everything after it move to a new session.
     function attachForkButton(wrapper, messageIndex) {
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -1662,11 +1666,7 @@
         if (input) input.value = '';
         if (idxEl) idxEl.value = String(messageIndex);
         if (subtitle) {
-            // Fork is only offered on assistant answers now, so it always
-            // branches from a response — phrase it that way rather than as a
-            // bare message count.
-            subtitle.textContent = 'The new session branches from this answer, keeping the ' +
-                (messageIndex + 1) + ' messages up to and including it.';
+            subtitle.textContent = 'This message and everything after it move to a new session, starting with this message. This session keeps everything before it.';
         }
         var bs = bootstrap.Modal.getOrCreateInstance(modalEl);
         bs.show();

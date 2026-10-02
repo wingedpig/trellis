@@ -43,11 +43,15 @@ A session is in exactly one place: active, archived, or trashed. Archiving a ses
 
 ### Forking a Session
 
-While viewing a Claude chat, hover over any completed message and click the branch icon (next to the copy icon) to fork the session at that point.
+While viewing a Claude chat, hover over any completed message — yours or Claude's — and click the branch icon (next to the copy icon) to split the session at that point.
 
-The fork modal prompts for a name and creates a new session in the same worktree containing everything up to and including the message you clicked. Send your next message in the new session and the conversation resumes from exactly that point. The original session is untouched.
+The fork modal prompts for a name and creates a new session in the same worktree. The message you clicked and everything after it **move** into the new session, with your clicked message first; the original session keeps only the messages before it. Every message except the first has a fork button, since forking there would leave the original empty.
 
-Use this when you want to explore an alternate path from a particular decision point without losing the existing conversation — typical pattern: fork off the last user message, then retry a different approach in the new session.
+Each side remembers only what it shows: Claude in the new session doesn't see the messages left behind, and Claude in the original no longer sees the ones that moved. Send your next message in either session and the conversation continues from there.
+
+Use this to split a session that drifted onto a second topic: fork at the first message of the new topic, and that thread of work continues in its own session while the original stays focused.
+
+Forking is refused while the session is generating, waiting for an approval, or running background agents — the split restarts the session's process, which would cut them off.
 
 ### Moving Sessions to a New Worktree
 
@@ -213,7 +217,7 @@ If anything fails partway through, the archive is rolled back so the case return
 
 ## Codex parity
 
-Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), including [Auto-Approve](#auto-approve-skip-permissions) and a [Model Picker](#model-picker), with one exception: [Plan Artifacts](#plan-artifacts) rely on Claude Code's plan mode. Codex transcripts saved to a case land in the case's `codex_transcripts/` directory instead of `transcripts/`.
+Everything described above also exists on the Codex page (`/codex/{worktree}/{session}`), including [Auto-Approve](#auto-approve-skip-permissions) and a [Model Picker](#model-picker), with two exceptions: [Plan Artifacts](#plan-artifacts) rely on Claude Code's plan mode, and a [fork](#forking-a-session) starts the new Codex session on a fresh thread — the Codex app-server can't seed a thread with only the moved messages, so Codex there doesn't remember them (the original session's Codex still forgets them, as on Claude). Codex transcripts saved to a case land in the case's `codex_transcripts/` directory instead of `transcripts/`.
 
 ### Codex model picker
 
@@ -237,7 +241,7 @@ If Codex's API rejects a model/effort pair — usually because the installed `co
 
 Mechanics you don't need day-to-day, collected here for the curious:
 
-- **Forking** — The Claude CLI's JSONL resume file is rewritten for the new session, so the process resumes from exactly the fork point on the next message.
+- **Forking** — A fresh Claude CLI JSONL resume file is written for each side holding only its own messages, and the original's process is stopped so its next message resumes from the shortened file. The CLI requires a conversation to open with a user turn, so when the moved part starts with one of Claude's messages, its JSONL gets a one-line placeholder user message ("This conversation was split off from an earlier session.") first; Trellis never shows it. Browser tabs open on the original re-render its shortened history immediately. On Codex, the original's thread is replaced by an app-server `thread/fork` through the last turn it keeps.
 - **Moving sessions** — The server validates that all selected sessions are active and in the same source worktree, creates the new worktree, copies the selected files (preserving mode and relative paths), reverts the source worktree — tracked files via `git checkout --`, untracked files via delete — then stops and rebinds each selected session. A `claude.session.moved` or `codex.session.moved` event is emitted for each session.
 - **Plans** — Plan history is stored per session in `.trellis/claude/plans/<session-id>.json` and exposed at `GET/PUT /api/v1/claude/sessions/{session}/plan`.
 - **Commit** — On confirm the server resolves or creates the case, snapshots the session's transcript (if the case was just created), refreshes every attached transcript from its live source, `git add`s the selected files, `git commit`s, and appends a `CommitEntry` to `case.json` with the SHA, date, message, generated description, and files changed. The draft message comes from `claude -p`; inputs include the diff of your checked files (the staging area is not consulted), the case manifest, `notes.md`, and the last few user messages from the session.

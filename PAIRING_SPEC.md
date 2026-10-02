@@ -519,9 +519,10 @@ Trashing either paired session stops the loop with reason
 
 ### 10.3 Forking
 
-Forking a session that is currently in an active pair clones the
-transcript but does **not** clone the pair membership; the fork starts
-unpaired. The original session remains paired.
+Forking a session that is currently in an active pair moves the messages
+from the fork point onward into a new session but does **not** carry the
+pair membership; the fork starts unpaired. The original session remains
+paired.
 
 ### 10.4 Moving a session to a new worktree
 

@@ -1949,17 +1949,16 @@ func (m *Manager) MoveSession(sessionID, newWorktreeName, newWorkDir string) err
 	return nil
 }
 
-// ForkSession creates a new session pre-populated with messages[0..messageIndex]
-// from the source.
+// ForkSession splits sourceID at messageIndex: the chosen message and
+// everything after it move into a new session in the same worktree, with the
+// chosen message first, and the source keeps only the messages before it.
+// Forking at the first message would leave the source empty, so it is rejected.
 //
-// Codex's `thread/fork` clones the entire source thread server-side — there
-// is no "fork up to turn X" parameter. So we use it only when the user is
-// forking at the *last* message (the common "branch off from here" case),
-// which preserves true server-side continuity.
-//
-// For intermediate forks, we fall back to a local clone: the new session
-// shows the prefix in the UI, but Codex starts a fresh thread on first
-// Send and won't know about the prior context server-side.
+// The source's Codex thread is replaced by a server-side thread/fork through
+// the last turn it keeps, so it no longer remembers the turns that moved. The
+// new session starts on a fresh thread on its first Send: the app-server has
+// no way to seed a thread with just the moved turns, so Codex sees none of the
+// earlier conversation there.
 func (m *Manager) ForkSession(sourceID string, messageIndex int, displayName string) (*Session, error) {
 	m.mu.Lock()
 	src, ok := m.sessions[sourceID]
@@ -1969,75 +1968,140 @@ func (m *Manager) ForkSession(sourceID string, messageIndex int, displayName str
 	}
 
 	src.mu.Lock()
-	if len(src.messages) == 0 {
+	if err := src.forkableLocked(); err != nil {
 		src.mu.Unlock()
-		return nil, fmt.Errorf("source session has no messages to fork")
+		return nil, err
 	}
-	if messageIndex < 0 {
-		messageIndex = 0
-	}
-	if messageIndex >= len(src.messages) {
-		messageIndex = len(src.messages) - 1
-	}
-	// Never carry a trailing unanswered user question into the fork: walk back
-	// over trailing user messages so the new session ends on the last actual
-	// response. The UI only offers Fork on assistant messages, so this normally
-	// no-ops; it also guards direct API callers passing a user-message index.
-	end := messageIndex
-	for end >= 0 && src.messages[end].Role == agentmsg.RoleUser {
-		end--
-	}
-	if end < 0 {
+	total := len(src.messages)
+	if messageIndex < 0 || messageIndex >= total {
 		src.mu.Unlock()
-		return nil, fmt.Errorf("cannot fork before the first response")
+		return nil, fmt.Errorf("message index %d out of range", messageIndex)
 	}
-	// Recompute against the trimmed end: only a fork that still lands on the
-	// genuine last message may use Codex's server-side thread/fork.
-	atLastMessage := end == len(src.messages)-1
-	prefix := make([]Message, end+1)
-	copy(prefix, src.messages[:end+1])
+	split := messageIndex
+	if split == 0 {
+		src.mu.Unlock()
+		return nil, fmt.Errorf("cannot fork at the first message: the whole session would move")
+	}
+	head := make([]Message, split)
+	copy(head, src.messages[:split])
+	tail := make([]Message, total-split)
+	copy(tail, src.messages[split:])
 	worktreeName := src.worktreeName
 	workDir := src.workDir
-	srcThreadID := src.threadID
-	srcRPC := src.rpc
+	threadID := src.threadID
 	src.mu.Unlock()
+
+	// Truncate the source's thread before mutating anything, so a failure
+	// leaves the source intact. With no complete turn left to keep, the source
+	// simply starts a fresh thread on its next Send.
+	var srcThreadID string
+	if lastTurn := lastKeptTurnID(head, tail); threadID != "" && lastTurn != "" {
+		var err error
+		srcThreadID, err = src.forkThreadThrough(threadID, lastTurn)
+		if err != nil {
+			return nil, fmt.Errorf("truncate codex thread: %w", err)
+		}
+	}
+
+	// startMu (held through the shutdown) keeps a concurrent Send from
+	// starting a turn on the old process and thread while we swap them out.
+	src.startMu.Lock()
+	src.mu.Lock()
+	if err := src.forkableLocked(); err != nil || len(src.messages) != total || src.threadID != threadID {
+		src.mu.Unlock()
+		src.startMu.Unlock()
+		if err == nil {
+			err = fmt.Errorf("session changed while forking; try again")
+		}
+		return nil, err
+	}
+	src.messages = head
+	src.threadID = srcThreadID
+	src.tokenUsage = TokenUsage{}
+	src.persistAllMessages()
+	src.mu.Unlock()
+	// The next Send respawns the app-server and resumes the truncated thread.
+	src.shutdownProcess()
+	src.startMu.Unlock()
+	// Connected clients still show the moved messages; have them re-render.
+	src.fanOut(StreamEvent{Type: "history_changed"})
 
 	if displayName == "" {
 		displayName = "Fork"
 	}
 	newSession := m.CreateSession(worktreeName, workDir, displayName)
 	newSession.mu.Lock()
-	newSession.messages = prefix
+	newSession.messages = tail
 	newSession.persistAllMessages()
 	newSession.mu.Unlock()
 
-	// Try a server-side fork only when forking at the latest message, since
-	// Codex's thread/fork doesn't support truncation. Need an active rpc
-	// connection on the source — if the source's process isn't running we
-	// could spin one up, but that's expensive and a rare path. Fall back
-	// to local clone otherwise.
-	if atLastMessage && srcRPC != nil && srcThreadID != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		raw, err := srcRPC.Call(ctx, "thread/fork", threadForkParams{
-			ThreadID:     srcThreadID,
-			Cwd:          workDir,
-			ExcludeTurns: true,
-		})
-		if err != nil {
-			log.Printf("codex: thread/fork failed (%v), falling back to local clone", err)
-		} else {
-			var res threadForkResult
-			if err := json.Unmarshal(raw, &res); err == nil && res.Thread.ID != "" {
-				newSession.mu.Lock()
-				newSession.threadID = res.Thread.ID
-				newSession.mu.Unlock()
-				m.persist()
-			}
+	m.persist()
+	return newSession, nil
+}
+
+// forkableLocked reports why the session can't be split right now. Splitting
+// stops the app-server, so it must not interrupt a turn or a pending approval.
+// Caller must hold s.mu.
+func (s *Session) forkableLocked() error {
+	switch {
+	case s.generating:
+		return fmt.Errorf("cannot fork while the session is generating")
+	case len(s.pendingApprovals) > 0:
+		return fmt.Errorf("cannot fork while the session is waiting for approval")
+	}
+	return nil
+}
+
+// lastKeptTurnID returns the id of the last turn that lies entirely within
+// head. User messages carry no turn id, so this is the last assistant message
+// with one — skipping a turn the split cuts through (its later messages open
+// tail). Empty when head holds no complete turn.
+func lastKeptTurnID(head, tail []Message) string {
+	var splitTurn string
+	if len(tail) > 0 && tail[0].Role == agentmsg.RoleAssistant {
+		splitTurn = tail[0].TurnID
+	}
+	for i := len(head) - 1; i >= 0; i-- {
+		if head[i].Role == agentmsg.RoleAssistant && head[i].TurnID != "" && head[i].TurnID != splitTurn {
+			return head[i].TurnID
 		}
 	}
+	return ""
+}
 
-	return newSession, nil
+// forkThreadThrough asks the app-server to copy threadID through lastTurnID
+// into a new thread and returns its id. It starts the session's app-server if
+// it isn't running; the caller shuts it down afterwards.
+func (s *Session) forkThreadThrough(threadID, lastTurnID string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.EnsureProcess(ctx); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	rpc := s.rpc
+	workDir := s.workDir
+	s.mu.Unlock()
+	if rpc == nil {
+		return "", fmt.Errorf("rpc not initialized")
+	}
+	raw, err := rpc.Call(ctx, "thread/fork", threadForkParams{
+		ThreadID:     threadID,
+		Cwd:          workDir,
+		ExcludeTurns: true,
+		LastTurnID:   lastTurnID,
+	})
+	if err != nil {
+		return "", err
+	}
+	var res threadForkResult
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return "", fmt.Errorf("decode thread/fork: %w", err)
+	}
+	if res.Thread.ID == "" {
+		return "", fmt.Errorf("thread/fork returned empty thread id")
+	}
+	return res.Thread.ID, nil
 }
 
 // GetOrCreateSession returns the first active session for a worktree, creating one if none.

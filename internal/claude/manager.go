@@ -2687,14 +2687,16 @@ func (m *Manager) ExportSession(sessionID, level string) (*Transcript, error) {
 	}, nil
 }
 
-// ForkSession creates a new session in the same worktree as sourceSessionID,
-// pre-populated with the source's messages[0..messageIndex] (inclusive). This
-// is a "split at this point" operation: the new session inherits the prefix,
-// the source session is untouched, and the new session's Claude CLI JSONL is
-// written so --resume continues from exactly that point.
+// ForkSession splits sourceSessionID at messageIndex: the chosen message and
+// everything after it move into a new session in the same worktree, with the
+// chosen message first, and the source keeps only the messages before it.
+// Forking at the first message would leave the source empty, so it is rejected.
 //
-// messageIndex is 0-based and inclusive: fork at index 3 → new session has
-// messages[0..3] (4 messages). Out-of-range indices are clamped.
+// Both sides get a freshly written Claude CLI JSONL holding only their own
+// messages, so --resume on each continues from exactly what it shows: the new
+// session's Claude does not see the messages left behind, and the source's
+// Claude no longer sees the ones that moved. The source's running process is
+// stopped so its next turn resumes from the truncated history.
 func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayName string) (*Session, error) {
 	m.mu.Lock()
 	src, ok := m.sessions[sourceSessionID]
@@ -2704,54 +2706,114 @@ func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayN
 	}
 
 	src.mu.Lock()
-	if len(src.messages) == 0 {
+	if err := src.forkableLocked(); err != nil {
 		src.mu.Unlock()
-		return nil, fmt.Errorf("source session has no messages to fork")
+		return nil, err
 	}
-	// Clamp the requested index.
-	if messageIndex < 0 {
-		messageIndex = 0
-	}
-	if messageIndex >= len(src.messages) {
-		messageIndex = len(src.messages) - 1
-	}
-	// Never carry a trailing unanswered user question into the fork: walk back
-	// over trailing user messages so the new session ends on the last actual
-	// response. The UI only offers Fork on assistant messages, so this normally
-	// no-ops; it also guards direct API callers passing a user-message index.
-	end := messageIndex
-	for end >= 0 && src.messages[end].Role == "user" {
-		end--
-	}
-	if end < 0 {
+	total := len(src.messages)
+	if messageIndex < 0 || messageIndex >= total {
 		src.mu.Unlock()
-		return nil, fmt.Errorf("cannot fork before the first response")
+		return nil, fmt.Errorf("message index %d out of range", messageIndex)
 	}
-	prefix := make([]Message, end+1)
-	copy(prefix, src.messages[:end+1])
+	split := messageIndex
+	if split == 0 {
+		src.mu.Unlock()
+		return nil, fmt.Errorf("cannot fork at the first message: the whole session would move")
+	}
+	head := make([]Message, split)
+	copy(head, src.messages[:split])
+	tail := make([]Message, total-split)
+	copy(tail, src.messages[split:])
 	worktreeName := src.worktreeName
 	workDir := src.workDir
 	src.mu.Unlock()
 
+	// Write both CLI transcripts before mutating anything, so a failure leaves
+	// the source intact.
+	headSID, err := WriteCLISessionFile(workDir, workDir, "", head)
+	if err != nil {
+		return nil, fmt.Errorf("write CLI session for source: %w", err)
+	}
+	tailSID, err := WriteCLISessionFile(workDir, workDir, "", cliLeadIn(tail))
+	if err != nil {
+		return nil, fmt.Errorf("write CLI session for fork: %w", err)
+	}
+
+	// startMu keeps a concurrent ensureProcess from spawning a process on the
+	// old claudeSID while we swap it out.
+	src.startMu.Lock()
+	src.mu.Lock()
+	if err := src.forkableLocked(); err != nil || len(src.messages) != total {
+		src.mu.Unlock()
+		src.startMu.Unlock()
+		if err == nil {
+			err = fmt.Errorf("session changed while forking; try again")
+		}
+		return nil, err
+	}
+	if src.cancel != nil {
+		src.cancel()
+	}
+	src.started = false
+	src.stdin = nil
+	src.cmd = nil
+	src.cancel = nil
+	src.messages = head
+	src.claudeSID = headSID
+	src.inputTokens = 0
+	src.inputTokensBase = 0
+	src.cacheCreationInputTokens = 0
+	src.cacheReadInputTokens = 0
+	src.persistAllMessages()
+	src.publishStateLocked()
+	src.mu.Unlock()
+	src.startMu.Unlock()
+	// Connected clients still show the moved messages; have them re-render.
+	src.fanOut(StreamEvent{Type: "history_changed"})
+
 	if displayName == "" {
 		displayName = "Fork"
 	}
-
 	newSession := m.CreateSession(worktreeName, workDir, displayName)
-
-	cliSessionID, err := WriteCLISessionFile(workDir, workDir, "", prefix)
-	if err != nil {
-		return newSession, fmt.Errorf("write CLI session: %w", err)
-	}
-
 	newSession.mu.Lock()
-	newSession.claudeSID = cliSessionID
-	newSession.messages = prefix
+	newSession.claudeSID = tailSID
+	newSession.messages = tail
 	newSession.persistAllMessages()
 	newSession.mu.Unlock()
 
 	m.persist()
 	return newSession, nil
+}
+
+// forkableLocked reports why the session can't be split right now. Splitting
+// kills the process, so it must not interrupt a turn, a pending prompt, or a
+// background agent. Caller must hold s.mu.
+func (s *Session) forkableLocked() error {
+	switch {
+	case s.generating:
+		return fmt.Errorf("cannot fork while the session is generating")
+	case len(s.pendingControlRequests) > 0:
+		return fmt.Errorf("cannot fork while the session is waiting for approval")
+	case len(s.backgroundTasks) > 0:
+		return fmt.Errorf("cannot fork while background agents are running")
+	}
+	return nil
+}
+
+// cliLeadIn returns messages suitable for a CLI transcript. The Messages API
+// requires a conversation to open with a user turn, so a transcript that would
+// start with an assistant message gets a short synthetic user message first.
+// It only exists in the CLI's JSONL; Trellis never shows it.
+func cliLeadIn(messages []Message) []Message {
+	if len(messages) == 0 || messages[0].Role == "user" {
+		return messages
+	}
+	lead := Message{
+		Role:      "user",
+		Content:   []ContentBlock{{Type: "text", Text: "(This conversation was split off from an earlier session.)"}},
+		Timestamp: messages[0].Timestamp,
+	}
+	return append([]Message{lead}, messages...)
 }
 
 // ImportSession imports a transcript into a worktree, creating a new session

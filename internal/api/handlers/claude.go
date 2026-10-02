@@ -138,26 +138,29 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 	}
 
 	// Send conversation history (including any in-progress assistant turn) and cached slash commands
-	cmds, skills := session.SlashCommands()
-	base, cacheCreate, cacheRead := session.TokenBreakdown()
-	writeJSON(serverMessage{
-		Type:                     "history",
-		Messages:                 session.MessagesWithPending(),
-		Generating:               session.IsGenerating(),
-		InputTokens:              session.InputTokens(),
-		InputTokensBase:          base,
-		CacheCreationInputTokens: cacheCreate,
-		CacheReadInputTokens:     cacheRead,
-		CostUSD:                  session.CostUSD(),
-		Model:                    session.Model(),
-		ModelOverride:            session.ModelOverride(),
-		Effort:                   session.EffortOverride(),
-		ModelOptions:             claude.ModelOptions,
-		SkipPermissions:          session.SkipPermissions(),
-		SlashCommands:            cmds,
-		Skills:                   skills,
-		Activity:                 session.CurrentActivity(),
-	})
+	sendHistory := func() {
+		cmds, skills := session.SlashCommands()
+		base, cacheCreate, cacheRead := session.TokenBreakdown()
+		writeJSON(serverMessage{
+			Type:                     "history",
+			Messages:                 session.MessagesWithPending(),
+			Generating:               session.IsGenerating(),
+			InputTokens:              session.InputTokens(),
+			InputTokensBase:          base,
+			CacheCreationInputTokens: cacheCreate,
+			CacheReadInputTokens:     cacheRead,
+			CostUSD:                  session.CostUSD(),
+			Model:                    session.Model(),
+			ModelOverride:            session.ModelOverride(),
+			Effort:                   session.EffortOverride(),
+			ModelOptions:             claude.ModelOptions,
+			SkipPermissions:          session.SkipPermissions(),
+			SlashCommands:            cmds,
+			Skills:                   skills,
+			Activity:                 session.CurrentActivity(),
+		})
+	}
+	sendHistory()
 
 	// Re-send pending permission prompts (oldest first) that were waiting
 	// when the client disconnected. Several can be outstanding at once when
@@ -170,6 +173,12 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 	subCh := session.Subscribe()
 	go func() {
 		for event := range subCh {
+			// A fork moved messages out of this session: re-send the
+			// truncated history rather than the bare marker.
+			if event.Type == "history_changed" {
+				sendHistory()
+				continue
+			}
 			writeJSON(serverMessage{Type: "stream", Event: &event})
 			// When a turn completes, notify the client with the session's
 			// accumulated cost (authoritative across process restarts,
@@ -591,9 +600,9 @@ func copyFilePreserveMode(src, dst string) error {
 	return out.Close()
 }
 
-// ForkSessionAPI creates a new session in the same worktree as the source,
-// pre-populated with the source's messages up to (and including) the
-// specified message index. The source session is untouched.
+// ForkSessionAPI splits a session at the specified message index: the
+// messages from the split point onward move into a new session in the same
+// worktree, and the source keeps the ones before it.
 func (h *ClaudeHandler) ForkSessionAPI(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["session"]
@@ -613,7 +622,11 @@ func (h *ClaudeHandler) ForkSessionAPI(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.manager.ForkSession(sessionID, body.MessageIndex, body.DisplayName)
 	if err != nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		if strings.Contains(err.Error(), "not found") {
+			WriteError(w, http.StatusNotFound, ErrNotFound, err.Error())
+		} else {
+			WriteError(w, http.StatusConflict, ErrConflict, err.Error())
+		}
 		return
 	}
 	WriteJSON(w, http.StatusCreated, session.Info())

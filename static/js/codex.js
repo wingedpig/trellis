@@ -467,6 +467,7 @@
         attachMessageActions(wrapper, function () {
             return text;
         }, /*role=*/ 'user');
+        attachForkButton(wrapper, index);
 
         messagesEl.appendChild(wrapper);
     }
@@ -539,7 +540,10 @@
         return '> ' + header + '\n' + lines;
     }
 
+    // Forking moves this message and everything after it into a new session,
+    // so the first message gets no button — the source would be left empty.
     function attachForkButton(wrapper, index) {
+        if (!(index > 0)) return;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'codex-message-fork';
@@ -574,7 +578,7 @@
         document.getElementById('codexForkIndex').value = String(index);
         document.getElementById('codexForkName').value = '';
         document.getElementById('codexForkSubtitle').textContent =
-            'The new session branches from this answer, keeping the ' + (index + 1) + ' messages up to and including it.';
+            'This message and everything after it move to a new session, starting with this message. This session keeps everything before it.';
         const modal = new bootstrap.Modal(document.getElementById('codexForkModal'));
         modal.show();
     }

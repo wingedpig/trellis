@@ -65,13 +65,13 @@ type threadResumeParams struct {
 	ExcludeTurns bool   `json:"excludeTurns,omitempty"`
 }
 
-// threadForkParams clones an entire thread to a new id. The Codex protocol
-// does not currently support forking up to a specific turn — server-side
-// fork captures the source's current state in full.
+// threadForkParams clones a thread to a new id. LastTurnID, when set, forks
+// only through that turn (inclusive); later turns are left out of the copy.
 type threadForkParams struct {
 	ThreadID     string `json:"threadId"`
 	Cwd          string `json:"cwd,omitempty"`
 	ExcludeTurns bool   `json:"excludeTurns,omitempty"`
+	LastTurnID   string `json:"lastTurnId,omitempty"`
 }
 
 // threadForkResult mirrors thread/start's response shape — wraps the new
