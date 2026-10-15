@@ -91,21 +91,9 @@ func cmdTaskStart(args []string) error {
 		return fmt.Errorf(usage)
 	}
 
-	prompt := vals["prompt"]
-	if path, ok := vals["prompt-file"]; ok {
-		if prompt != "" {
-			return fmt.Errorf("use -prompt or -prompt-file, not both")
-		}
-		var data []byte
-		if path == "-" {
-			data, err = io.ReadAll(os.Stdin)
-		} else {
-			data, err = os.ReadFile(path)
-		}
-		if err != nil {
-			return fmt.Errorf("read prompt: %w", err)
-		}
-		prompt = string(data)
+	prompt, err := readPrompt(vals)
+	if err != nil {
+		return err
 	}
 
 	req := client.TaskStartRequest{
@@ -132,6 +120,34 @@ func cmdTaskStart(args []string) error {
 		return nil
 	}
 
+	printSessionStart(res, prompt)
+	return nil
+}
+
+// readPrompt returns the -prompt text or the contents of -prompt-file ("-" for stdin).
+func readPrompt(vals map[string]string) (string, error) {
+	prompt := vals["prompt"]
+	path, ok := vals["prompt-file"]
+	if !ok {
+		return prompt, nil
+	}
+	if prompt != "" {
+		return "", fmt.Errorf("use -prompt or -prompt-file, not both")
+	}
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return "", fmt.Errorf("read prompt: %w", err)
+	}
+	return string(data), nil
+}
+
+func printSessionStart(res *client.TaskStartResult, prompt string) {
 	fmt.Printf("Worktree: %s (%s)\n", res.Worktree.Name(), res.Worktree.Path)
 	fmt.Printf("Session:  %s %s\n", res.Agent, res.SessionID)
 	fmt.Printf("Open:     %s%s\n", apiURL, res.SessionURL)
@@ -144,7 +160,6 @@ func cmdTaskStart(args []string) error {
 	for _, w := range res.Warnings {
 		fmt.Printf("Warning: %s\n", w)
 	}
-	return nil
 }
 
 func cmdTaskFinish(args []string) error {

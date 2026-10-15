@@ -33,7 +33,8 @@ const (
 )
 
 // TaskHandler implements the task lifecycle endpoints: Start (worktree +
-// agent session + initial prompt) and Finish (merge into the default branch,
+// agent session + initial prompt), StartSession (agent session in an
+// existing worktree), and Finish (merge into the default branch,
 // archive sessions, remove the worktree).
 type TaskHandler struct {
 	worktreeMgr worktree.Manager
@@ -49,19 +50,56 @@ func NewTaskHandler(worktreeMgr worktree.Manager, claudeMgr *claude.Manager, cod
 }
 
 type taskStartRequest struct {
-	Branch      string `json:"branch"`
-	Agent       string `json:"agent"` // "claude" (default) or "codex"
-	Prompt      string `json:"prompt"`
-	Model       string `json:"model"`
-	Effort      string `json:"effort"`
-	SessionName string `json:"session_name"`
-	Activate    bool   `json:"activate"`
+	Branch   string `json:"branch"`
+	Activate bool   `json:"activate"`
+	agentOptions
 }
 
 // agentSession is the slice of a Claude or Codex session Start needs.
 type agentSession interface {
 	ID() string
 	Send(ctx context.Context, prompt string) error
+}
+
+// agentOptions are the session settings shared by Start and StartSession.
+type agentOptions struct {
+	Agent       string `json:"agent"` // "claude" (default) or "codex"
+	Prompt      string `json:"prompt"`
+	Model       string `json:"model"`
+	Effort      string `json:"effort"`
+	SessionName string `json:"session_name"`
+}
+
+// validate defaults the agent and checks it and its model option, writing an
+// error response and returning false if they are unusable.
+func (h *TaskHandler) validate(w http.ResponseWriter, o *agentOptions) bool {
+	if o.Agent == "" {
+		o.Agent = agentClaude
+	}
+	switch o.Agent {
+	case agentClaude:
+		if h.claudeMgr == nil {
+			WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "claude is not available")
+			return false
+		}
+		if !claude.IsValidModelOption(o.Model, o.Effort) {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("unknown claude model option %q (effort %q)", o.Model, o.Effort))
+			return false
+		}
+	case agentCodex:
+		if h.codexMgr == nil {
+			WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "codex is not available")
+			return false
+		}
+		if !codex.IsValidModelOption(o.Model, o.Effort) {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("unknown codex model option %q (effort %q)", o.Model, o.Effort))
+			return false
+		}
+	default:
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("unknown agent %q (want claude or codex)", o.Agent))
+		return false
+	}
+	return true
 }
 
 // Start creates a worktree for a new branch, opens an agent session in it,
@@ -77,33 +115,9 @@ func (h *TaskHandler) Start(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, ErrBadRequest, "branch is required")
 		return
 	}
-	if req.Agent == "" {
-		req.Agent = agentClaude
-	}
-
 	// Validate everything about the agent before touching git, so a typo in
 	// the model doesn't leave a half-made task behind.
-	switch req.Agent {
-	case agentClaude:
-		if h.claudeMgr == nil {
-			WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "claude is not available")
-			return
-		}
-		if !claude.IsValidModelOption(req.Model, req.Effort) {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("unknown claude model option %q (effort %q)", req.Model, req.Effort))
-			return
-		}
-	case agentCodex:
-		if h.codexMgr == nil {
-			WriteError(w, http.StatusServiceUnavailable, ErrInternalError, "codex is not available")
-			return
-		}
-		if !codex.IsValidModelOption(req.Model, req.Effort) {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("unknown codex model option %q (effort %q)", req.Model, req.Effort))
-			return
-		}
-	default:
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, fmt.Sprintf("unknown agent %q (want claude or codex)", req.Agent))
+	if !h.validate(w, &req.agentOptions) {
 		return
 	}
 
@@ -120,28 +134,75 @@ func (h *TaskHandler) Start(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, ErrWorktreeError, "worktree created but lookup failed")
 		return
 	}
+	WriteJSON(w, http.StatusCreated, h.openSession(wt, req.Activate, req.agentOptions))
+}
 
-	// Sessions, terminals, and cases key worktrees by the homepage URL form:
-	// the directory name without the project prefix (as in session_move.go).
-	// Keying by the full directory name hides the session from the worktree
-	// home page and mislabels it in the picker.
-	worktreeKey := strings.TrimPrefix(wt.Name(), h.worktreeMgr.ProjectName()+"-")
+type sessionStartRequest struct {
+	Worktree string `json:"worktree"`
+	agentOptions
+}
+
+// StartSession opens an agent session in an existing worktree and sends the
+// initial prompt if one is given.
+func (h *TaskHandler) StartSession(w http.ResponseWriter, r *http.Request) {
+	var req sessionStartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid request body")
+		return
+	}
+	req.Worktree = strings.TrimSpace(req.Worktree)
+	if req.Worktree == "" {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "worktree is required")
+		return
+	}
+	if !h.validate(w, &req.agentOptions) {
+		return
+	}
+	wt, ok := h.worktreeMgr.GetByName(req.Worktree)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	active := false
+	if a := h.worktreeMgr.Active(); a != nil {
+		active = a.Path == wt.Path
+	}
+	WriteJSON(w, http.StatusCreated, h.openSession(wt, active, req.agentOptions))
+}
+
+// worktreeKey is the key sessions, terminals, and cases use for a worktree:
+// the homepage URL form, i.e. the directory name without the project prefix
+// ("main" for the main worktree), as in session_move.go. Keying by the full
+// directory name hides the session from the worktree home page and
+// mislabels it in the picker.
+func (h *TaskHandler) worktreeKey(wt worktree.WorktreeInfo) string {
+	project := h.worktreeMgr.ProjectName()
+	if project != "" && wt.Name() == project {
+		return "main"
+	}
+	return strings.TrimPrefix(wt.Name(), project+"-")
+}
+
+// openSession creates a validated agent session in wt, sends the initial
+// prompt if there is one, and returns the response body.
+func (h *TaskHandler) openSession(wt worktree.WorktreeInfo, active bool, o agentOptions) map[string]interface{} {
+	key := h.worktreeKey(wt)
 
 	var session agentSession
 	var warnings []string
-	switch req.Agent {
+	switch o.Agent {
 	case agentClaude:
-		s := h.claudeMgr.CreateSession(worktreeKey, wt.Path, req.SessionName)
-		if req.Model != "" || req.Effort != "" {
-			if err := s.SetModelOption(req.Model, req.Effort); err != nil {
+		s := h.claudeMgr.CreateSession(key, wt.Path, o.SessionName)
+		if o.Model != "" || o.Effort != "" {
+			if err := s.SetModelOption(o.Model, o.Effort); err != nil {
 				warnings = append(warnings, "set model: "+err.Error())
 			}
 		}
 		session = s
 	case agentCodex:
-		s := h.codexMgr.CreateSession(worktreeKey, wt.Path, req.SessionName)
-		if req.Model != "" || req.Effort != "" {
-			if err := s.SetModel(req.Model, req.Effort); err != nil {
+		s := h.codexMgr.CreateSession(key, wt.Path, o.SessionName)
+		if o.Model != "" || o.Effort != "" {
+			if err := s.SetModel(o.Model, o.Effort); err != nil {
 				warnings = append(warnings, "set model: "+err.Error())
 			}
 		}
@@ -149,12 +210,12 @@ func (h *TaskHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	promptSent := false
-	if strings.TrimSpace(req.Prompt) != "" {
+	if strings.TrimSpace(o.Prompt) != "" {
 		// Send starts the agent process; the session outlives this request,
 		// so it gets a background context. Wait a bounded time for it to be
 		// accepted so errors can be reported.
 		errCh := make(chan error, 1)
-		go func() { errCh <- session.Send(context.Background(), req.Prompt) }()
+		go func() { errCh <- session.Send(context.Background(), o.Prompt) }()
 		select {
 		case err := <-errCh:
 			if err != nil {
@@ -168,16 +229,16 @@ func (h *TaskHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]interface{}{
-		"worktree":    toWorktreeResponse(wt, req.Activate),
-		"agent":       req.Agent,
+		"worktree":    toWorktreeResponse(wt, active),
+		"agent":       o.Agent,
 		"session_id":  session.ID(),
-		"session_url": "/" + req.Agent + "/" + worktreeKey + "/" + session.ID(),
+		"session_url": "/" + o.Agent + "/" + key + "/" + session.ID(),
 		"prompt_sent": promptSent,
 	}
 	if len(warnings) > 0 {
 		resp["warnings"] = warnings
 	}
-	WriteJSON(w, http.StatusCreated, resp)
+	return resp
 }
 
 type taskFinishRequest struct {

@@ -77,6 +77,66 @@ func TestTaskStart_CreatesWorktreeAndClaudeSessionByDefault(t *testing.T) {
 	assert.Equal(t, "/claude/fix-1/"+sessions[0].ID, data["session_url"])
 }
 
+func TestSessionStart_Validation(t *testing.T) {
+	cases := []struct {
+		name, body string
+		status     int
+		want       string
+	}{
+		{"missing worktree", `{"agent":"claude"}`, http.StatusBadRequest, "worktree is required"},
+		{"unknown worktree", `{"worktree":"nope"}`, http.StatusNotFound, "worktree not found"},
+		{"unknown agent", `{"worktree":"feature","agent":"gemini"}`, http.StatusBadRequest, "unknown agent"},
+		{"bad claude model", `{"worktree":"feature","model":"gpt-6-astra"}`, http.StatusBadRequest, "unknown claude model"},
+		{"codex unavailable", `{"worktree":"feature","agent":"codex"}`, http.StatusServiceUnavailable, "codex is not available"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			claudeMgr := claude.NewManager(t.TempDir())
+			h := NewTaskHandler(newMockWorktreeManager(), claudeMgr, nil, nil, nil)
+			rec, resp := postTask(t, h.StartSession, "/api/v1/sessions/start", tc.body)
+			assert.Equal(t, tc.status, rec.Code)
+			assert.Contains(t, errMessage(resp), tc.want)
+			assert.Empty(t, claudeMgr.ListSessions("feature"))
+		})
+	}
+}
+
+func TestSessionStart_CreatesSessionInExistingWorktree(t *testing.T) {
+	wtMgr := newMockWorktreeManager()
+	before := len(wtMgr.worktrees)
+	claudeMgr := claude.NewManager(t.TempDir())
+	h := NewTaskHandler(wtMgr, claudeMgr, nil, nil, nil)
+
+	// Look up by branch; the session is keyed by the worktree's URL name.
+	rec, resp := postTask(t, h.StartSession, "/api/v1/sessions/start", `{"worktree":"feature-x","session_name":"review"}`)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	assert.Len(t, wtMgr.worktrees, before, "no worktree may be created")
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, "claude", data["agent"])
+	assert.Equal(t, false, data["prompt_sent"])
+	assert.Equal(t, false, data["worktree"].(map[string]interface{})["Active"])
+
+	sessions := claudeMgr.ListSessions("feature")
+	require.Len(t, sessions, 1)
+	assert.Equal(t, "review", sessions[0].DisplayName)
+	assert.Equal(t, "/claude/feature/"+sessions[0].ID, data["session_url"])
+}
+
+func TestSessionStart_MainWorktreeKeyedAsMain(t *testing.T) {
+	wtMgr := newMockWorktreeManager()
+	wtMgr.worktrees = append(wtMgr.worktrees, worktree.WorktreeInfo{Path: "/project/test-project", Branch: "trunk"})
+	wtMgr.active = &wtMgr.worktrees[len(wtMgr.worktrees)-1]
+	claudeMgr := claude.NewManager(t.TempDir())
+	h := NewTaskHandler(wtMgr, claudeMgr, nil, nil, nil)
+
+	rec, resp := postTask(t, h.StartSession, "/api/v1/sessions/start", `{"worktree":"trunk"}`)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, true, data["worktree"].(map[string]interface{})["Active"])
+	assert.Len(t, claudeMgr.ListSessions("main"), 1)
+	assert.Empty(t, claudeMgr.ListSessions("test-project"))
+}
+
 func TestTaskFinish_Validation(t *testing.T) {
 	wtMgr := newMockWorktreeManager()
 	h := NewTaskHandler(wtMgr, nil, nil, nil, nil)

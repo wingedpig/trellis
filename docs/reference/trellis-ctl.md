@@ -281,6 +281,20 @@ If an agent session in the worktree is mid-turn (typically because the agent ran
 
 A branch with no commits beyond the default branch is not merged; the worktree is still cleaned up. `task` commands use a 30-minute HTTP timeout by default so long hooks can finish.
 
+### Session Commands
+
+`session start` opens a Claude or Codex session in a worktree that already exists, without creating a branch or running hooks.
+
+```bash
+# Start a Claude session in the worktree containing the current directory
+trellis-ctl session start
+
+# Start a Codex session in another worktree with a first message
+trellis-ctl session start fix-digest-crash -agent codex -prompt "Review the last commit"
+```
+
+**`session start [worktree]`** takes a worktree name, branch, or `main`, and defaults to the worktree containing the current directory. Like `task start`, the session appears on the worktree's home page and in the navigation picker, and the command prints its URL. It takes the same `-agent`, `-prompt`, `-prompt-file`, `-model`, `-effort`, and `-name` flags as `task start` (but not `-activate`). It uses a 5-minute HTTP timeout by default.
+
 ### Event Commands
 
 ```bash

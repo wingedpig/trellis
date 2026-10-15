@@ -106,6 +106,8 @@ func main() {
 		clientOpts = append(clientOpts, client.WithTimeout(5*time.Minute))
 	} else if cmd == "task" {
 		clientOpts = append(clientOpts, client.WithTimeout(taskTimeout))
+	} else if cmd == "session" {
+		clientOpts = append(clientOpts, client.WithTimeout(sessionTimeout))
 	}
 
 	// Initialize API client
@@ -129,6 +131,8 @@ func main() {
 		err = cmdWorktree(args)
 	case "task":
 		err = cmdTask(args)
+	case "session":
+		err = cmdSession(args)
 	case "events":
 		err = cmdEvents(args)
 	case "trace":
@@ -187,7 +191,7 @@ Usage:
 Global Flags:
   -json            Output in JSON format
   -config <path>   Path to trellis.hjson (overrides auto-discovery)
-  -timeout <dur>   HTTP timeout (e.g., 30s, 5m). Default: 30s, 5m for "logs", 30m for "task"
+  -timeout <dur>   HTTP timeout (e.g., 30s, 5m). Default: 30s, 5m for "logs" and "session", 30m for "task"
 
 Connection:
   trellis-ctl resolves the API URL in this order:
@@ -251,6 +255,14 @@ Commands:
     -m <message>           Merge/squash commit message
     -keep-branch           Don't delete the branch
     -keep-worktree         Merge only; keep the worktree and its sessions
+
+  session start [worktree] [options]  Start an agent session in an existing worktree
+                           (worktree defaults to the one containing the cwd)
+    -agent claude|codex    Agent to start (default: claude)
+    -prompt <text>         First message to send to the agent
+    -prompt-file <path|->  Read the first message from a file (- for stdin)
+    -model <m>             Model override (e.g., opus); -effort <e> sets reasoning effort
+    -name <name>           Session display name
 
   events [-n N]            Show recent events (default: 50)
 

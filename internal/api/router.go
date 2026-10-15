@@ -231,6 +231,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 	taskHandler := handlers.NewTaskHandler(deps.WorktreeManager, deps.ClaudeManager, deps.CodexManager, deps.CaseManager, deps.EventBus)
 	api.HandleFunc("/tasks/start", taskHandler.Start).Methods("POST")
 	api.HandleFunc("/tasks/finish", taskHandler.Finish).Methods("POST")
+	api.HandleFunc("/sessions/start", taskHandler.StartSession).Methods("POST")
 
 	// Workflow handlers
 	workflowHandler := handlers.NewWorkflowHandler(deps.WorkflowRunner, deps.WorktreeManager)

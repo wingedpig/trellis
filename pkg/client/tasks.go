@@ -40,7 +40,22 @@ type TaskStartRequest struct {
 	Activate bool `json:"activate,omitempty"`
 }
 
-// TaskStartResult is returned by [TaskClient.Start].
+// SessionStartRequest configures [TaskClient.StartSession].
+type SessionStartRequest struct {
+	// Worktree is the existing worktree (name, branch, or "main") to start the session in.
+	Worktree string `json:"worktree"`
+	// Agent is "claude" (the default) or "codex".
+	Agent string `json:"agent,omitempty"`
+	// Prompt, when set, is sent to the new session as its first message.
+	Prompt string `json:"prompt,omitempty"`
+	// Model and Effort override the session's configured default model.
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+	// SessionName is the session's display name (default: auto-numbered).
+	SessionName string `json:"session_name,omitempty"`
+}
+
+// TaskStartResult is returned by [TaskClient.Start] and [TaskClient.StartSession].
 type TaskStartResult struct {
 	Worktree   Worktree `json:"worktree"`
 	Agent      string   `json:"agent"`
@@ -122,6 +137,20 @@ func (t *TaskClient) Start(ctx context.Context, req TaskStartRequest) (*TaskStar
 	var res TaskStartResult
 	if err := json.Unmarshal(data, &res); err != nil {
 		return nil, fmt.Errorf("failed to parse task start result: %w", err)
+	}
+	return &res, nil
+}
+
+// StartSession opens an agent session in an existing worktree, sending
+// req.Prompt as the first message when set.
+func (t *TaskClient) StartSession(ctx context.Context, req SessionStartRequest) (*TaskStartResult, error) {
+	data, err := t.c.postJSON(ctx, "/api/v1/sessions/start", req)
+	if err != nil {
+		return nil, err
+	}
+	var res TaskStartResult
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, fmt.Errorf("failed to parse session start result: %w", err)
 	}
 	return &res, nil
 }

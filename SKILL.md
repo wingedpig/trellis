@@ -155,6 +155,11 @@ trellis-ctl task start fix-login -prompt "Investigate and fix the login redirect
 trellis-ctl task start fix-login -agent codex -prompt-file prompt.md
 ```
 
+Start another session in a worktree that already exists (defaults to the one containing the cwd):
+```bash
+trellis-ctl session start fix-login -agent codex -prompt "Review the last commit"
+```
+
 When the work in your worktree is committed and the user has asked you to merge it, finish the task:
 ```bash
 trellis-ctl task finish                    # merge this worktree into the default branch, then clean up
