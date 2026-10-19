@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -358,27 +359,25 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 	}
 
 	// Step 7: git add user files + (if wrap-up) the archived case dir.
+	if len(req.Files) == 0 && !archive {
+		// Empty commit is an error case (intermediate commits with zero
+		// files are useless).
+		return nil, http.StatusBadRequest, ErrBadRequest, "no files selected for commit"
+	}
 	gitArgs := []string{"-C", wt.Path, "add", "--"}
 	if archive {
 		gitArgs = append(gitArgs, filepath.Join(deps.caseMgr.ArchivedRelDir(), caseID))
 	}
-	for _, f := range req.Files {
-		gitArgs = append(gitArgs, f)
-	}
-	if len(gitArgs) == 4 {
-		// Nothing to add. Empty commit is an error case (intermediate
-		// commits with zero files are useless). Roll back the archive if we
-		// just did one and bail.
-		if archive {
-			_ = deps.caseMgr.Reopen(wt.Path, caseID)
+	gitArgs = append(gitArgs, stageablePaths(ctx, wt.Path, req.Files)...)
+	// Every selected file may already be staged (e.g. a `git rm`), leaving
+	// nothing to add; the commit still picks them up from the index.
+	if len(gitArgs) > 4 {
+		if out, err := worktree.RunCommand(ctx, gitArgs...); err != nil {
+			if archive {
+				_ = deps.caseMgr.Reopen(wt.Path, caseID)
+			}
+			return nil, http.StatusInternalServerError, ErrInternalError, "git add: " + strings.TrimSpace(out) + " " + err.Error()
 		}
-		return nil, http.StatusBadRequest, ErrBadRequest, "no files selected for commit"
-	}
-	if _, err := worktree.RunCommand(ctx, gitArgs...); err != nil {
-		if archive {
-			_ = deps.caseMgr.Reopen(wt.Path, caseID)
-		}
-		return nil, http.StatusInternalServerError, ErrInternalError, "git add: " + err.Error()
 	}
 
 	// Step 8: commit.
@@ -387,7 +386,7 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		if archive {
 			_ = deps.caseMgr.Reopen(wt.Path, caseID)
 		}
-		return nil, http.StatusInternalServerError, ErrInternalError, "git commit: " + commitOut + " " + err.Error()
+		return nil, http.StatusInternalServerError, ErrInternalError, "git commit: " + strings.TrimSpace(commitOut) + " " + err.Error()
 	}
 
 	// Read SHA + short SHA + files-changed for the commit-timeline entry.
@@ -950,4 +949,20 @@ func generateCommitMessageHTTP(w http.ResponseWriter, r *http.Request, agent age
 		"description": out.Description,
 		"model":       model,
 	})
+}
+
+// stageablePaths drops paths that are neither on disk nor in the index:
+// deletions that are already staged. `git add` rejects those with "pathspec
+// did not match any files", though they are part of the commit regardless.
+func stageablePaths(ctx context.Context, dir string, files []string) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		if _, err := os.Lstat(filepath.Join(dir, f)); err != nil {
+			if tracked, err := worktree.RunCommand(ctx, "-C", dir, "ls-files", "--", f); err == nil && strings.TrimSpace(tracked) == "" {
+				continue
+			}
+		}
+		out = append(out, f)
+	}
+	return out
 }

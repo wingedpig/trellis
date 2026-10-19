@@ -257,7 +257,8 @@ func ParseBranchInfo(output string) BranchInfo {
 	}
 }
 
-// RunCommand runs a git command and returns the output.
+// RunCommand runs a git command and returns its stdout, or on failure its
+// stderr and stdout together.
 func RunCommand(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdout, stderr bytes.Buffer
@@ -265,7 +266,9 @@ func RunCommand(ctx context.Context, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		return stderr.String(), err
+		// Some failures are explained only on stdout ("nothing to commit"),
+		// so return both streams for the caller's error message.
+		return strings.TrimSpace(stderr.String() + "\n" + stdout.String()), err
 	}
 	return stdout.String(), nil
 }
