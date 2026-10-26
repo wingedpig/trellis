@@ -856,12 +856,18 @@ crashes: {
 ```hjson
 cases: {
   dir: "trellis/cases"        // Cases directory relative to worktree root
+  redact: true                // Mask secrets in a case's files when it is archived
+  redact_patterns: []         // Extra regexes to mask (first capture group, if any)
+  commit_hook: false          // Link commits agents make themselves to their session and case
 }
 ```
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `dir` | `"trellis/cases"` | Directory for case storage, relative to worktree root. Archived cases are stored in a sibling `-archived` directory (e.g., `trellis/cases-archived/`). |
+| `redact` | `true` | When a case is archived (Wrap Up or Archive), mask secrets in its files before anything stages them: private keys, AWS/GitHub/Slack/Stripe/Anthropic/OpenAI/Google keys, JWTs, passwords in URLs, and quoted `password`/`secret`/`token`/`api_key` assignments. Matches become `[REDACTED:<kind>]`, and `case.json` records a count per kind in `redactions`. |
+| `redact_patterns` | `[]` | Extra regular expressions to mask. When a pattern has a capture group, only the first group is masked (e.g. `"internal-token=(\\S+)"`). |
+| `commit_hook` | `false` | Install a `prepare-commit-msg` hook in the repo that adds `Trellis-Session` and `Trellis-Case` trailers to commits Trellis's agent sessions make themselves. Other commits are untouched. Turning it off removes the hook. See [Agent commits](/docs/pages/cases/#agent-commits). |
 
 ### agent
 

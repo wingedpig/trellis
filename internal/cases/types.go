@@ -11,6 +11,16 @@ import (
 // CaseSchema is the schema identifier for case.json files.
 const CaseSchema = "trellis.case.v1"
 
+// CommitTrailer is the git trailer key that links a commit to its case
+// ("Trellis-Case: <case-id>"). Commits made before the trailer existed may
+// carry the older "[case: <case-id>]" tag in their message instead.
+const CommitTrailer = "Trellis-Case"
+
+// SessionTrailer is the git trailer key naming the agent session that made a
+// commit ("Trellis-Session: claude:<session-id>"). The commit hook adds it
+// (see internal/githook); it links commits agents make themselves.
+const SessionTrailer = "Trellis-Session"
+
 // CaseJSON is the full manifest stored as case.json in each case directory.
 type CaseJSON struct {
 	Schema    string          `json:"schema"`
@@ -32,6 +42,10 @@ type CaseJSON struct {
 	// Summary is a generated, structured summary written at wrap-up. Nil until
 	// generated; may be edited or regenerated later from the case detail page.
 	Summary *CaseSummary `json:"summary,omitempty"`
+
+	// Redactions counts the secrets masked, by kind, when the case was
+	// archived. The values themselves are never recorded.
+	Redactions map[string]int `json:"redactions,omitempty"`
 }
 
 // CommitEntry is one intermediate commit made against the case.
@@ -42,6 +56,9 @@ type CommitEntry struct {
 	Message      string    `json:"message"`     // full commit message
 	Description  string    `json:"description"` // per-commit narrative beat
 	FilesChanged []string  `json:"files_changed,omitempty"`
+	// SessionID is "<agent>:<session-id>" for a commit an agent session made
+	// itself, picked up from its Trellis-Session trailer at Commit or Wrap Up.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // CaseSummary is the structured generated summary attached to a case at wrap-up.

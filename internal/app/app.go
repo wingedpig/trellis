@@ -27,6 +27,7 @@ import (
 	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/internal/crashes"
 	"github.com/wingedpig/trellis/internal/events"
+	"github.com/wingedpig/trellis/internal/githook"
 	"github.com/wingedpig/trellis/internal/inbox"
 	"github.com/wingedpig/trellis/internal/logs"
 	"github.com/wingedpig/trellis/internal/pair"
@@ -181,6 +182,11 @@ func (app *App) Initialize(ctx context.Context) error {
 
 	// Clean up stale pipe files from previous sessions
 	cleanupStalePipes()
+
+	// A Trellis started from inside an agent session (e.g. one developing
+	// Trellis) must not pass that session's ID on to its own git commits or
+	// agents.
+	os.Unsetenv(githook.SessionEnv)
 
 	// Determine repo directory for worktree discovery
 	repoDir := cfg.Worktree.RepoDir
@@ -445,6 +451,12 @@ func (app *App) Initialize(ctx context.Context) error {
 		casesDir = "trellis/cases"
 	}
 	app.caseManager = cases.NewManager(casesDir)
+	if err := app.caseManager.SetRedaction(cfg.Cases.RedactEnabled(), cfg.Cases.RedactPatterns); err != nil {
+		return fmt.Errorf("cases: %w", err)
+	}
+	if repoDir != "" {
+		go syncCommitHook(repoDir, casesDir, cfg.Cases.CommitHook)
+	}
 
 	// Initialize terminal manager
 	tmuxExecutor := terminal.NewRealTmuxExecutor()
@@ -1335,6 +1347,29 @@ func (app *App) injectServicesTraceGroup(cfg *config.Config, viewerNames []strin
 		LogViewers: viewerNames,
 	})
 	log.Printf("Created 'services' trace group with %d viewers", len(viewerNames))
+}
+
+// syncCommitHook installs or removes the prepare-commit-msg hook that links
+// agent commits to their session and case. The hooks directory is shared by
+// every worktree of the repo, so this runs once. Best-effort.
+func syncCommitHook(repoDir, casesDir string, enabled bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if !enabled {
+		if removed, err := githook.Remove(ctx, repoDir); err != nil {
+			log.Printf("githook: remove failed: %v", err)
+		} else if removed {
+			log.Printf("githook: removed commit hook (cases.commit_hook is off)")
+		}
+		return
+	}
+	changed, err := githook.Install(ctx, repoDir, casesDir)
+	if changed {
+		log.Printf("githook: installed commit hook in %s", repoDir)
+	}
+	if err != nil {
+		log.Printf("githook: %v", err)
+	}
 }
 
 // installSkillFiles installs the embedded agent skill file into each

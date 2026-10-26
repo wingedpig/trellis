@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -640,6 +641,44 @@ func (h *CaseHandler) DeleteTrace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Explain reports the provenance of a line of code or a commit: the commit,
+// the case it belongs to, and the agent turns that wrote it.
+//
+// Query params:
+//   file, line  - repo-relative path and 1-based line number
+//   commit      - a commit (used when file is not given)
+func (h *CaseHandler) Explain(w http.ResponseWriter, r *http.Request) {
+	wt, ok := h.resolveWorktree(r)
+	if !ok {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "worktree not found")
+		return
+	}
+	q := r.URL.Query()
+	file := q.Get("file")
+	line := 0
+	if file != "" {
+		n, err := strconv.Atoi(q.Get("line"))
+		if err != nil || n < 1 {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, "line must be a positive integer")
+			return
+		}
+		line = n
+		if filepath.IsAbs(file) || strings.Contains(file, "..") {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, "file must be a path relative to the worktree root")
+			return
+		}
+	} else if q.Get("commit") == "" {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "file and line, or commit, is required")
+		return
+	}
+	p, err := h.caseMgr.Explain(r.Context(), wt.Path, file, line, q.Get("commit"))
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, p)
 }
 
 // SearchResult is one match returned by SearchArchived.

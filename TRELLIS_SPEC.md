@@ -950,7 +950,10 @@ Cases are stored in the worktree filesystem and are committed to version control
 - **A case is created lazily** — usually on the first commit a worktree makes. Worktrees that never commit (throwaway experiments, abandoned work) never get a case.
 - **At most one open case per worktree** at any time. The `Manager.Create` API rejects attempts to create a second open case while one is already open (`ErrOpenCaseExists`). If a second logical effort emerges in a worktree, make a new worktree.
 - **Once a case is open, all commits from any session in that worktree bind to it by default.** Both Claude and Codex sessions write their commits to the same open case without prompting.
-- **The case ID is immutable** once created. The title can be renamed freely; the `id` directory name and any `[case: <id>]` references in commit messages are permanent.
+- **The case ID is immutable** once created. The title can be renamed freely; the `id` directory name and the `Trellis-Case: <id>` trailer on its commits (or the legacy `[case: <id>]` tag) are permanent.
+- **Every commit made through Commit / Wrap Up carries a `Trellis-Case: <id>` trailer**, added server-side with `git commit --trailer`. Squash merges (`task finish -strategy squash`) carry the squashed commits' trailers forward.
+- **Commits agents make themselves are linked when `cases.commit_hook` is on.** Every Claude/Codex process gets `TRELLIS_SESSION=<agent>:<session-id>`; the `prepare-commit-msg` hook (`internal/githook`) adds `Trellis-Session` (and `Trellis-Case` for the worktree's open case) only when that variable is set. Commit / Wrap Up records those commits in `commits[]` (with `session_id`) and attaches the committing session's transcript when missing. Trellis unsets `TRELLIS_SESSION` in its own environment at startup.
+- **Archiving a case redacts secrets** in its text files (`cases.redact`, default on) and records per-kind counts in `case.json`'s `redactions`.
 - **Wrap-up is a special case of Commit** — same orchestrator, with `archive: true`.
 
 ### 9.2 Cases Configuration
@@ -960,6 +963,13 @@ Cases are stored in the worktree filesystem and are committed to version control
   cases: {
     // Directory for cases, relative to worktree root (default: "trellis/cases")
     dir: "trellis/cases"
+    // Mask secrets in a case's files when it is archived (default: true)
+    redact: true
+    // Extra regexes to mask; only the first capture group, if any
+    redact_patterns: []
+    // Install the prepare-commit-msg hook that links agents' own commits
+    // to their session and case (default: false)
+    commit_hook: false
   }
 }
 ```
@@ -998,13 +1008,16 @@ Each intermediate (non-wrap-up) commit made against the case is appended to `cas
   "committed_at":  "2026-05-14T10:30:00Z",
   "message":       "...the git commit message...",
   "description":   "Brief 1-2 sentence narrative beat — what this commit accomplished relative to the case's overall arc.",
-  "files_changed": ["path/a.go", "path/b.go"]
+  "files_changed": ["path/a.go", "path/b.go"],
+  "session_id":    "claude:3f2a..."   // only for commits an agent session made itself
 }
 ```
 
+Commits an agent made with its own `git commit` are added at the next Commit / Wrap Up from their `Trellis-Session` trailer: oldest first, deduplicated by SHA and by (session, message) so a rebased copy isn't recorded twice, with no `description`. A commit whose `Trellis-Case` names a different case is skipped.
+
 The `description` field is the **per-commit case description** — distinct from `message`. The message describes the *code change*; the description describes the *narrative beat* and is what the case detail page surfaces in the commits timeline.
 
-**The wrap-up commit is not represented in `commits[]`.** It is structurally different (it contains the case manifest itself and marks the end of the case) and is locatable from git history when needed: the most recent commit on the case's worktree branch that contains `[case: <id>]` in its message and the archived case directory in its tree.
+**The wrap-up commit is not represented in `commits[]`.** It is structurally different (it contains the case manifest itself and marks the end of the case) and is locatable from git history when needed: the commit that added the archived `case.json` (`git log --diff-filter=A --all -- <archived>/<id>/case.json`), which also carries the case's `Trellis-Case` trailer.
 
 #### 9.3.2 `summary{}` — generated case summary
 
@@ -1085,7 +1098,7 @@ Wrap Up is initiated from the Claude / Codex session page or the case detail pag
 
 If anything between step 6 and step 8 fails, the archive is rolled back (`Manager.Reopen`) so the case returns to its pre-wrap-up state.
 
-**Commit message convention:** The client suggests `<title> [case: <case-id>]` as a fallback. In practice the Claude-generated message (see §9.5.4) is what populates the field by default.
+**Commit message convention:** The client suggests `<title> [case: <case-id>]` as a fallback, but the Claude-generated message (see §9.5.4) is what populates the field by default, so the tag is usually absent. The case link is the `Trellis-Case: <case-id>` trailer, which the server appends to every Commit / Wrap Up commit.
 
 #### 9.5.4 Claude-generated commit messages and summaries
 
@@ -5557,7 +5570,7 @@ Wrap-up adds optional `links`, `traces`, and `related_sessions`:
 {
   "case_id": "2026-02-19__ach-payments-stripe",
   "session_id": "abc",
-  "commit_message": "Ship ACH payments [case: 2026-02-19__ach-payments-stripe]",
+  "commit_message": "Ship ACH payments",
   "files": ["billing/ach.go", "billing/ach_test.go"],
   "links": [{"title": "Stripe docs", "url": "https://stripe.com/docs/payments/ach"}],
   "traces": ["ach-webhook-2026-02-19"],

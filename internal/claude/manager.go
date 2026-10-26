@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/events"
+	"github.com/wingedpig/trellis/internal/githook"
 	"github.com/wingedpig/trellis/internal/serialq"
 )
 
@@ -1765,6 +1766,8 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, "claude", args...)
 	cmd.Dir = workDir
+	// Commits the agent runs carry this session's ID (see internal/githook).
+	cmd.Env = append(os.Environ(), githook.SessionEnv+"=claude:"+s.id)
 	stderr := &stderrTail{}
 	cmd.Stderr = stderr
 

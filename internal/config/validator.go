@@ -70,6 +70,7 @@ func (v *Validator) Validate(cfg *Config) error {
 	v.validateTailscaleNodes(cfg, errs)
 	v.validateProxy(cfg, errs)
 	v.validateAgent(cfg, errs)
+	v.validateCases(cfg, errs)
 
 	if errs.IsEmpty() {
 		return nil
@@ -558,6 +559,14 @@ func parseDurationWithDays(s string) (time.Duration, error) {
 		}
 	}
 	return time.ParseDuration(s)
+}
+
+func (v *Validator) validateCases(cfg *Config, errs *ValidationError) {
+	for i, p := range cfg.Cases.RedactPatterns {
+		if _, err := regexp.Compile(p); err != nil {
+			errs.Add(fmt.Sprintf("cases.redact_patterns[%d]", i), fmt.Sprintf("invalid regex: %s", err))
+		}
+	}
 }
 
 func (v *Validator) validateAgent(cfg *Config, errs *ValidationError) {

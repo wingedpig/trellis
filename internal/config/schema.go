@@ -37,6 +37,25 @@ type Config struct {
 // CasesConfig configures case objects storage.
 type CasesConfig struct {
 	Dir string `json:"dir"` // Relative to worktree root (default: "trellis/cases")
+
+	// Redact masks secrets (API keys, private keys, tokens, URL passwords)
+	// in a case's files when it is archived, before wrap-up commits them.
+	// Default: true.
+	Redact *bool `json:"redact"`
+	// RedactPatterns are extra regular expressions to mask. When a pattern
+	// has a capture group, only the first group is masked.
+	RedactPatterns []string `json:"redact_patterns"`
+
+	// CommitHook installs a prepare-commit-msg hook that adds Trellis-Session
+	// and Trellis-Case trailers to commits made by Trellis agent sessions,
+	// so commits an agent makes itself still link back to its transcript.
+	// Default: false.
+	CommitHook bool `json:"commit_hook"`
+}
+
+// RedactEnabled reports whether archive-time secret redaction is on.
+func (c CasesConfig) RedactEnabled() bool {
+	return c.Redact == nil || *c.Redact
 }
 
 // AgentConfig configures coding-agent integration (Claude Code, Codex).

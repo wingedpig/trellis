@@ -187,6 +187,7 @@ func (m *WorktreeManager) Merge(ctx context.Context, name string, opts MergeOpti
 		if msg == "" {
 			msg = squashMessage(ctx, wt.Path, base, wt.Branch, count)
 		}
+		msg = withBranchTrailers(ctx, wt.Path, base, wt.Branch, msg)
 		if out, err := gitIn(ctx, baseWt.Path, "merge", "--squash", wt.Branch); err != nil {
 			conflicts := conflictedFiles(ctx, baseWt.Path)
 			gitIn(ctx, baseWt.Path, "reset", "--merge")
@@ -340,6 +341,36 @@ func squashMessage(ctx context.Context, dir, base, branch string, count int) str
 		msg += "\n\n" + strings.TrimSpace(out)
 	}
 	return msg
+}
+
+// withBranchTrailers adds the trailers of every commit being squashed
+// (Trellis-Case, Co-Authored-By, …) to msg. Squashing otherwise drops them,
+// and with them the link from the merged commit back to its case.
+// interpret-trailers merges into msg's own trailer block and skips ones it
+// already has.
+func withBranchTrailers(ctx context.Context, dir, base, branch, msg string) string {
+	out, err := gitIn(ctx, dir, "log", "--reverse", "--format=%(trailers:only,unfold)", base+".."+branch)
+	if err != nil {
+		return msg
+	}
+	args := []string{"-C", dir, "-c", "trailer.ifexists=addIfDifferent", "interpret-trailers"}
+	n := 0
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			args = append(args, "--trailer", l)
+			n++
+		}
+	}
+	if n == 0 {
+		return msg
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Stdin = strings.NewReader(msg)
+	merged, err := cmd.Output()
+	if err != nil {
+		return msg
+	}
+	return strings.TrimRight(string(merged), "\n")
 }
 
 // gitIn runs git in dir and returns combined output.

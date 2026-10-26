@@ -280,6 +280,12 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		}
 	}
 
+	// Step 1b: record commits agent sessions made themselves (`git commit`
+	// run by the agent, tagged by the commit hook) so the case timeline and
+	// summary include them, and attach the transcripts of sessions that
+	// committed to this case without being saved to it.
+	recordSessionCommits(ctx, deps, wt.Path, caseID, agent.name(), req.SessionID)
+
 	// Step 2: refresh all transcripts attached to the case. We refresh BOTH
 	// agents' transcripts (a wrap-up may be initiated from either agent and
 	// the case may contain sessions from the other).
@@ -380,8 +386,12 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		}
 	}
 
-	// Step 8: commit.
-	commitOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "commit", "-m", req.CommitMessage)
+	// Step 8: commit. The case trailer is added server-side so every commit
+	// made through Trellis links back to its case regardless of what message
+	// the user or the generator wrote — `trellis-ctl case why` reads it, and
+	// unlike case.json's commits[] it survives rebases and squash merges.
+	commitOut, err := worktree.RunCommand(ctx, "-C", wt.Path, "commit", "-m", req.CommitMessage,
+		"--trailer", cases.CommitTrailer+": "+caseID)
 	if err != nil {
 		if archive {
 			_ = deps.caseMgr.Reopen(wt.Path, caseID)
@@ -428,6 +438,36 @@ func commitToCase(ctx context.Context, r *http.Request, agent agentAdapter, deps
 		"case_id":     caseID,
 		"commit_hash": shortSHA,
 	}, http.StatusOK, "", ""
+}
+
+// recordSessionCommits appends the commits agent sessions made themselves to
+// the case's commits[]. Best-effort: the commit proceeds regardless.
+func recordSessionCommits(ctx context.Context, deps commitDeps, worktreePath, caseID, agentName, sessionID string) {
+	var extra []string
+	if sessionID != "" {
+		extra = append(extra, cases.SessionKey(agentName, sessionID))
+	}
+	entries, unattached, err := deps.caseMgr.SessionCommits(ctx, worktreePath, caseID, extra...)
+	if err != nil {
+		log.Printf("commits: find session commits for case %s: %v", caseID, err)
+		return
+	}
+	if len(entries) == 0 {
+		return
+	}
+	if err := deps.caseMgr.AppendCommits(worktreePath, caseID, entries); err != nil {
+		log.Printf("commits: record session commits for case %s: %v", caseID, err)
+		return
+	}
+	for _, key := range unattached {
+		name, id, _ := strings.Cut(key, ":")
+		switch name {
+		case "claude":
+			saveActiveTranscript(claudeAdapter{m: deps.claudeMgr}, deps, worktreePath, caseID, id, "")
+		case "codex":
+			saveActiveTranscript(codexAdapter{m: deps.codexMgr}, deps, worktreePath, caseID, id, "")
+		}
+	}
 }
 
 // saveActiveTranscript exports the live session for the active agent and

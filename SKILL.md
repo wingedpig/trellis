@@ -168,6 +168,21 @@ trellis-ctl task finish -keep-worktree     # merge only
 ```
 `task finish` requires a clean worktree (commit everything first, untracked files included) and a wrapped-up case. It runs the project's `pre_merge` hooks (often the test suite). If they fail or the rebase conflicts, nothing is merged: fix the problem, commit, and run it again. When you run it from your own session, the merge happens right away and the worktree is removed once your turn ends. So make `task finish` your last action, and don't run it unless the user asked for the merge.
 
+### Past Work (Cases)
+Every piece of work done through Trellis is archived as a case: a summary (symptoms, root cause, resolution), the commits, notes, and the agent transcripts. Before investigating a bug or changing unfamiliar code, check whether it has been dealt with before:
+```bash
+trellis-ctl case search rate limiter          # archived cases matching the words, best first
+trellis-ctl case search -kind bug -since 2026-06-01 webhook
+trellis-ctl case show 2026-05-13__stripe-api-fix   # summary, commits, transcripts, notes
+```
+
+To find out why a line of code is the way it is, trace it to the commit, its case, and the agent turn that wrote it (with the prompt that asked for it):
+```bash
+trellis-ctl case why pkg/limits/limiter.go:42
+trellis-ctl case why 9c1494d6a2               # the case behind a commit
+```
+All three take `-worktree <name>` (default: the worktree containing the cwd) and `-json`.
+
 ### Events
 View recent system events:
 ```bash

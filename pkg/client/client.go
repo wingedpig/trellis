@@ -128,6 +128,11 @@ type Client struct {
 	// TailscaleNodes reports the status of embedded Tailscale nodes that
 	// proxy listeners bind on.
 	TailscaleNodes *TailscaleNodeClient
+
+	// Cases reads the records of past work: search archived cases, read
+	// one, and trace a line of code back to the case and agent turn that
+	// wrote it.
+	Cases *CaseClient
 }
 
 // Option configures a [Client]. Options are passed to [New] to customize
@@ -168,6 +173,7 @@ func New(baseURL string, opts ...Option) *Client {
 	c.Crashes = &CrashClient{c: c}
 	c.Tasks = &TaskClient{c: c}
 	c.TailscaleNodes = &TailscaleNodeClient{c: c}
+	c.Cases = &CaseClient{c: c}
 
 	return c
 }

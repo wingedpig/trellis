@@ -275,7 +275,7 @@ If an agent session in the worktree is mid-turn (typically because the agent ran
 | Flag | Description |
 |------|-------------|
 | `-strategy ff\|merge\|squash` | Default `ff` (rebase, then fast-forward) |
-| `-m <message>` | Merge or squash commit message (default: derived from the branch) |
+| `-m <message>` | Merge or squash commit message (default: derived from the branch). A squash commit keeps the trailers of the commits it replaces, such as `Trellis-Case` and `Co-Authored-By` |
 | `-keep-branch` | Don't delete the branch |
 | `-keep-worktree` | Merge only; leave the worktree and its sessions |
 
@@ -294,6 +294,28 @@ trellis-ctl session start fix-digest-crash -agent codex -prompt "Review the last
 ```
 
 **`session start [worktree]`** takes a worktree name, branch, or `main`, and defaults to the worktree containing the current directory. Like `task start`, the session appears on the worktree's home page and in the navigation picker, and the command prints its URL. It takes the same `-agent`, `-prompt`, `-prompt-file`, `-model`, `-effort`, and `-name` flags as `task start` (but not `-activate`). It uses a 5-minute HTTP timeout by default.
+
+### Case Commands
+
+`case` reads the record of past work. Cases are archived into the repo at wrap-up, so these see every case merged into the worktree's branch. All take `-worktree <name>` (default: the worktree containing the current directory) and the global `-json` flag.
+
+```bash
+# Search archived cases (title, generated summary, commit descriptions, notes)
+trellis-ctl case search rate limiter
+trellis-ctl case search -kind bug -since 2026-06-01 -n 20 webhook
+
+# Read a case: summary, commits, attached transcripts, links, notes
+trellis-ctl case show 2026-05-13__stripe-api-fix
+
+# Why is this line here? Commit, case, and the agent turn that wrote it
+trellis-ctl case why pkg/limits/limiter.go:42
+# The case behind a commit
+trellis-ctl case why 9c1494d6a2
+```
+
+**`case search <query>`** ranks matches with the generated summary weighted highest. Flags: `-kind` (bug, feature, investigation, task), `-since` / `-until` (creation date, `YYYY-MM-DD`), `-n` (default 10), `-transcripts` (also match each transcript's first prompt).
+
+**`case why <file>:<line>`** blames the line, then finds its case through, in order: the commit's `Trellis-Case` trailer, its `Trellis-Session` trailer (added to agents' own commits by the [commit hook](/docs/pages/cases/#agent-commits); it also narrows the search to that session's transcript), a legacy `[case: <id>]` tag in the message, the wrap-up commit that archived the case, or the case's recorded commit list. It then searches that case's transcripts for the edit that wrote the line (Edit/Write tool calls, Codex file changes, or a shell command containing the line) and prints the prompt that led to it and the agent's explanation. For commits with no case link, such as an agent running `git commit` itself without the commit hook, it looks for a transcript that wrote the exact line in any case active around the commit date. An uncommitted line is matched against the worktree's open case. The output's `linked by` field says which route found the case.
 
 ### Event Commands
 

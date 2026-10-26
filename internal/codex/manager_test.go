@@ -41,6 +41,27 @@ func TestNormalizeItem(t *testing.T) {
 		}
 	})
 
+	t.Run("fileChange changes fold into path and diff", func(t *testing.T) {
+		raw := `{"id":"fc-1","type":"fileChange","status":"completed","changes":[` +
+			`{"path":"/w/a.go","kind":{"type":"update","move_path":null},"diff":"@@ -1 +1 @@\n-old\n+new\n"},` +
+			`{"path":"/w/b.go","kind":{"type":"add"},"diff":"package b\n"}]}`
+		var it Item
+		if err := json.Unmarshal([]byte(raw), &it); err != nil {
+			t.Fatal(err)
+		}
+		normalizeItem(&it)
+		if it.Path != "/w/a.go (+1 more)" || it.Change != "update" {
+			t.Errorf("Path = %q, Change = %q", it.Path, it.Change)
+		}
+		if it.Changes[0].Diff != "" || it.Changes[1].Path != "/w/b.go" {
+			t.Errorf("Changes not trimmed to paths: %+v", it.Changes)
+		}
+		diffs := it.FileDiffs()
+		if diffs["/w/a.go"] != "@@ -1 +1 @@\n-old\n+new\n" || diffs["/w/b.go"] != "package b\n" {
+			t.Errorf("FileDiffs = %q", diffs)
+		}
+	})
+
 	t.Run("wire fields parse", func(t *testing.T) {
 		raw := `{"id":"exec-1","type":"commandExecution","status":"completed","command":"ls","aggregatedOutput":"a.txt\n","exitCode":0}`
 		var it Item

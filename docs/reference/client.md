@@ -86,6 +86,7 @@ c := client.New("http://localhost:1234",
 | `c.Crashes` | Crash history (list, get, newest, delete, clear) |
 | `c.Notify` | Notifications (send) |
 | `c.Tasks` | Task lifecycle (start a branch with an agent session; merge and clean up) |
+| `c.Cases` | Past work (search archived cases, get a case and its notes, explain a line or commit) |
 
 ## Service Operations
 
@@ -159,6 +160,33 @@ case fin.CleanupDeferred:
 case fin.Cleanup != nil && fin.Cleanup.Error != "":
     // Merged, but cleanup failed (e.g. a pre_remove hook)
 }
+```
+
+## Case Operations
+
+`Cases` reads the record of past work: archived cases, their notes, and the provenance of a line of code. It's the API behind [`trellis-ctl case`](/docs/reference/trellis-ctl/#case-commands).
+
+```go
+// Search archived cases, best match first
+hits, err := c.Cases.Search(ctx, "main", client.CaseSearchOptions{
+    Query: "rate limiter",
+    Kind:  "bug",
+    From:  "2026-06-01",
+})
+
+// Full manifest and notes
+cs, err := c.Cases.Get(ctx, "main", hits[0].ID)
+notes, err := c.Cases.Notes(ctx, "main", cs.ID)
+
+// Why does this line exist? (path relative to the worktree root)
+p, err := c.Cases.Explain(ctx, "main", "internal/api/limits.go", 42)
+fmt.Println(p.CaseID, p.LinkedBy) // linked by: trailer, case-tag, wrap-up, case-commits, transcript, open-case
+for _, t := range p.Turns {
+    fmt.Println(t.Agent, t.Tool, t.Prompt)
+}
+
+// Or start from a commit
+p, err = c.Cases.ExplainCommit(ctx, "main", "9c1494d6a2")
 ```
 
 ## Workflow Operations
@@ -314,6 +342,8 @@ Key types exported by the client library:
 | `TaskStartRequest` / `TaskStartResult` | Task start input; created worktree, session ID and URL, warnings |
 | `TaskFinishRequest` / `TaskFinishResult` | Task finish input; merge result, cleanup result, deferral flag |
 | `HookResult` | Lifecycle hook outcome (Name, Success, Duration, Output) |
+| `Case` / `CaseSearchResult` | Case manifest (summary, commits, transcripts, links, redactions); one search hit |
+| `CaseProvenance` / `ProvenanceTurn` | Line or commit → commit, case, how it was linked, and the agent turns that wrote it |
 
 ## Documentation
 

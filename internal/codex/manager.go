@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/agentmsg"
+	"github.com/wingedpig/trellis/internal/githook"
 	"github.com/wingedpig/trellis/internal/serialq"
 	"github.com/wingedpig/trellis/internal/events"
 )
@@ -696,6 +697,8 @@ func (s *Session) EnsureProcess(ctx context.Context) error {
 	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, "codex", "app-server")
 	cmd.Dir = workDir
+	// Commits the agent runs carry this session's ID (see internal/githook).
+	cmd.Env = append(os.Environ(), githook.SessionEnv+"=codex:"+s.id)
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
@@ -1332,6 +1335,77 @@ func normalizeItem(it *Item) {
 		it.Output = it.AggregatedOutput
 		it.AggregatedOutput = ""
 	}
+	foldFileChanges(it)
+}
+
+// foldFileChanges fills Path / Change / Diff from a v2 fileChange item's
+// changes[] — the only place the app-server puts them — so the UI and saved
+// transcripts show what was edited. With several files the combined diff
+// gets a `diff --git` header per file; FileDiffs splits it back apart.
+func foldFileChanges(it *Item) {
+	if len(it.Changes) == 0 || it.Diff != "" {
+		return
+	}
+	first := it.Changes[0]
+	if it.Path == "" {
+		it.Path = first.Path
+		if n := len(it.Changes) - 1; n > 0 {
+			it.Path += fmt.Sprintf(" (+%d more)", n)
+		}
+	}
+	if it.Change == "" {
+		it.Change = first.Kind.Type
+	}
+	if len(it.Changes) == 1 {
+		it.Diff = first.Diff
+	} else {
+		var b strings.Builder
+		for _, c := range it.Changes {
+			fmt.Fprintf(&b, "diff --git a/%s b/%s\n", c.Path, c.Path)
+			b.WriteString(strings.TrimRight(c.Diff, "\n"))
+			b.WriteString("\n")
+		}
+		it.Diff = b.String()
+	}
+	for i := range it.Changes {
+		it.Changes[i].Diff = ""
+	}
+}
+
+// FileDiffs returns a fileChange item's diff text keyed by file path,
+// undoing foldFileChanges. Items saved before changes[] was captured have no
+// paths and return nil.
+func (it Item) FileDiffs() map[string]string {
+	if len(it.Changes) == 0 {
+		return nil
+	}
+	if len(it.Changes) == 1 {
+		return map[string]string{it.Changes[0].Path: it.Diff}
+	}
+	out := make(map[string]string, len(it.Changes))
+	var cur string
+	var b strings.Builder
+	flush := func() {
+		if cur != "" {
+			out[cur] = b.String()
+		}
+		b.Reset()
+	}
+	for _, line := range strings.SplitAfter(it.Diff, "\n") {
+		if rest, ok := strings.CutPrefix(line, "diff --git a/"); ok {
+			for _, c := range it.Changes {
+				if strings.HasPrefix(rest, c.Path+" b/") {
+					flush()
+					cur = c.Path
+					line = ""
+					break
+				}
+			}
+		}
+		b.WriteString(line)
+	}
+	flush()
+	return out
 }
 
 func (s *Session) recordItem(it Item) {
@@ -1369,6 +1443,9 @@ func (s *Session) recordItem(it Item) {
 		}
 		if it.Change != "" {
 			merged.Change = it.Change
+		}
+		if len(it.Changes) > 0 {
+			merged.Changes = it.Changes
 		}
 		if len(it.Command) > 0 {
 			merged.Command = it.Command

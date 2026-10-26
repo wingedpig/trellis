@@ -298,6 +298,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/cases/{worktree}", caseHandler.List).Methods("GET")
 		api.HandleFunc("/cases/{worktree}/archived", caseHandler.ListArchived).Methods("GET")
 		api.HandleFunc("/cases/{worktree}/archived/search", caseHandler.SearchArchived).Methods("GET")
+		api.HandleFunc("/cases/{worktree}/explain", caseHandler.Explain).Methods("GET")
 		api.HandleFunc("/cases/{worktree}", caseHandler.Create).Methods("POST")
 		api.HandleFunc("/cases/{worktree}/{id}", caseHandler.Get).Methods("GET")
 		api.HandleFunc("/cases/{worktree}/{id}/notes", caseHandler.GetNotes).Methods("GET")

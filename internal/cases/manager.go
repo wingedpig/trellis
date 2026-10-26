@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,11 +25,32 @@ import (
 // Manager manages case objects. It is stateless — all operations take a worktreePath.
 type Manager struct {
 	casesRelDir string // Relative directory within worktree (e.g., "trellis/cases")
+
+	// Secret redaction applied when a case is archived (archived cases are
+	// committed). On by default; extra patterns add to the built-in rules.
+	noRedact      bool
+	redactPattern []*regexp.Regexp
 }
 
 // NewManager creates a new case manager with the given relative directory.
 func NewManager(casesRelDir string) *Manager {
 	return &Manager{casesRelDir: casesRelDir}
+}
+
+// SetRedaction configures secret redaction at archive time. enabled=false
+// turns it off; extra patterns (already validated) are masked in addition to
+// the built-in rules.
+func (m *Manager) SetRedaction(enabled bool, extra []string) error {
+	m.noRedact = !enabled
+	m.redactPattern = nil
+	for _, p := range extra {
+		re, err := regexp.Compile(p)
+		if err != nil {
+			return fmt.Errorf("redact pattern %q: %w", p, err)
+		}
+		m.redactPattern = append(m.redactPattern, re)
+	}
+	return nil
 }
 
 // CasesRelDir returns the relative directory within a worktree for open cases.
@@ -389,11 +412,33 @@ func (m *Manager) Archive(worktreePath, caseID string) (string, error) {
 		return "", err
 	}
 
-	// Keep the stored ID in sync with the (possibly suffixed) directory name.
-	if finalID != caseID {
+	// Mask secrets before anything can stage the directory. A failure here is
+	// logged rather than fatal: the files that were rewritten stay rewritten,
+	// and refusing to archive would strand the case mid wrap-up.
+	var redacted map[string]int
+	if !m.noRedact {
+		var err error
+		if redacted, err = redactDir(dst, m.redactPattern); err != nil {
+			log.Printf("cases: redact archived case %s: %v", finalID, err)
+		}
+		if len(redacted) > 0 {
+			log.Printf("cases: redacted secrets in archived case %s: %s", finalID, formatRedactions(redacted))
+		}
+	}
+
+	// Keep the stored ID in sync with the (possibly suffixed) directory name,
+	// and note what was redacted so a reader of the archive knows text is
+	// missing (and someone knows to rotate it).
+	if finalID != caseID || len(redacted) > 0 {
 		caseJSON := filepath.Join(dst, "case.json")
 		if c, err := loadCase(caseJSON); err == nil {
 			c.ID = finalID
+			for k, n := range redacted {
+				if c.Redactions == nil {
+					c.Redactions = map[string]int{}
+				}
+				c.Redactions[k] += n
+			}
 			_ = saveCase(caseJSON, c)
 		}
 	}
@@ -492,6 +537,33 @@ func (m *Manager) AppendCommit(worktreePath, caseID string, entry CommitEntry) e
 		return fmt.Errorf("case not found: %s", caseID)
 	}
 	c.Commits = append(c.Commits, entry)
+	return saveCase(path, c)
+}
+
+// AppendCommits adds entries to the case manifest's commits[], skipping SHAs
+// already recorded, and keeps the list in commit-time order.
+func (m *Manager) AppendCommits(worktreePath, caseID string, entries []CommitEntry) error {
+	if err := validID(caseID); err != nil {
+		return err
+	}
+	path := filepath.Join(m.casesDir(worktreePath), caseID, "case.json")
+	c, err := loadCase(path)
+	if err != nil {
+		return fmt.Errorf("case not found: %s", caseID)
+	}
+	seen := make(map[string]bool, len(c.Commits))
+	for _, ce := range c.Commits {
+		seen[ce.SHA] = true
+	}
+	for _, e := range entries {
+		if !seen[e.SHA] {
+			seen[e.SHA] = true
+			c.Commits = append(c.Commits, e)
+		}
+	}
+	sort.SliceStable(c.Commits, func(i, j int) bool {
+		return c.Commits[i].CommittedAt.Before(c.Commits[j].CommittedAt)
+	})
 	return saveCase(path, c)
 }
 

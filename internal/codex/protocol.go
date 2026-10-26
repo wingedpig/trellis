@@ -197,6 +197,10 @@ type Item struct {
 	Path   string `json:"path,omitempty"`
 	Diff   string `json:"diff,omitempty"`
 	Change string `json:"changeType,omitempty"`
+	// Changes is the per-file list on a v2 fileChange item. normalizeItem
+	// folds it into Path / Change / Diff for display and keeps only the
+	// paths and kinds here, so the diff text isn't stored twice.
+	Changes []FileUpdateChange `json:"changes,omitempty"`
 
 	// Same scheme for large diffs.
 	DiffTruncated bool `json:"diff_truncated,omitempty"`
@@ -204,6 +208,19 @@ type Item struct {
 
 	// Pass-through for fields we don't model
 	Raw json.RawMessage `json:"-"`
+}
+
+// FileUpdateChange is one file in a v2 fileChange item.
+type FileUpdateChange struct {
+	Path string          `json:"path"`
+	Kind PatchChangeKind `json:"kind"`
+	Diff string          `json:"diff,omitempty"`
+}
+
+// PatchChangeKind is "add", "delete", or "update" (optionally a move).
+type PatchChangeKind struct {
+	Type     string `json:"type"`
+	MovePath string `json:"move_path,omitempty"`
 }
 
 // agentMessageDelta is "item/agentMessage/delta" — streaming text fragment.

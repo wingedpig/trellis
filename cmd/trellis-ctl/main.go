@@ -133,6 +133,8 @@ func main() {
 		err = cmdTask(args)
 	case "session":
 		err = cmdSession(args)
+	case "case":
+		err = cmdCase(args)
 	case "events":
 		err = cmdEvents(args)
 	case "trace":
@@ -263,6 +265,17 @@ Commands:
     -prompt-file <path|->  Read the first message from a file (- for stdin)
     -model <m>             Model override (e.g., opus); -effort <e> sets reasoning effort
     -name <name>           Session display name
+
+  case search <query> [options]  Search archived cases (past work: summary, commits, notes)
+    -kind <kind>           bug, feature, investigation, or task
+    -since <date>          Created on or after (YYYY-MM-DD)
+    -until <date>          Created on or before (YYYY-MM-DD)
+    -n N                   Maximum results (default: 10)
+    -transcripts           Also match each transcript's first prompt
+    -worktree <name>       Worktree to search (default: the one containing the cwd)
+  case show <id>           Show a case: summary, commits, transcripts, links, notes
+  case why <file>:<line>   Trace a line to its commit, case, and the agent turn that wrote it
+  case why <commit>        Show the case behind a commit
 
   events [-n N]            Show recent events (default: 50)
 

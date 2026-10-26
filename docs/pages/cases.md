@@ -13,7 +13,7 @@ Cases are created lazily — usually on the first commit a worktree makes. Workt
 
 - **One open case per worktree.** Creating a second open case is refused. If you have a second unrelated effort, make a new worktree.
 - **All commits in a worktree bind to its open case.** Both Claude and Codex sessions in the same worktree write their commits to the same case without prompting.
-- **The case ID is immutable.** The title is freely editable; the `id` directory name and any `[case: <id>]` references in commit messages are permanent.
+- **The case ID is immutable.** The title is freely editable; the `id` directory name and the `Trellis-Case: <id>` trailer on its commits (or the `[case: <id>]` tag on older ones) are permanent.
 - **Wrap Up is Commit + Archive.** Same workflow, with a flag that tells the server to also move the case directory into the archived path and bundle it into the commit.
 
 ## Worktree home — Cases section
@@ -122,6 +122,28 @@ On confirm, Trellis creates the case if needed, snapshots the session's transcri
 Click **Wrap Up** when the work is done. It runs everything Commit does, then: merges any new links, saves selected traces, captures selected related sessions from the other agent, generates the case's searchable summary, and archives the case directory into the same commit as your code — the whole record of the work lands in git in one step. The active session, and any related sessions you captured, are archived when done — kept and searchable rather than deleted.
 
 If anything fails partway through, the archive is rolled back so the case returns to its pre-wrap-up state.
+
+### Commit links and secret redaction
+
+Every commit made through Commit or Wrap Up gets a `Trellis-Case: <case-id>` trailer, added by the server whatever message you write. `trellis-ctl case why` uses it to go from a line of code to its case, and `task finish -strategy squash` carries the trailers of the squashed commits into the squash commit. (Commits from before the trailer may have a `[case: <id>]` tag in the message instead.)
+
+Archived cases are committed, and agent transcripts often contain secrets that tool output printed (`cat .env`, `curl -u`, config dumps). When a case is archived, Trellis masks them in every text file in the case directory first, replacing each with `[REDACTED:<kind>]`, and records the counts in `case.json` under `redactions` (shown by `trellis-ctl case show`). Configure or disable it with [`cases.redact`](/docs/reference/config/#cases). Redaction only protects cases archived from now on; anything already committed stays in git history, so rotate it.
+
+### Agent commits
+
+Agents often run `git commit` themselves instead of using the Commit button. Those commits get no trailer from the server. Set [`cases.commit_hook: true`](/docs/reference/config/#cases) to link them too:
+
+- Trellis starts every Claude and Codex process with `TRELLIS_SESSION=<agent>:<session-id>` in its environment, so a commit the agent runs inherits it.
+- On start, Trellis installs a `prepare-commit-msg` hook in the repo's shared hooks directory, which covers every worktree. When `TRELLIS_SESSION` is set, the hook adds a `Trellis-Session: <agent>:<session-id>` trailer, plus `Trellis-Case: <case-id>` if the worktree has an open case. When it isn't set (you committing from a terminal or editor), the hook does nothing.
+- At the next Commit or Wrap Up, Trellis adds the case's agent commits to its timeline: commits whose `Trellis-Session` names a session attached to the case, or whose `Trellis-Case` names the case. A session that committed to the case without being saved to it has its transcript attached. Commits made before the case existed are included, so an agent's early commits count once the first Commit creates the case.
+- `trellis-ctl case why` follows the `Trellis-Session` trailer to the transcript that made the commit, rather than searching every case active around that date.
+
+Installing the hook:
+
+- **Existing hook:** if the repo already has its own `prepare-commit-msg`, Trellis leaves it alone, writes its hook beside it as `prepare-commit-msg.trellis`, and logs the line to add to your hook to call it: `"$(dirname "$0")/prepare-commit-msg.trellis" "$@"`.
+- **`core.hooksPath`:** if the repo sets it (husky and similar tools do), Trellis installs nothing and logs a warning, since that directory usually belongs to the tool or is committed. Copy the script from `internal/githook/githook.go` into that directory to use it there.
+- **Turning it off:** setting `commit_hook` back to `false` removes Trellis's hook files on the next start. The hooks carry a `managed-by: trellis` marker, and files without it are never touched.
+- **Codex:** a Codex `shell_environment_policy` that doesn't inherit the environment keeps `TRELLIS_SESSION` from reaching the agent's commands. The default inherits it.
 
 The exact step-by-step mechanics are documented in [AI Sessions: Under the hood](/docs/pages/claude/#under-the-hood).
 

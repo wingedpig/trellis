@@ -1444,3 +1444,46 @@ func TestEventClient_ListWithAllOptions(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 }
+
+func TestCaseClient_SearchAndExplain(t *testing.T) {
+	server := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/cases/feat-x/archived/search":
+			if q.Get("q") != "rate limiter" || q.Get("kind") != "bug" || q.Get("include_transcripts") != "1" {
+				t.Errorf("search query = %v", q)
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]interface{}{
+				{"id": "2026-10-01__limits", "title": "Limits", "score": 6, "summary": map[string]string{"synopsis": "Count inputs"}},
+			}})
+		case "/api/v1/cases/feat-x/explain":
+			if q.Get("file") != "pkg/a b.go" || q.Get("line") != "12" {
+				t.Errorf("explain query = %v", q)
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{
+				"case_id": "2026-10-01__limits", "linked_by": "trailer",
+				"turns": []map[string]interface{}{{"agent": "claude", "tool": "Edit", "matched_line": true}},
+			}})
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	})
+	defer server.Close()
+
+	c := New(server.URL)
+	hits, err := c.Cases.Search(context.Background(), "feat-x", CaseSearchOptions{Query: "rate limiter", Kind: "bug", Transcripts: true})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(hits) != 1 || hits[0].Summary == nil || hits[0].Summary.Synopsis != "Count inputs" {
+		t.Errorf("hits = %+v", hits)
+	}
+	p, err := c.Cases.Explain(context.Background(), "feat-x", "pkg/a b.go", 12)
+	if err != nil {
+		t.Fatalf("Explain() error = %v", err)
+	}
+	if p.LinkedBy != "trailer" || len(p.Turns) != 1 || !p.Turns[0].MatchedLine {
+		t.Errorf("provenance = %+v", p)
+	}
+}

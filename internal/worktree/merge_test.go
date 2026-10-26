@@ -105,6 +105,18 @@ func TestMerge_MergeCommitAndSquash(t *testing.T) {
 		assert.Equal(t, "2", f.git(f.repoDir, "rev-list", "--count", "HEAD")) // init + squash
 		assert.FileExists(t, filepath.Join(f.repoDir, "c.txt"))
 	})
+	t.Run("squash keeps trailers", func(t *testing.T) {
+		f := newMergeFixture(t, config.LifecycleConfig{})
+		f.commit(f.featDir, "a.txt", "a\n", "add a\n\nTrellis-Case: 2026-10-26__fix\nCo-Authored-By: Bot <bot@example.com>")
+		f.commit(f.featDir, "c.txt", "c\n", "add c\n\nTrellis-Case: 2026-10-26__fix")
+		_, err := f.mgr.Merge(context.Background(), "feature", MergeOptions{
+			Strategy: MergeSquash,
+			Message:  "Ship it\n\nReviewed-by: Someone <s@example.com>",
+		})
+		require.NoError(t, err)
+		trailers := f.git(f.repoDir, "log", "-1", "--format=%(trailers:only,unfold)")
+		assert.Equal(t, "Reviewed-by: Someone <s@example.com>\nTrellis-Case: 2026-10-26__fix\nCo-Authored-By: Bot <bot@example.com>", strings.TrimSpace(trailers))
+	})
 }
 
 func TestMerge_NothingToMerge(t *testing.T) {
