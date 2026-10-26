@@ -42,11 +42,12 @@ func TestBinaryWatcher_Watch(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Close()
 
-	// Create temp file
-	tmpFile, err := os.CreateTemp("", "test-binary-*")
+	// Create temp file in a private dir: the watch is on the parent
+	// directory, and kqueue scanning the shared $TMPDIR races with other
+	// test packages creating and deleting files there.
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-binary-*")
 	require.NoError(t, err)
 	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
 
 	// Watch the file
 	err = w.Watch("test-service", []string{tmpFile.Name()})
@@ -88,19 +89,17 @@ func TestBinaryWatcher_WatchDuplicate(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Close()
 
-	tmpFile, err := os.CreateTemp("", "test-binary-*")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-binary-*")
 	require.NoError(t, err)
 	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
 
 	err = w.Watch("test-service", []string{tmpFile.Name()})
 	require.NoError(t, err)
 
 	// Watching same service again should update paths
-	tmpFile2, err := os.CreateTemp("", "test-binary-2-*")
+	tmpFile2, err := os.CreateTemp(t.TempDir(), "test-binary-2-*")
 	require.NoError(t, err)
 	tmpFile2.Close()
-	defer os.Remove(tmpFile2.Name())
 
 	err = w.Watch("test-service", []string{tmpFile2.Name()})
 	require.NoError(t, err)
@@ -117,10 +116,9 @@ func TestBinaryWatcher_Unwatch(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Close()
 
-	tmpFile, err := os.CreateTemp("", "test-binary-*")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-binary-*")
 	require.NoError(t, err)
 	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
 
 	w.Watch("test-service", []string{tmpFile.Name()})
 
@@ -265,10 +263,9 @@ func TestBinaryWatcher_Close(t *testing.T) {
 	w, err := NewBinaryWatcher(bus, 50*time.Millisecond)
 	require.NoError(t, err)
 
-	tmpFile, err := os.CreateTemp("", "test-binary-*")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "test-binary-*")
 	require.NoError(t, err)
 	tmpFile.Close()
-	defer os.Remove(tmpFile.Name())
 
 	w.Watch("test-service", []string{tmpFile.Name()})
 

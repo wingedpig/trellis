@@ -12,7 +12,7 @@ Trellis consists of two static binaries with no external dependencies beyond tmu
 ## Requirements
 
 - **tmux** (required) - Terminal multiplexer for session management
-- **Go 1.25+** (required) - Trellis is installed by building from source
+- **Go 1.26+** (required) - Trellis is installed by building from source
 
 ## Install tmux
 

@@ -30,7 +30,7 @@ Trellis is an **AI-native development environment** — a local web app where Cl
 ### Requirements
 
 - **tmux** — Terminal multiplexer for session management
-- **Go 1.25+** — For building from source
+- **Go 1.26+** — For building from source
 
 ### Install
 
