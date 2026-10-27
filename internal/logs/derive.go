@@ -16,11 +16,24 @@ import (
 // Deriver applies derive configurations to log entries, computing derived fields.
 type Deriver struct {
 	configs map[string]config.DeriveConfig
+	// patterns holds the compiled regex for each "replace" field, keyed by
+	// derived field name. Fields with an invalid pattern are absent.
+	patterns map[string]*regexp.Regexp
 }
 
 // NewDeriver creates a new Deriver from derive configurations.
 func NewDeriver(configs map[string]config.DeriveConfig) *Deriver {
-	return &Deriver{configs: configs}
+	d := &Deriver{configs: configs, patterns: make(map[string]*regexp.Regexp)}
+	for name, cfg := range configs {
+		if cfg.Op != "replace" {
+			continue
+		}
+		pattern, _ := cfg.Args["pattern"].(string)
+		if re, err := regexp.Compile(pattern); err == nil && pattern != "" {
+			d.patterns[name] = re
+		}
+	}
+	return d
 }
 
 // Apply computes all derived fields for a log entry and adds them to entry.Fields.
@@ -35,7 +48,7 @@ func (d *Deriver) Apply(entry *LogEntry) {
 	}
 
 	for fieldName, cfg := range d.configs {
-		value := d.computeField(entry, cfg)
+		value := d.computeField(entry, fieldName, cfg)
 		if value != "" {
 			entry.Fields[fieldName] = value
 		}
@@ -43,12 +56,14 @@ func (d *Deriver) Apply(entry *LogEntry) {
 }
 
 // computeField computes a single derived field value.
-func (d *Deriver) computeField(entry *LogEntry, cfg config.DeriveConfig) string {
+func (d *Deriver) computeField(entry *LogEntry, fieldName string, cfg config.DeriveConfig) string {
 	switch cfg.Op {
 	case "timefmt":
 		return d.opTimeFmt(entry, cfg)
 	case "fmt":
 		return d.opFmt(entry, cfg)
+	case "replace":
+		return d.opReplace(entry, fieldName, cfg)
 	default:
 		return ""
 	}
@@ -98,6 +113,21 @@ func (d *Deriver) opTimeFmt(entry *LogEntry, cfg config.DeriveConfig) string {
 		return ""
 	}
 	return t.Format(format)
+}
+
+// opReplace rewrites a field with a regex replacement, e.g. to collapse
+// per-group URLs into one route for BubbleUp and filtering. The replacement
+// may use $1-style group references. "from" may name the derived field
+// itself to normalize in place.
+// Config: { from: "url", op: "replace", args: { pattern: "^/g/[^/]+/", replacement: "/g/*/" } }
+func (d *Deriver) opReplace(entry *LogEntry, fieldName string, cfg config.DeriveConfig) string {
+	value := d.getFieldValue(entry, cfg.From)
+	re := d.patterns[fieldName]
+	if re == nil || value == "" {
+		return value
+	}
+	replacement, _ := cfg.Args["replacement"].(string)
+	return re.ReplaceAllString(value, replacement)
 }
 
 // opFmt formats using a template with {field} placeholders.

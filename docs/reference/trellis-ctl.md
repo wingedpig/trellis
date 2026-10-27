@@ -145,6 +145,42 @@ trellis-ctl logs <service> -clear
 trellis-ctl logs <service> -stats
 ```
 
+#### BubbleUp: what's different about these lines?
+
+`logs bubbleup` compares the lines matching a selection against every other line in the same time window and ranks the field values whose share differs most. Use it to turn "there are errors" into a lead ("90% of errors are on app02 and come from attach.go:212") before reading individual lines.
+
+```bash
+trellis-ctl logs bubbleup -where 'level:error' -group webpost -since 1h
+trellis-ctl logs bubbleup -where 'status:>=500' -viewer nginx-access01-logs -since 30m
+trellis-ctl logs bubbleup -where 'level:error host.name:app02-g2' -group webpost   # drill down
+trellis-ctl logs bubbleup -where 'level:error' -baseline 'service.name:web' -viewer web01-logs,web02-logs
+trellis-ctl -json logs bubbleup -where 'level:error' -group webpost             # for agents
+```
+
+```
+Selection: 412 lines (level:error)   Baseline: 1284330 lines   Window: Oct 27 13:05–14:05
+Viewers: web01-logs (601233), web02-logs (683509)
+
+FIELD      VALUE                          SELECTION    BASELINE  DIFF
+error      s3: RequestTimeout                 74.0%        0.0%  ▲▲▲  +74.0
+file_line  messageserverd/attach.go:212       81.0%        7.2%  ▲▲▲  +73.8
+host.name  app02-g2                           79.0%       50.0%  ▲▲   +29.0
+
+Skipped (high-cardinality): email, msg, trace_id
+```
+
+| Flag | Description |
+|------|-------------|
+| `-where <filter>` | Selection, in log filter syntax (`level:error`, `status:>=500`, `host.name:app02-g2`). Required. |
+| `-viewer <a,b>` | Log viewer(s) to read; repeatable or comma-separated |
+| `-group <name>` | Read every viewer in a trace group |
+| `-baseline <filter>` | Narrow the comparison set (default: all lines not in the selection) |
+| `-since`, `-until` | Window (default: the last hour) |
+| `-fields <a,b>` / `-exclude <a,b>` | Restrict or skip fields |
+| `-top <n>` | Number of values shown (default 20, at most 3 per field) |
+
+Lines come from each viewer's history (rotated files plus the current file), falling back to the live buffer for sources without history. Fields that are close to unique per line (trace IDs, timestamps, emails) are skipped automatically, as are fields named in `-where`/`-baseline`. Per-entity paths such as `/g/<group>/compose` will look high-cardinality; normalize them with a [`replace` derive](config.md#derived-fields) first.
+
 ### Workflow Commands
 
 ```bash

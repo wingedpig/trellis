@@ -570,3 +570,56 @@ type LogEntriesOptions struct {
 	// After specifies how many context lines to include after each grep match.
 	After int
 }
+
+// BubbleUpOptions configures [LogClient.BubbleUp].
+type BubbleUpOptions struct {
+	// Viewers lists the log viewers to read. Required.
+	Viewers []string
+	// Selection is a filter query picking the entries under investigation,
+	// e.g. "level:error" or "status:>=500". Required.
+	Selection string
+	// Baseline optionally narrows the comparison set (default: every entry
+	// in the window that doesn't match Selection).
+	Baseline string
+	// Since and Until bound the time window (default: the last hour).
+	Since, Until time.Time
+	// Fields restricts the analysis to these fields; Exclude skips fields.
+	Fields, Exclude []string
+	// Top caps the ranked values returned; PerField caps values per field.
+	Top, PerField int
+}
+
+// BubbleUpValue is one field value ranked by how much its share differs
+// between the selection and the baseline.
+type BubbleUpValue struct {
+	Field          string  `json:"field"`
+	Value          string  `json:"value"`
+	SelectionCount int     `json:"selection_count"`
+	BaselineCount  int     `json:"baseline_count"`
+	SelectionPct   float64 `json:"selection_pct"`
+	BaselinePct    float64 `json:"baseline_pct"`
+	Diff           float64 `json:"diff"`
+}
+
+// BubbleUpViewer reports how many lines a viewer contributed and from where
+// ("history" or "buffer").
+type BubbleUpViewer struct {
+	Name   string `json:"name"`
+	Lines  int    `json:"lines"`
+	Source string `json:"source"`
+	Error  string `json:"error,omitempty"`
+}
+
+// BubbleUpResult is the response from [LogClient.BubbleUp].
+type BubbleUpResult struct {
+	Result struct {
+		SelectionCount  int             `json:"selection_count"`
+		BaselineCount   int             `json:"baseline_count"`
+		Values          []BubbleUpValue `json:"values"`
+		HighCardinality []string        `json:"high_cardinality,omitempty"`
+		Approximate     []string        `json:"approximate,omitempty"`
+	} `json:"result"`
+	Viewers []BubbleUpViewer `json:"viewers"`
+	Start   time.Time        `json:"start"`
+	End     time.Time        `json:"end"`
+}

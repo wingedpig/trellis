@@ -924,6 +924,26 @@ logging_defaults: {
 }
 ```
 
+#### Derived fields
+
+Each `derive` entry computes a new field from parsed ones. Available ops:
+
+| Op | Args | Result |
+|----|------|--------|
+| `fmt` | `template` | Template with `{field}` / `{basename(field)}` placeholders, e.g. `"{file}:{line}"` |
+| `timefmt` | `format` | The `from` field (or the entry timestamp) reformatted with a Go time layout |
+| `replace` | `pattern`, `replacement` | The `from` field with every regex match replaced (`$1` group references allowed) |
+
+`replace` is mainly for collapsing per-entity values into one shape so they can be filtered and compared — `logs bubbleup` can't find a pattern in `url` when every group has its own path. It may target its own source field to normalize in place:
+
+```hjson
+derive: {
+  route: { from: "url", op: "replace", args: { pattern: "^/g/[^/]+/", replacement: "/g/*/" } }
+}
+```
+
+An invalid `pattern` leaves the value unchanged.
+
 #### Timezones
 
 Historical log search — scrollback paging and `/trace` — filters remote log files by a time window. For `ssh` sources, Trellis narrows the search by grepping the remote files for the hours/days in range, and it must express those in **the timezone the remote host writes its timestamps in**. Set that with `timezone` (an IANA name like `America/New_York` or `UTC`), per-viewer or as a `logging_defaults.timezone` default.

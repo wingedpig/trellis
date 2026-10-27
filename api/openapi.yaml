@@ -883,6 +883,127 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /logs/bubbleup:
+    get:
+      tags: [Logs]
+      summary: Rank field values that differ between selected lines and the rest
+      description: |
+        Reads every listed viewer over the time window (history, falling back to
+        the live buffer), splits entries into those matching `selection` and the
+        rest (optionally narrowed by `baseline`), and ranks field values by the
+        difference in their share between the two sets. Fields that are near-unique
+        per line, and fields named in either filter, are skipped.
+      operationId: logsBubbleUp
+      parameters:
+        - name: viewers
+          in: query
+          required: true
+          description: Comma-separated log viewer names
+          schema:
+            type: string
+        - name: selection
+          in: query
+          required: true
+          description: Filter expression picking the lines under investigation (e.g. `level:error`)
+          schema:
+            type: string
+        - name: baseline
+          in: query
+          description: Filter expression narrowing the comparison set
+          schema:
+            type: string
+        - name: start
+          in: query
+          description: Start of time range (default end minus 1h)
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          description: End of time range (default now)
+          schema:
+            type: string
+            format: date-time
+        - name: fields
+          in: query
+          description: Comma-separated fields to analyze (default all)
+          schema:
+            type: string
+        - name: exclude
+          in: query
+          description: Comma-separated fields to skip
+          schema:
+            type: string
+        - name: top
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: per_field
+          in: query
+          description: Maximum values per field in the ranking
+          schema:
+            type: integer
+            default: 3
+        - name: timeout
+          in: query
+          description: Read timeout (Go duration, default 5m, max 30m)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ranked field values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      result:
+                        type: object
+                        properties:
+                          selection_count: { type: integer }
+                          baseline_count: { type: integer }
+                          values:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                field: { type: string }
+                                value: { type: string }
+                                selection_count: { type: integer }
+                                baseline_count: { type: integer }
+                                selection_pct: { type: number }
+                                baseline_pct: { type: number }
+                                diff:
+                                  type: number
+                                  description: selection_pct minus baseline_pct
+                          high_cardinality:
+                            type: array
+                            items: { type: string }
+                          approximate:
+                            type: array
+                            items: { type: string }
+                      viewers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            lines: { type: integer }
+                            source: { type: string, enum: [history, buffer] }
+                            error: { type: string }
+                      start: { type: string, format: date-time }
+                      end: { type: string, format: date-time }
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /logs/{name}/history:
     get:
       tags: [Logs]

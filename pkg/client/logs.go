@@ -227,3 +227,43 @@ func (l *LogClient) GetHistory(ctx context.Context, name string, start, end time
 
 	return result.Entries, nil
 }
+
+// BubbleUp compares the entries matching opts.Selection against the rest of
+// the same time window and ranks the field values whose share differs most —
+// "what is different about these lines?".
+func (l *LogClient) BubbleUp(ctx context.Context, opts BubbleUpOptions) (*BubbleUpResult, error) {
+	params := url.Values{}
+	params.Set("viewers", strings.Join(opts.Viewers, ","))
+	params.Set("selection", opts.Selection)
+	if opts.Baseline != "" {
+		params.Set("baseline", opts.Baseline)
+	}
+	if !opts.Since.IsZero() {
+		params.Set("start", opts.Since.Format(time.RFC3339))
+	}
+	if !opts.Until.IsZero() {
+		params.Set("end", opts.Until.Format(time.RFC3339))
+	}
+	if len(opts.Fields) > 0 {
+		params.Set("fields", strings.Join(opts.Fields, ","))
+	}
+	if len(opts.Exclude) > 0 {
+		params.Set("exclude", strings.Join(opts.Exclude, ","))
+	}
+	if opts.Top > 0 {
+		params.Set("top", fmt.Sprintf("%d", opts.Top))
+	}
+	if opts.PerField > 0 {
+		params.Set("per_field", fmt.Sprintf("%d", opts.PerField))
+	}
+
+	data, err := l.c.get(ctx, "/api/v1/logs/bubbleup?"+params.Encode())
+	if err != nil {
+		return nil, err
+	}
+	var result BubbleUpResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse bubbleup result: %w", err)
+	}
+	return &result, nil
+}

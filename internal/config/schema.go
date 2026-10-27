@@ -629,7 +629,7 @@ type LogParserConfig struct {
 // DeriveConfig defines a derived field computed from parsed fields.
 type DeriveConfig struct {
 	From string                 `json:"from,omitempty"` // Source field name (for single-field ops like timefmt)
-	Op   string                 `json:"op"`             // Operation: "fmt", "timefmt"
+	Op   string                 `json:"op"`             // Operation: "fmt", "timefmt", "replace"
 	Args map[string]interface{} `json:"args"`           // Operation-specific arguments
 }
 

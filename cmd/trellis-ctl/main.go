@@ -235,6 +235,18 @@ Commands:
     -open                  Open in browser
     -url                   Print browser URL
 
+  logs bubbleup -where <filter> (-viewer <name> | -group <trace group>) [options]
+                           Rank field values that differ between matching lines and the rest
+    -where <filter>        Selection, in log filter syntax (e.g. level:error, status:>=500)
+    -viewer <a,b>          Log viewer(s) to read (repeatable or comma-separated)
+    -group <name>          Read every viewer in a trace group
+    -baseline <filter>     Narrow the comparison set (default: all non-matching lines)
+    -since <duration>      Window start (default 1h)
+    -until <duration>      Window end (default now)
+    -fields <a,b>          Only analyze these fields
+    -exclude <a,b>         Skip these fields
+    -top <n>               Number of values to show (default 20)
+
   workflow list            List all workflows
   workflow run <id>        Run a workflow (waits for completion)
   workflow status <id>     Get workflow status
@@ -492,6 +504,9 @@ func parseLogsArgs(args []string) (*logsConfig, error) {
 }
 
 func cmdLogs(args []string) error {
+	if len(args) > 0 && args[0] == "bubbleup" {
+		return cmdLogsBubbleUp(args[1:])
+	}
 	cfg, err := parseLogsArgs(args)
 	if err != nil {
 		return err

@@ -334,6 +334,21 @@ func parseNumber(s string) (float64, error) {
 	return strconv.ParseFloat(s, 64)
 }
 
+// FieldNames returns the named fields the filter's clauses test, excluding
+// full-text message searches. Safe to call on a nil Filter.
+func (f *Filter) FieldNames() []string {
+	if f == nil {
+		return nil
+	}
+	var names []string
+	for _, c := range f.clauses {
+		if c.field != "" {
+			names = append(names, c.field)
+		}
+	}
+	return names
+}
+
 // IsEmpty returns true if the filter has no clauses.
 func (f *Filter) IsEmpty() bool {
 	return len(f.clauses) == 0

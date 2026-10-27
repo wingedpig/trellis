@@ -339,6 +339,13 @@ trellis-ctl -json trace "req-abc123" services -since 1h
 
 When asked to investigate an error seen in production logs:
 
+0. **If you don't have a specific trace ID yet** (e.g. "errors went up", "posting sometimes fails"), start with BubbleUp to find what the failing lines have in common:
+   ```bash
+   trellis-ctl -json logs bubbleup -where 'level:error' -group <group> -since 1h
+   trellis-ctl -json logs bubbleup -where 'status:>=500' -viewer <nginx-viewer> -since 30m
+   ```
+   The result ranks field values by how much more (or less) common they are in the selection than in the rest of the window (`selection_pct` vs `baseline_pct`, `diff` in percentage points). Drill down by adding the top value to `-where` (`-where 'level:error host.name:app02-g2'`) and re-running. Then pick a `trace_id` from that slice (`trellis-ctl logs -viewer <name> -since 1h -grep <value>`) and trace it below.
+
 1. **Run a trace** to gather all related log entries:
    ```bash
    trellis-ctl -json trace <trace_id> <group> -since <time>
