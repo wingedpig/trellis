@@ -11,6 +11,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/hjson/hjson-go/v4"
@@ -54,29 +56,35 @@ func NewLoader() *Loader {
 
 // Load reads and parses the configuration from the given path.
 func (l *Loader) Load(ctx context.Context, path string) (*Config, error) {
+	cfg, _, err := l.load(path)
+	return cfg, err
+}
+
+// load is Load that also returns the parsed HJSON, for unknown-key checks.
+func (l *Loader) load(path string) (*Config, map[string]interface{}, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
+		return nil, nil, fmt.Errorf("read config: %w", err)
 	}
 
 	// Parse HJSON to intermediate map
 	var raw map[string]interface{}
 	if err := hjson.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parse hjson: %w", err)
+		return nil, nil, fmt.Errorf("parse hjson: %w", err)
 	}
 
 	// Convert to JSON and unmarshal to struct (for type safety)
 	jsonData, err := json.Marshal(raw)
 	if err != nil {
-		return nil, fmt.Errorf("convert to json: %w", err)
+		return nil, nil, fmt.Errorf("convert to json: %w", err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(jsonData, &cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+		return nil, nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	return &cfg, nil
+	return &cfg, raw, nil
 }
 
 // LoadWithDefaults loads config with default values applied. The config is
@@ -88,11 +96,16 @@ func (l *Loader) Load(ctx context.Context, path string) (*Config, error) {
 // an existing config with a benign typo (e.g. a misspelled log_viewer name
 // referenced from trace_groups) should not block the whole server. The
 // invalid items will still fail at the point of use, but with their normal
-// runtime error messages.
+// runtime error messages. Keys the schema does not know are warned about the
+// same way, since they are otherwise dropped without a trace.
 func (l *Loader) LoadWithDefaults(ctx context.Context, path string) (*Config, error) {
-	cfg, err := l.Load(ctx, path)
+	cfg, raw, err := l.load(path)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, w := range UnknownKeys(raw) {
+		log.Printf("config warning: %s", w)
 	}
 
 	applyDefaults(cfg)
@@ -109,6 +122,91 @@ func (l *Loader) LoadWithDefaults(ctx context.Context, path string) (*Config, er
 	}
 
 	return cfg, nil
+}
+
+// UnknownKeys returns a warning for each key in raw (parsed HJSON) that no
+// Config field reads, sorted by path. HJSON has no dotted-key syntax, so
+// "cases.commit_hook: true" is one top-level key named "cases.commit_hook";
+// those get a hint showing the nested form.
+func UnknownKeys(raw map[string]interface{}) []string {
+	var warnings []string
+	unknownKeys(raw, reflect.TypeOf(Config{}), "", &warnings)
+	sort.Strings(warnings)
+	return warnings
+}
+
+func unknownKeys(v interface{}, t reflect.Type, path string, warnings *[]string) {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			return
+		}
+		for key, val := range m {
+			keyPath := key
+			if path != "" {
+				keyPath = path + "." + key
+			}
+			ft, ok := jsonField(t, key)
+			if !ok {
+				*warnings = append(*warnings, unknownKeyWarning(t, key, keyPath))
+				continue
+			}
+			unknownKeys(val, ft, keyPath, warnings)
+		}
+	case reflect.Slice, reflect.Array:
+		items, ok := v.([]interface{})
+		if !ok {
+			return
+		}
+		for i, item := range items {
+			unknownKeys(item, t.Elem(), fmt.Sprintf("%s[%d]", path, i), warnings)
+		}
+	case reflect.Map:
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			return
+		}
+		for key, val := range m {
+			unknownKeys(val, t.Elem(), path+"."+key, warnings)
+		}
+	}
+}
+
+// jsonField returns the type of t's field that encoding/json would decode
+// key into. Like encoding/json, the match ignores case.
+func jsonField(t reflect.Type, key string) (reflect.Type, bool) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		if strings.EqualFold(name, key) {
+			return f.Type, true
+		}
+	}
+	return nil, false
+}
+
+func unknownKeyWarning(t reflect.Type, key, keyPath string) string {
+	if head, rest, ok := strings.Cut(key, "."); ok {
+		if _, known := jsonField(t, head); known {
+			parts := strings.Split(rest, ".")
+			nested := strings.Join(parts, ": { ") + ": ..." + strings.Repeat(" }", len(parts)-1)
+			return fmt.Sprintf("%s: unknown key (HJSON has no dotted keys; write %s: { %s })", keyPath, head, nested)
+		}
+	}
+	return fmt.Sprintf("%s: unknown key", keyPath)
 }
 
 // FindConfig searches for a config file in the current directory.

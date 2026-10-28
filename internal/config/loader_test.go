@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hjson/hjson-go/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -636,4 +637,29 @@ func mustParseDuration(s string) time.Duration {
 		panic(err)
 	}
 	return dur
+}
+
+func TestUnknownKeys(t *testing.T) {
+	var raw map[string]interface{}
+	require.NoError(t, hjson.Unmarshal([]byte(`{
+		version: "1.0"
+		cases.commit_hook: true
+		Server: { port: 1234, tls_cert_OLD: "x" }
+		services: [
+			{ name: "api", command: ["a"], env: { FOO: "bar" } }
+			{ name: "web", comand: "b" }
+		]
+		log_viewers: [
+			{ name: "v", derive: { d: { from: "x", bogus: 1 } } }
+		]
+		nope: {}
+	}`), &raw))
+
+	assert.Equal(t, []string{
+		"Server.tls_cert_OLD: unknown key",
+		"cases.commit_hook: unknown key (HJSON has no dotted keys; write cases: { commit_hook: ... })",
+		"log_viewers[0].derive.d.bogus: unknown key",
+		"nope: unknown key",
+		"services[1].comand: unknown key",
+	}, UnknownKeys(raw))
 }
