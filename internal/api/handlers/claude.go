@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -539,6 +540,74 @@ func (h *ClaudeHandler) ToolImageAPI(w http.ResponseWriter, r *http.Request) {
 	// Names are unique per tool call, so the bytes never change.
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	http.ServeFile(w, r, path)
+}
+
+// maxSessionFileSize caps what FileAPI will return; it is for reading docs
+// and specs the session is writing, not arbitrary blobs.
+const maxSessionFileSize = 2 << 20
+
+// FileAPI returns the current contents of a text file in the session's
+// worktree, so a document the agent is writing can be read from the session.
+// The path may be absolute (as tool calls give it) but must lie inside the
+// worktree, including after resolving symlinks.
+func (h *ClaudeHandler) FileAPI(w http.ResponseWriter, r *http.Request) {
+	session := h.manager.GetSession(mux.Vars(r)["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	root := session.WorkDir()
+	reqPath := r.URL.Query().Get("path")
+	if root == "" || reqPath == "" {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "path required")
+		return
+	}
+	if filepath.IsAbs(reqPath) {
+		rel, err := filepath.Rel(root, reqPath)
+		if err != nil {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, "path outside worktree")
+			return
+		}
+		reqPath = rel
+	}
+	joined, err := safeJoinInsideRoot(root, reqPath)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, err.Error())
+		return
+	}
+	realRoot, err1 := filepath.EvalSymlinks(root)
+	realPath, err2 := filepath.EvalSymlinks(joined)
+	if err1 != nil || err2 != nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "file not found")
+		return
+	}
+	if rel, err := filepath.Rel(realRoot, realPath); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "path escapes worktree")
+		return
+	}
+	info, err := os.Stat(realPath)
+	if err != nil || !info.Mode().IsRegular() {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "file not found")
+		return
+	}
+	if info.Size() > maxSessionFileSize {
+		WriteError(w, http.StatusRequestEntityTooLarge, ErrBadRequest, "file too large to view")
+		return
+	}
+	data, err := os.ReadFile(realPath)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, ErrInternalError, err.Error())
+		return
+	}
+	if !utf8.Valid(data) {
+		WriteError(w, http.StatusUnsupportedMediaType, ErrBadRequest, "not a text file")
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"path":     filepath.ToSlash(filepath.Clean(reqPath)),
+		"content":  string(data),
+		"modified": info.ModTime(),
+	})
 }
 
 // UpdatePlanAPI appends a user-edited version to a session's plan history.

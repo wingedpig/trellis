@@ -331,6 +331,13 @@ func (s *Session) DisplayName() string { return s.displayName }
 // WorktreeName returns which worktree this session belongs to.
 func (s *Session) WorktreeName() string { return s.worktreeName }
 
+// WorkDir returns the directory the session runs in (its worktree root).
+func (s *Session) WorkDir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.workDir
+}
+
 // Info returns an exported summary.
 func (s *Session) Info() SessionInfo {
 	s.mu.Lock()

@@ -1063,12 +1063,13 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 		activeWorktree = h.worktrees.Active()
 	}
 
-	var sessionCreatedAt, sessionName string
+	var sessionCreatedAt, sessionName, sessionWorkDir string
 	if h.claudeManager != nil {
 		session := h.claudeManager.GetSession(sessionID)
 		if session != nil {
 			sessionCreatedAt = session.Info().CreatedAt.Format(time.RFC3339)
 			sessionName = session.DisplayName()
+			sessionWorkDir = session.WorkDir()
 		}
 	}
 
@@ -1081,6 +1082,7 @@ func (h *PageHandler) ClaudePage(w http.ResponseWriter, r *http.Request) {
 		SessionID:        sessionID,
 		SessionName:      sessionName,
 		SessionCreatedAt: sessionCreatedAt,
+		SessionWorkDir:   sessionWorkDir,
 		IsDefaultBranch:  h.isDefaultBranchWorktree(worktreeName),
 	}
 

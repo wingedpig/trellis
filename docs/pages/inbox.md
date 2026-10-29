@@ -33,6 +33,7 @@ Each row carries:
   - a red warning triangle when the **last turn errored**.
 - The session's display name.
 - A second line showing the worktree and — while running — a **live activity description** of what the agent is doing right now (`Running go test`, `Editing schema.go`, `Thinking…`). It updates in place at each tool/step boundary.
+- When the session is waiting on you, the second line instead shows the last line of the agent's reply — usually the question it's asking (`main · Which of these should I fix?`) — so you can see what it wants before opening it. Hover the row for the full text. Sessions needing approval or that failed show `needs approval` or `failed` there instead.
 - A **time-in-state** label (`4m`, `2h`) showing how long the session has sat in its current state.
 - A small `CLAUDE` or `CODEX` agent badge.
 - A hide button (eye-with-slash) on hover.
@@ -58,9 +59,9 @@ Rows update in real time: state badges flip the moment a session starts or stops
 Mechanics you don't need day-to-day:
 
 - **State model** — `state` is a coarse two-value field derived per agent: Claude is `running` while generating with no pending control request, Codex while generating with no pending approvals; otherwise `needs_you`. `state` drives sorting and transition detection — it flips only on a real `running ↔ needs_you` change. A finer `reason` field (`running`, `awaiting_input`, `needs_approval`, `error`) refines presentation only and never reorders the list. The aggregator merges both agents' session lists and timestamps each session's most recent transition so the UI can sort by recency.
-- **Event streams** — the popup subscribes to `session.state_changed` (fired only on coarse `running ↔ needs_you` transitions, carrying `{session_id, agent, worktree, display_name, state, reason, unread, trashed, archived}` — a row leaves the inbox when either `trashed` or `archived` is true) and `session.activity` (a lighter stream carrying `{session_id, activity}`, fired at tool/step boundaries — not per token — and only when the description changes).
+- **Event streams** — the popup subscribes to `session.state_changed` (fired only on coarse `running ↔ needs_you` transitions, carrying `{session_id, agent, worktree, display_name, state, reason, preview, unread, trashed, archived}` — a row leaves the inbox when either `trashed` or `archived` is true) and `session.activity` (a lighter stream carrying `{session_id, activity}`, fired at tool/step boundaries — not per token — and only when the description changes).
 - **Navigation** — `GET /api/v1/inbox/ws?role=inbox|main` is a single WebSocket endpoint serving two roles: the popup connects as `role=inbox`; every regular Trellis page connects as `role=main` (via `inbox_main_ws.js` in the shared header). A row click sends `{type:"navigate", path:"..."}`, which the server forwards to every main-window connection. If no main window is connected, the server replies `{type:"navigate_failed", reason:"no_main_window"}` and the popup opens a new `trellis-main` window directly.
-- **Initial list** — `GET /api/v1/inbox/sessions` returns the merged list of `SessionRow{id, agent, worktree, display_name, state, reason, activity, unread, last_state_change_at}` entries.
+- **Initial list** — `GET /api/v1/inbox/sessions` returns the merged list of `SessionRow{id, agent, worktree, display_name, state, reason, activity, preview, unread, last_state_change_at}` entries.
 - **Hides** — stored in `localStorage` with the state they were hidden in; a hide is discarded as soon as the recorded state no longer matches the live one.
 
 ## Related

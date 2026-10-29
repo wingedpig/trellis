@@ -28,17 +28,18 @@ type ClaudePage struct {
 	SessionID        string
 	SessionName      string // Session display name (e.g. "Session 1" or a user-given name)
 	SessionCreatedAt string // ISO 8601 timestamp
+	SessionWorkDir   string // Directory the session runs in; tool paths are shown relative to it
 	IsDefaultBranch  bool   // Worktree is on the repo's default branch (main/master)
 }
 
-//line views/claude.qtpl:15
+//line views/claude.qtpl:16
 func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
-//line views/claude.qtpl:15
+//line views/claude.qtpl:16
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:16
+//line views/claude.qtpl:17
 	p.StreamHeader(qw422016)
-//line views/claude.qtpl:16
+//line views/claude.qtpl:17
 	qw422016.N().S(`
 
 <link href="/static/css/claude.css" rel="stylesheet">
@@ -58,15 +59,26 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
      identify their session from their own .page-container instead of window
      globals, which go stale when the SPA swaps pages. -->
 <div id="claude-chat" class="claude-chat-container" data-agent="claude" data-session="`)
-//line views/claude.qtpl:34
+//line views/claude.qtpl:35
 	qw422016.E().S(p.SessionID)
-//line views/claude.qtpl:34
+//line views/claude.qtpl:35
 	qw422016.N().S(`" data-worktree="`)
-//line views/claude.qtpl:34
+//line views/claude.qtpl:35
 	qw422016.E().S(p.WorktreeName)
-//line views/claude.qtpl:34
+//line views/claude.qtpl:35
+	qw422016.N().S(`" data-workdir="`)
+//line views/claude.qtpl:35
+	qw422016.E().S(p.SessionWorkDir)
+//line views/claude.qtpl:35
 	qw422016.N().S(`">
-    <div id="claude-messages" class="claude-messages"></div>
+    <div class="claude-body">
+        <div id="claude-messages" class="claude-messages"></div>
+        <!-- Markdown files the session has read or written; filled by claude.js -->
+        <aside id="claude-docs" class="claude-docs" hidden>
+            <div class="claude-docs-title"><i class="fa-solid fa-book-open"></i> Documents</div>
+            <ul id="claude-docs-list" class="claude-docs-list"></ul>
+        </aside>
+    </div>
     <div id="claude-input-area" class="claude-input-area">
         <div class="claude-input-row">
             <textarea id="claude-input" class="claude-input" placeholder="Ask Claude Code..." rows="1"></textarea>
@@ -118,14 +130,14 @@ func (p *ClaudePage) StreamRender(qw422016 *qt422016.Writer) {
 // commit / wrap-up on a cache-restored session would target whichever
 // session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:86
+//line views/claude.qtpl:94
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:86
+//line views/claude.qtpl:94
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:87
+//line views/claude.qtpl:95
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:87
+//line views/claude.qtpl:95
 	qw422016.N().S(`';
 
 function localShowSaveToCaseModal() {
@@ -253,6 +265,28 @@ if (container) {
     </div>
 </div>
 
+<!-- File Modal: current contents of a document the session is writing -->
+<div class="modal fade" id="claudeFileModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-truncate"><i class="fa-solid fa-book-open"></i> <span id="claudeFileTitle"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="claudeFileView" class="claude-file-view-body"></div>
+            </div>
+            <div class="modal-footer">
+                <small id="claudeFileMeta" class="text-muted me-auto"></small>
+                <button type="button" class="btn btn-outline-secondary" onclick="claudeRefreshFile()">
+                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Fork Session Modal -->
 <div class="modal fade" id="claudeForkModal" tabindex="-1">
     <div class="modal-dialog">
@@ -327,37 +361,37 @@ if (container) {
 // (e.g. set after creating a new case via the wrap-up flow) survive the
 // SPA cache round-trip. Restore on page-entered.
 var PAGE_WORKTREE = '`)
-//line views/claude.qtpl:287
+//line views/claude.qtpl:317
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/claude.qtpl:287
+//line views/claude.qtpl:317
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/claude.qtpl:288
+//line views/claude.qtpl:318
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/claude.qtpl:288
+//line views/claude.qtpl:318
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/claude.qtpl:289
+//line views/claude.qtpl:319
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/claude.qtpl:289
+//line views/claude.qtpl:319
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/claude.qtpl:290
+//line views/claude.qtpl:320
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/claude.qtpl:290
+//line views/claude.qtpl:320
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/claude.qtpl:291
+//line views/claude.qtpl:321
 	if p.IsDefaultBranch {
-//line views/claude.qtpl:291
+//line views/claude.qtpl:321
 		qw422016.N().S(`true`)
-//line views/claude.qtpl:291
+//line views/claude.qtpl:321
 	} else {
-//line views/claude.qtpl:291
+//line views/claude.qtpl:321
 		qw422016.N().S(`false`)
-//line views/claude.qtpl:291
+//line views/claude.qtpl:321
 	}
-//line views/claude.qtpl:291
+//line views/claude.qtpl:321
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -503,36 +537,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:465
 	p.StreamFooter(qw422016)
-//line views/claude.qtpl:435
+//line views/claude.qtpl:465
 	qw422016.N().S(`
 `)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 }
 
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 func (p *ClaudePage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	p.StreamRender(qw422016)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	qt422016.ReleaseWriter(qw422016)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 }
 
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 func (p *ClaudePage) Render() string {
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	p.WriteRender(qb422016)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	qs422016 := string(qb422016.B)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 	return qs422016
-//line views/claude.qtpl:436
+//line views/claude.qtpl:466
 }

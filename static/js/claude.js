@@ -818,6 +818,7 @@
                                             makeCopyableSubtitle(subtitleEl, input.file_path);
                                         }
                                     }
+                                    addFileViewBadge(lastTool.querySelector('.claude-tool-header'), lastToolName, input.file_path);
                                     // Bash: render terminal-styled command
                                     if (lastToolName === 'Bash' && input.command) {
                                         var oldBash = lastTool.querySelector('.claude-bash-block');
@@ -1536,6 +1537,8 @@
         accumulatedText = '';
         usingStreamEvents = false;
         historyGenerating = !!generating;
+        // Runs after this render finishes, so it sees the new badges (or none).
+        scheduleDocsPanel();
 
         if (messages.length === 0) {
             showEmptyState();
@@ -2552,6 +2555,7 @@
                 makeCopyableSubtitle(subtitleEl, block.input.file_path);
             }
         }
+        addFileViewBadge(header, block.name, block.input && block.input.file_path);
 
         const body = document.createElement('div');
         body.className = 'claude-tool-body';
@@ -2766,6 +2770,136 @@
         }
         var chevron = header.querySelector('.claude-tool-chevron');
         if (chevron) header.insertBefore(el, chevron); else header.appendChild(el);
+    }
+
+    // --- Viewing documents the session writes ---
+    //
+    // Write/Edit/Read calls on a Markdown file get a "view" badge that opens
+    // the file's current contents, rendered, so a spec the agent is drafting
+    // can be read without leaving the session.
+
+    function isViewableDoc(path) {
+        return /\.(md|markdown|mdx)$/i.test(path || '');
+    }
+
+    function addFileViewBadge(header, toolName, path) {
+        if (!header || !isViewableDoc(path)) return;
+        if (toolName !== 'Write' && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Read') return;
+        if (header.querySelector('.claude-file-view')) return;
+        var el = document.createElement('a');
+        el.className = 'claude-ctl-badge claude-file-view';
+        el.href = '#';
+        el.title = 'Read the current version of this file';
+        el.dataset.path = path;
+        el.innerHTML = '<i class="fa-solid fa-book-open"></i> view';
+        el.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showSessionFile(path);
+        });
+        var chevron = header.querySelector('.claude-tool-chevron');
+        if (chevron) header.insertBefore(el, chevron); else header.appendChild(el);
+        scheduleDocsPanel();
+    }
+
+    // The documents panel lists every file with a view badge in the
+    // transcript, most recently touched first, so none has to be found by
+    // scrolling. It is rebuilt from the badges, which covers history and
+    // live turns alike.
+    var docsPanelTimer = null;
+
+    function scheduleDocsPanel() {
+        if (docsPanelTimer) return;
+        docsPanelTimer = setTimeout(function() {
+            docsPanelTimer = null;
+            renderDocsPanel();
+        }, 0);
+    }
+
+    function renderDocsPanel() {
+        var panel = document.getElementById('claude-docs');
+        var list = document.getElementById('claude-docs-list');
+        if (!panel || !list) return;
+        var badges = messagesEl.querySelectorAll('.claude-file-view');
+        var seen = {};
+        var paths = [];
+        for (var i = badges.length - 1; i >= 0; i--) {
+            var p = badges[i].dataset.path;
+            if (p && !seen[p]) { seen[p] = true; paths.push(p); }
+        }
+        list.innerHTML = '';
+        paths.forEach(function(p) {
+            var slash = p.lastIndexOf('/');
+            var li = document.createElement('li');
+            var a = document.createElement('a');
+            a.href = '#';
+            a.className = 'claude-docs-item';
+            a.title = p;
+            var name = document.createElement('span');
+            name.className = 'claude-docs-name';
+            name.textContent = p.slice(slash + 1);
+            var dir = document.createElement('span');
+            dir.className = 'claude-docs-dir';
+            dir.textContent = docsDisplayDir(p.slice(0, slash));
+            a.appendChild(name);
+            a.appendChild(dir);
+            a.addEventListener('click', function(e) {
+                e.preventDefault();
+                showSessionFile(p);
+            });
+            li.appendChild(a);
+            list.appendChild(li);
+        });
+        panel.hidden = paths.length === 0;
+    }
+
+    // docsDisplayDir shows a directory relative to the session's working
+    // directory (e.g. "docs/specs"), which is where the agent's paths live.
+    function docsDisplayDir(dir) {
+        var chat = messagesEl.closest('.claude-chat-container');
+        var root = chat && chat.dataset.workdir;
+        if (root && (dir + '/').indexOf(root.replace(/\/$/, '') + '/') === 0) {
+            return dir.slice(root.replace(/\/$/, '').length + 1) || '.';
+        }
+        return dir;
+    }
+
+    var viewedFilePath = null;
+
+    function showSessionFile(path) {
+        if (!planSessionId) return;
+        viewedFilePath = path;
+        var title = document.getElementById('claudeFileTitle');
+        var meta = document.getElementById('claudeFileMeta');
+        var view = document.getElementById('claudeFileView');
+        if (!title || !view) return;
+        title.textContent = path.split('/').pop();
+        title.title = path;
+        if (meta) meta.textContent = '';
+        view.innerHTML = '<div class="text-muted">Loading…</div>';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('claudeFileModal')).show();
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(planSessionId) + '/file?path=' + encodeURIComponent(path))
+            .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+            .then(function(res) {
+                if (viewedFilePath !== path) return;
+                if (!res.ok) {
+                    var msg = (res.body && res.body.error && res.body.error.message) || 'could not read file';
+                    view.innerHTML = '<div class="text-danger">' + escapeHtml(msg) + '</div>';
+                    return;
+                }
+                var data = res.body.data || res.body;
+                view.innerHTML = mdSafe(data.content || '');
+                if (meta && data.modified) {
+                    meta.textContent = data.path + ' · updated ' + new Date(data.modified).toLocaleString();
+                }
+            })
+            .catch(function(err) {
+                view.innerHTML = '<div class="text-danger">' + escapeHtml(String(err)) + '</div>';
+            });
+    }
+
+    function localClaudeRefreshFile() {
+        if (viewedFilePath) showSessionFile(viewedFilePath);
     }
 
     // splitToolResultContent separates a tool_result's content into text and
@@ -3279,6 +3413,7 @@
         window.claudeShowPlan = localClaudeShowPlan;
         window.claudePlanEdit = localClaudePlanEdit;
         window.claudePlanSave = localClaudePlanSave;
+        window.claudeRefreshFile = localClaudeRefreshFile;
     }
     bindClaudeGlobals();
     var __claudePageContainer = inputEl ? inputEl.closest('.page-container') : null;
