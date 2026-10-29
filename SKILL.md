@@ -117,7 +117,7 @@ trellis-ctl workflow cancel <id>       # Cancel a running workflow (run ID or wo
 ```
 `Summary` is null for workflows without an output parser. Check `Success` for the overall result and `Summary.FailedTests` to see exactly which tests to fix.
 
-**Piping workflow output.** Without `-json`, `workflow run` writes the workflow's stdout to stdout and everything else (its stderr, progress, the ✓/✗ line) to stderr, so `trellis-ctl workflow run db-fetch --model=User --id=12345 | jq .Email` works as is — don't add `2>&1`, `sed`, or `tail` before `jq`. With `-json`, `Stdout` and `Stderr` hold each stream, and `Result` holds the stdout already parsed when it is one JSON value: `trellis-ctl -json workflow run db-fetch --model=User --id=12345 | jq .Result.Email`.
+**Piping workflow output.** Without `-json`, `workflow run` writes the workflow's stdout to stdout and everything else (its stderr, progress, the ✓/✗ line) to stderr, so `trellis-ctl workflow run fetch-record --table=users --id=12345 | jq .email` works as is — don't add `2>&1`, `sed`, or `tail` before `jq`. With `-json`, `Stdout` and `Stderr` hold each stream, and `Result` holds the stdout already parsed when it is one JSON value: `trellis-ctl -json workflow run fetch-record --table=users --id=12345 | jq .Result.email`.
 
 **Discovering and running workflows with inputs:**
 ```bash
@@ -346,13 +346,13 @@ When asked to investigate an error seen in production logs:
    trellis-ctl -json logs bubbleup -where 'level:error' -group <group> -since 1h
    trellis-ctl -json logs bubbleup -where 'status:>=500' -viewer <nginx-viewer> -since 30m
    ```
-   The result ranks field values by how much more (or less) common they are in the selection than in the rest of the window (`selection_pct` vs `baseline_pct`, `diff` in percentage points). Drill down by adding the top value to `-where` (`-where 'level:error host.name:app02-g2'`) and re-running. Then pick a `trace_id` from that slice (`trellis-ctl logs -viewer <name> -since 1h -grep <value>`) and trace it below.
+   The result ranks field values by how much more (or less) common they are in the selection than in the rest of the window (`selection_pct` vs `baseline_pct`, `diff` in percentage points). Drill down by adding the top value to `-where` (`-where 'level:error host:app02'`) and re-running. Then pick a `trace_id` from that slice (`trellis-ctl logs -viewer <name> -since 1h -grep <value>`) and trace it below.
 
 1. **Run a trace** to gather all related log entries:
    ```bash
    trellis-ctl -json trace <trace_id> <group> -since <time>
    ```
-   Example: `trellis-ctl -json trace XXXX-XXXX-12345 web -since 10am`
+   Example: `trellis-ctl -json trace req-abc123 api-flow -since 10am`
 
 2. **Parse the JSON output** - The trace returns entries with:
    - `timestamp` - When it occurred
@@ -379,7 +379,7 @@ When asked to investigate an error seen in production logs:
 **Example investigation:**
 ```bash
 # Step 1: Run trace for the error around 10am
-trellis-ctl -json trace req-abc123 web -since 9:30am -until 10:30am
+trellis-ctl -json trace req-abc123 api-flow -since 9:30am -until 10:30am
 
 # Step 2: Parse output, identify the error source
 # Look for entries with level="error" and examine the request flow
@@ -403,7 +403,7 @@ When you need to fetch data from production databases to understand an issue:
 
 2. **Run the workflow with validated inputs**:
    ```bash
-   trellis-ctl -json workflow run db-fetch --table=users --id=12345
+   trellis-ctl -json workflow run fetch-record --table=users --id=12345
    ```
 
 Workflow inputs are validated against configured patterns and allowed values before execution, ensuring safe queries. For example, a workflow configured with:
@@ -418,7 +418,7 @@ Will reject attempts to query unauthorized tables or pass malformed IDs.
 trellis-ctl -json trace req-abc123 api-flow -since 1h
 
 # 2. Trace shows user_id=12345 had an error - fetch the user record
-trellis-ctl -json workflow run db-fetch --table=users --id=12345
+trellis-ctl -json workflow run fetch-record --table=users --id=12345
 
 # 3. Examine the returned JSON to understand the user's state
 # 4. Read relevant source code to understand the bug
