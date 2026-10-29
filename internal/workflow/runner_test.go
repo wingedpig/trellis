@@ -166,6 +166,39 @@ func TestRunner_Run_Success(t *testing.T) {
 	assert.Contains(t, status.Output, "hello")
 }
 
+func TestRunner_Run_SeparatesStreams(t *testing.T) {
+	bus := newTestBus()
+	defer bus.Close()
+
+	workflows := []WorkflowConfig{
+		{ID: "json", Name: "JSON", Command: []string{"sh", "-c", `echo "connecting..." >&2; echo '{"ID": 7}'`}},
+		{ID: "text", Name: "Text", Command: []string{"echo", "not json"}},
+		{ID: "fail", Name: "Fail", Command: []string{"sh", "-c", `echo '[1]'; echo "boom" >&2; exit 1`}},
+	}
+	runner := NewRunner(workflows, bus, nil, "")
+
+	run := func(id string) *WorkflowStatus {
+		initialStatus, err := runner.Run(context.Background(), id)
+		require.NoError(t, err)
+		return waitForCompletion(t, runner, initialStatus.ID, 5*time.Second)
+	}
+
+	status := run("json")
+	assert.Contains(t, status.Output, "connecting...")
+	assert.Equal(t, "{\"ID\": 7}\n", status.Stdout)
+	assert.Equal(t, "connecting...\n", status.Stderr)
+	assert.JSONEq(t, `{"ID": 7}`, string(status.Result))
+
+	status = run("text")
+	assert.Equal(t, "not json\n", status.Stdout)
+	assert.Nil(t, status.Result)
+
+	status = run("fail")
+	assert.False(t, status.Success)
+	assert.Equal(t, "boom\n", status.Stderr)
+	assert.JSONEq(t, `[1]`, string(status.Result))
+}
+
 func TestRunner_Run_Failure(t *testing.T) {
 	bus := newTestBus()
 	defer bus.Close()

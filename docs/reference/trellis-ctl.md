@@ -221,6 +221,13 @@ trellis-ctl workflow cancel <id>
 
 `Summary` is `null` for workflows without an output parser. The human-readable `workflow run` output prints the same rollup as a `Summary:` line plus a `FAIL` line per failing test.
 
+**Output streams:** Without `-json`, `workflow run` writes the workflow's stdout to stdout, and its stderr, the progress line, the `Summary:` rollup, and the final ✓/✗ line to stderr, so a workflow that prints JSON can be piped straight into `jq`. With `-json`, completed runs carry `Stdout` and `Stderr` alongside the interleaved `Output`, plus `Result` — the stdout parsed as JSON — when the stdout is a single JSON value:
+
+```bash
+trellis-ctl workflow run db-fetch --model=User --id=12345 | jq .Email
+trellis-ctl -json workflow run db-fetch --model=User --id=12345 | jq .Result.Email
+```
+
 **Example: Discovering and running a workflow with inputs**
 
 ```bash

@@ -4,6 +4,7 @@
 package client
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"time"
 )
@@ -235,6 +236,16 @@ type WorkflowStatus struct {
 
 	// Output contains the combined stdout/stderr output.
 	Output string `json:"Output"`
+
+	// Stdout and Stderr contain each stream on its own, without the
+	// command headers Output adds for multi-command workflows. Both are
+	// empty until the run finishes.
+	Stdout string `json:"Stdout"`
+	Stderr string `json:"Stderr"`
+
+	// Result is Stdout parsed as JSON, present when Stdout is a single
+	// JSON value.
+	Result json.RawMessage `json:"Result,omitempty"`
 
 	// OutputHTML contains the output with ANSI codes converted to HTML.
 	OutputHTML string `json:"OutputHTML"`

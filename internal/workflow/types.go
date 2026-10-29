@@ -5,6 +5,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -26,9 +27,9 @@ type WorkflowInput struct {
 type WorkflowConfig struct {
 	ID              string
 	Name            string
-	Description     string         // Description for CLI help
-	Command         []string       // Single command (backwards compat)
-	Commands        [][]string     // Multiple commands to run in sequence
+	Description     string     // Description for CLI help
+	Command         []string   // Single command (backwards compat)
+	Commands        [][]string // Multiple commands to run in sequence
 	Timeout         time.Duration
 	OutputParser    string
 	Confirm         bool
@@ -61,7 +62,10 @@ type WorkflowStatus struct {
 	Success     bool
 	ExitCode    int
 	Output      string
-	OutputHTML  string // HTML-formatted output with links and <br> tags
+	Stdout      string          // Commands' stdout alone, without command headers; set when the run finishes
+	Stderr      string          // Commands' stderr alone; set when the run finishes
+	Result      json.RawMessage `json:",omitempty"` // Stdout parsed as one JSON value, when it is one
+	OutputHTML  string          // HTML-formatted output with links and <br> tags
 	ParsedLines []ParsedLine
 	Summary     *WorkflowSummary // Rollup of ParsedLines; nil when no output parser is configured
 	Error       string
@@ -144,10 +148,10 @@ type ParsedLine struct {
 
 // OutputUpdate represents an incremental output update from a workflow.
 type OutputUpdate struct {
-	RunID      string
-	Line       string        // New line of output
-	Done       bool          // True when workflow is complete
-	Status     *WorkflowStatus // Final status (only set when Done=true)
+	RunID  string
+	Line   string          // New line of output
+	Done   bool            // True when workflow is complete
+	Status *WorkflowStatus // Final status (only set when Done=true)
 }
 
 // Runner executes workflows.

@@ -117,6 +117,8 @@ trellis-ctl workflow cancel <id>       # Cancel a running workflow (run ID or wo
 ```
 `Summary` is null for workflows without an output parser. Check `Success` for the overall result and `Summary.FailedTests` to see exactly which tests to fix.
 
+**Piping workflow output.** Without `-json`, `workflow run` writes the workflow's stdout to stdout and everything else (its stderr, progress, the ✓/✗ line) to stderr, so `trellis-ctl workflow run db-fetch --model=User --id=12345 | jq .Email` works as is — don't add `2>&1`, `sed`, or `tail` before `jq`. With `-json`, `Stdout` and `Stderr` hold each stream, and `Result` holds the stdout already parsed when it is one JSON value: `trellis-ctl -json workflow run db-fetch --model=User --id=12345 | jq .Result.Email`.
+
 **Discovering and running workflows with inputs:**
 ```bash
 # See what inputs a workflow expects

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -396,6 +397,20 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 	var outputBuilder strings.Builder
 	outputTruncated := false
 
+	// Output interleaves both streams; keep each on its own too, so a caller
+	// can pipe a workflow's result into another tool. Call with state.mu held.
+	var stdoutBuilder, stderrBuilder strings.Builder
+	finishStreams := func() {
+		status.Stdout = stdoutBuilder.String()
+		status.Stderr = stderrBuilder.String()
+		if outputTruncated {
+			status.Stderr += "... output truncated (exceeded 10MB); Stdout is incomplete ...\n"
+		}
+		if trimmed := bytes.TrimSpace([]byte(status.Stdout)); len(trimmed) > 0 && json.Valid(trimmed) {
+			status.Result = json.RawMessage(trimmed)
+		}
+	}
+
 	// Execute each command in sequence
 	for cmdIdx, cmdArgs := range commands {
 		// Check for context cancellation before starting next command
@@ -411,6 +426,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 			status.Success = false
 			status.FinishedAt = time.Now()
 			status.Duration = status.FinishedAt.Sub(status.StartedAt)
+			finishStreams()
 			state.mu.Unlock()
 			return
 		}
@@ -494,7 +510,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 		var lastFormatTime time.Time
 		const formatThrottle = 100 * time.Millisecond
 
-		streamOutput := func(reader io.Reader) {
+		streamOutput := func(reader io.Reader, own *strings.Builder) {
 			defer wg.Done()
 			scanner := bufio.NewScanner(reader)
 			buf := make([]byte, 64*1024)
@@ -513,6 +529,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 						lastFormatTime = time.Now()
 					} else {
 						outputBuilder.WriteString(line)
+						own.WriteString(line)
 						status.Output = outputBuilder.String()
 						// Throttle HTML formatting to avoid O(n²) for large outputs
 						now := time.Now()
@@ -545,8 +562,8 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 			}
 		}
 
-		go streamOutput(stdout)
-		go streamOutput(stderr)
+		go streamOutput(stdout, &stdoutBuilder)
+		go streamOutput(stderr, &stderrBuilder)
 
 		wg.Wait()
 		err = cmd.Wait()
@@ -582,6 +599,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 				status.Summary = Summarize(status.ParsedLines)
 			}
 			status.OutputHTML = FormatOutput(status.Output, status.ParsedLines, wf.OutputParser)
+			finishStreams()
 			state.mu.Unlock()
 			return
 		}
@@ -615,6 +633,7 @@ func (r *RealRunner) executeStreaming(ctx context.Context, wf WorkflowConfig, st
 
 	// Format output as HTML with links
 	status.OutputHTML = FormatOutput(status.Output, status.ParsedLines, wf.OutputParser)
+	finishStreams()
 	state.mu.Unlock()
 }
 

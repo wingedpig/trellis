@@ -1213,8 +1213,10 @@ func cmdWorkflowRun(args []string) error {
 		}
 	}
 
+	// Progress and the result banner go to stderr so stdout carries only the
+	// workflow's own stdout and can be piped (e.g. into jq).
 	if !jsonOutput {
-		fmt.Printf("Running workflow: %s\n", id)
+		fmt.Fprintf(os.Stderr, "Running workflow: %s\n", id)
 	}
 
 	opts := &client.RunOptions{}
@@ -1261,8 +1263,12 @@ func cmdWorkflowRun(args []string) error {
 		return nil
 	}
 
-	// Print output
-	if status.Output != "" {
+	// Print output, each stream to its own descriptor. Servers that predate
+	// the split send only the interleaved Output.
+	if status.Stdout != "" || status.Stderr != "" {
+		fmt.Print(status.Stdout)
+		fmt.Fprint(os.Stderr, status.Stderr)
+	} else if status.Output != "" {
 		fmt.Println(status.Output)
 	}
 
@@ -1279,21 +1285,21 @@ func cmdWorkflowRun(args []string) error {
 			parts = append(parts, fmt.Sprintf("%d warnings", s.Warnings))
 		}
 		if len(parts) > 0 {
-			fmt.Printf("\nSummary: %s\n", strings.Join(parts, "; "))
+			fmt.Fprintf(os.Stderr, "\nSummary: %s\n", strings.Join(parts, "; "))
 		}
 		for _, t := range s.FailedTests {
-			fmt.Printf("  FAIL %s\n", t)
+			fmt.Fprintf(os.Stderr, "  FAIL %s\n", t)
 		}
 	}
 
 	// Print result
 	duration := status.Duration.Round(time.Millisecond).String()
 	if status.Success {
-		fmt.Printf("\n✓ Workflow completed successfully (%s)\n", duration)
+		fmt.Fprintf(os.Stderr, "\n✓ Workflow completed successfully (%s)\n", duration)
 	} else {
-		fmt.Printf("\n✗ Workflow failed (%s)\n", duration)
+		fmt.Fprintf(os.Stderr, "\n✗ Workflow failed (%s)\n", duration)
 		if status.Error != "" {
-			fmt.Printf("Error: %s\n", status.Error)
+			fmt.Fprintf(os.Stderr, "Error: %s\n", status.Error)
 		}
 		return fmt.Errorf("workflow failed")
 	}
