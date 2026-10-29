@@ -349,6 +349,7 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/claude/sessions/{session}/plan", claudeHandler.GetPlanAPI).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/images/{name}", claudeHandler.ToolImageAPI).Methods("GET")
 		api.HandleFunc("/claude/sessions/{session}/file", claudeHandler.FileAPI).Methods("GET")
+		api.HandleFunc("/claude/sessions/{session}/files/exist", claudeHandler.FilesExistAPI).Methods("POST")
 		api.HandleFunc("/claude/sessions/{session}/plan", claudeHandler.UpdatePlanAPI).Methods("PUT")
 		api.HandleFunc("/claude/{worktree}/sessions/import", claudeHandler.ImportSessionAPI).Methods("POST")
 		api.HandleFunc("/claude/{worktree}/sessions/trash", claudeHandler.ListTrashedSessionsAPI).Methods("GET")

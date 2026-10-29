@@ -1538,6 +1538,10 @@
         usingStreamEvents = false;
         historyGenerating = !!generating;
         // Runs after this render finishes, so it sees the new badges (or none).
+        // Files named in history may since have been renamed or removed, so
+        // the panel checks they still exist before listing them.
+        missingDocs = {};
+        docsCheckPending = true;
         scheduleDocsPanel();
 
         if (messages.length === 0) {
@@ -2799,6 +2803,9 @@
         });
         var chevron = header.querySelector('.claude-tool-chevron');
         if (chevron) header.insertBefore(el, chevron); else header.appendChild(el);
+        // A badge added after history loaded is a live call, which may have
+        // just recreated a file found missing earlier.
+        if (!docsCheckPending) delete missingDocs[path];
         scheduleDocsPanel();
     }
 
@@ -2807,6 +2814,11 @@
     // scrolling. It is rebuilt from the badges, which covers history and
     // live turns alike.
     var docsPanelTimer = null;
+    // missingDocs holds paths found not to exist (by the check after a history
+    // load, or a failed view); the panel leaves them out.
+    var missingDocs = {};
+    var docsCheckPending = false;
+    var docsCheckSeq = 0;
 
     function scheduleDocsPanel() {
         if (docsPanelTimer) return;
@@ -2827,6 +2839,11 @@
             var p = badges[i].dataset.path;
             if (p && !seen[p]) { seen[p] = true; paths.push(p); }
         }
+        if (docsCheckPending) {
+            docsCheckPending = false;
+            checkDocsExist(paths);
+        }
+        paths = paths.filter(function(p) { return !missingDocs[p]; });
         list.innerHTML = '';
         paths.forEach(function(p) {
             var slash = p.lastIndexOf('/');
@@ -2851,6 +2868,27 @@
             list.appendChild(li);
         });
         panel.hidden = paths.length === 0;
+    }
+
+    // checkDocsExist asks the server which paths can no longer be viewed and
+    // redraws the panel without them. A later history load supersedes it.
+    function checkDocsExist(paths) {
+        if (!planSessionId || paths.length === 0) return;
+        var seq = ++docsCheckSeq;
+        fetch('/api/v1/claude/sessions/' + encodeURIComponent(planSessionId) + '/files/exist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths: paths })
+        })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(body) {
+                if (seq !== docsCheckSeq || !body) return;
+                var missing = (body.data || body).missing || [];
+                if (missing.length === 0) return;
+                missing.forEach(function(p) { missingDocs[p] = true; });
+                renderDocsPanel();
+            })
+            .catch(function() {});
     }
 
     // docsDisplayDir shows a directory relative to the session's working
@@ -2879,10 +2917,14 @@
         view.innerHTML = '<div class="text-muted">Loading…</div>';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('claudeFileModal')).show();
         fetch('/api/v1/claude/sessions/' + encodeURIComponent(planSessionId) + '/file?path=' + encodeURIComponent(path))
-            .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+            .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, status: r.status, body: body }; }); })
             .then(function(res) {
                 if (viewedFilePath !== path) return;
                 if (!res.ok) {
+                    if (res.status === 404) {
+                        missingDocs[path] = true;
+                        renderDocsPanel();
+                    }
                     var msg = (res.body && res.body.error && res.body.error.message) || 'could not read file';
                     view.innerHTML = '<div class="text-danger">' + escapeHtml(msg) + '</div>';
                     return;

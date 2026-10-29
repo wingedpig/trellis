@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -68,5 +70,42 @@ func TestFileAPI(t *testing.T) {
 		if code, _ := get(p); code == http.StatusOK {
 			t.Errorf("get(%q) = 200, want refused", p)
 		}
+	}
+}
+
+func TestFilesExistAPI(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "spec.md"), []byte("# Spec\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cm := claude.NewManager(t.TempDir())
+	s := cm.CreateSession("main", root, "docs")
+	h := NewClaudeHandler(cm, nil, nil, nil, nil, nil)
+
+	paths := []string{
+		"spec.md",
+		filepath.Join(root, "spec.md"),
+		"renamed.md",
+		filepath.Join(root, "gone.md"),
+		"../outside.md",
+	}
+	reqBody, _ := json.Marshal(map[string]interface{}{"paths": paths})
+	req := httptest.NewRequest(http.MethodPost, "/files/exist", strings.NewReader(string(reqBody)))
+	req = mux.SetURLVars(req, map[string]string{"session": s.ID()})
+	rec := httptest.NewRecorder()
+	h.FilesExistAPI(rec, req)
+
+	var body struct {
+		Data struct {
+			Missing []string `json:"missing"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("FilesExistAPI = %d %s", rec.Code, rec.Body.String())
+	}
+	want := paths[2:]
+	if !reflect.DeepEqual(body.Data.Missing, want) {
+		t.Errorf("missing = %v, want %v", body.Data.Missing, want)
 	}
 }

@@ -556,38 +556,14 @@ func (h *ClaudeHandler) FileAPI(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
 		return
 	}
-	root := session.WorkDir()
 	reqPath := r.URL.Query().Get("path")
-	if root == "" || reqPath == "" {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, "path required")
-		return
-	}
-	if filepath.IsAbs(reqPath) {
-		rel, err := filepath.Rel(root, reqPath)
-		if err != nil {
-			WriteError(w, http.StatusBadRequest, ErrBadRequest, "path outside worktree")
-			return
+	realPath, info, status, msg := resolveSessionFile(session.WorkDir(), reqPath)
+	if status != http.StatusOK {
+		code := ErrBadRequest
+		if status == http.StatusNotFound {
+			code = ErrNotFound
 		}
-		reqPath = rel
-	}
-	joined, err := safeJoinInsideRoot(root, reqPath)
-	if err != nil {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, err.Error())
-		return
-	}
-	realRoot, err1 := filepath.EvalSymlinks(root)
-	realPath, err2 := filepath.EvalSymlinks(joined)
-	if err1 != nil || err2 != nil {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "file not found")
-		return
-	}
-	if rel, err := filepath.Rel(realRoot, realPath); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		WriteError(w, http.StatusBadRequest, ErrBadRequest, "path escapes worktree")
-		return
-	}
-	info, err := os.Stat(realPath)
-	if err != nil || !info.Mode().IsRegular() {
-		WriteError(w, http.StatusNotFound, ErrNotFound, "file not found")
+		WriteError(w, status, code, msg)
 		return
 	}
 	if info.Size() > maxSessionFileSize {
@@ -604,10 +580,81 @@ func (h *ClaudeHandler) FileAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"path":     filepath.ToSlash(filepath.Clean(reqPath)),
+		"path":     filepath.ToSlash(filepath.Clean(sessionRelPath(session.WorkDir(), reqPath))),
 		"content":  string(data),
 		"modified": info.ModTime(),
 	})
+}
+
+// sessionRelPath makes an absolute path relative to the worktree root, as
+// tool calls give absolute paths; relative paths are returned unchanged.
+func sessionRelPath(root, reqPath string) string {
+	if filepath.IsAbs(reqPath) {
+		if rel, err := filepath.Rel(root, reqPath); err == nil {
+			return rel
+		}
+	}
+	return reqPath
+}
+
+// resolveSessionFile locates a regular file inside the worktree root,
+// including after resolving symlinks. On failure it returns the HTTP status
+// and a message to report.
+func resolveSessionFile(root, reqPath string) (string, os.FileInfo, int, string) {
+	if root == "" || reqPath == "" {
+		return "", nil, http.StatusBadRequest, "path required"
+	}
+	// An absolute path Rel cannot relate to root stays absolute, which
+	// safeJoinInsideRoot refuses.
+	joined, err := safeJoinInsideRoot(root, sessionRelPath(root, reqPath))
+	if err != nil {
+		return "", nil, http.StatusBadRequest, err.Error()
+	}
+	realRoot, err1 := filepath.EvalSymlinks(root)
+	realPath, err2 := filepath.EvalSymlinks(joined)
+	if err1 != nil || err2 != nil {
+		return "", nil, http.StatusNotFound, "file not found"
+	}
+	if rel, err := filepath.Rel(realRoot, realPath); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", nil, http.StatusBadRequest, "path escapes worktree"
+	}
+	info, err := os.Stat(realPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", nil, http.StatusNotFound, "file not found"
+	}
+	return realPath, info, http.StatusOK, ""
+}
+
+// maxFilesExistPaths caps how many paths one FilesExistAPI call may check.
+const maxFilesExistPaths = 500
+
+// FilesExistAPI reports which of the given paths FileAPI could not serve
+// (renamed, removed, or outside the worktree), so a reloaded transcript does
+// not list documents that are gone.
+func (h *ClaudeHandler) FilesExistAPI(w http.ResponseWriter, r *http.Request) {
+	session := h.manager.GetSession(mux.Vars(r)["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	var body struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid request body")
+		return
+	}
+	if len(body.Paths) > maxFilesExistPaths {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, "too many paths")
+		return
+	}
+	missing := []string{}
+	for _, p := range body.Paths {
+		if _, _, status, _ := resolveSessionFile(session.WorkDir(), p); status != http.StatusOK {
+			missing = append(missing, p)
+		}
+	}
+	WriteJSON(w, http.StatusOK, map[string]interface{}{"missing": missing})
 }
 
 // UpdatePlanAPI appends a user-edited version to a session's plan history.
