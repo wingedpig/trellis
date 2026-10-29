@@ -30,7 +30,10 @@ type SessionRow struct {
 	Reason string `json:"reason"`
 	// Activity is a short human-readable description of what the session is
 	// doing right now ("Running go test"), or "" when idle.
-	Activity          string    `json:"activity"`
+	Activity string `json:"activity"`
+	// Preview is the closing line of the agent's last reply (usually the
+	// question it is waiting on), or "" while it is running.
+	Preview           string    `json:"preview,omitempty"`
 	Unread            bool      `json:"unread"`  // missed running→needs-you transition
 	Trashed           bool      `json:"trashed"` // true while a removal animates client-side
 	LastStateChangeAt time.Time `json:"last_state_change_at"`
@@ -122,6 +125,7 @@ func (a *Aggregator) List() []SessionRow {
 			State:             state,
 			Reason:            s.Reason(),
 			Activity:          s.CurrentActivity(),
+			Preview:           s.ReplyPreview(),
 			Unread:            s.IsUnread(),
 			LastStateChangeAt: ts,
 		})
@@ -154,6 +158,7 @@ func (a *Aggregator) List() []SessionRow {
 			State:             state,
 			Reason:            s.Reason(),
 			Activity:          s.CurrentActivity(),
+			Preview:           s.ReplyPreview(),
 			Unread:            s.IsUnread(),
 			LastStateChangeAt: ts,
 		})

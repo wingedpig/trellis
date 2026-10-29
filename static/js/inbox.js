@@ -111,6 +111,9 @@
         var hint = "";
         if (reasonOf(r) === "needs_approval") hint = "needs approval";
         else if (reasonOf(r) === "error") hint = "failed";
+        // Otherwise show what it's waiting on — usually its closing question —
+        // so it can be answered without opening it first.
+        if (!hint) hint = r.preview || "";
         if (hint) return r.worktree ? (r.worktree + " · " + hint) : hint;
         return r.worktree || "";
     }
@@ -199,6 +202,9 @@
             sub.textContent = subText(r);
             text.appendChild(name);
             text.appendChild(sub);
+            if (r.state !== "running" && r.preview) {
+                a.title = r.preview + "\n\n" + a.title;
+            }
             a.appendChild(text);
 
             var time = document.createElement("span");
@@ -293,6 +299,7 @@
             // event so it's preserved across state_changed updates.
             reason: p.reason || existing.reason,
             activity: existing.activity || "",
+            preview: p.preview !== undefined ? p.preview : existing.preview,
             unread: !!p.unread,
             trashed: !!p.trashed,
             // Archived sessions leave the inbox the same way trashed ones do:

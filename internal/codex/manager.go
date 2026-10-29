@@ -401,6 +401,36 @@ func (s *Session) PendingApprovals() []StreamEvent {
 //
 // Side effects: updates s.unread and s.lastPublishedState — see the claude
 // equivalent for the rules.
+// ReplyPreview returns the closing line of the last agent reply, or ""
+// while a turn is running. See agentmsg.ReplyPreview.
+func (s *Session) ReplyPreview() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.replyPreviewLocked()
+}
+
+// replyPreviewLocked is ReplyPreview for callers holding s.mu.
+func (s *Session) replyPreviewLocked() string {
+	if s.generating {
+		return ""
+	}
+	for i := len(s.messages) - 1; i >= 0; i-- {
+		msg := s.messages[i]
+		if msg.Role == agentmsg.RoleUser {
+			return ""
+		}
+		for j := len(msg.Items) - 1; j >= 0; j-- {
+			if it := msg.Items[j]; it.Type == "agentMessage" && strings.TrimSpace(it.Text) != "" {
+				return agentmsg.ReplyPreview(it.Text, replyPreviewLen)
+			}
+		}
+	}
+	return ""
+}
+
+// replyPreviewLen caps the inbox reply preview, in runes.
+const replyPreviewLen = 160
+
 func (s *Session) publishStateLocked() {
 	if s.manager == nil || s.manager.bus == nil {
 		return
@@ -429,6 +459,7 @@ func (s *Session) publishStateLocked() {
 		"unread":       s.unread,
 		"trashed":      s.trashedAt != nil,
 		"archived":     s.archivedAt != nil,
+		"preview":      s.replyPreviewLocked(),
 	}
 	_ = bus.Publish(context.Background(), events.Event{
 		Type:     events.EventSessionStateChanged,

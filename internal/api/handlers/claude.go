@@ -77,6 +77,8 @@ type serverMessage struct {
 	SlashCommands            []string             `json:"slash_commands,omitempty"`
 	Skills                   []string             `json:"skills,omitempty"`
 	Activity                 string               `json:"activity,omitempty"`
+	// ToolImages maps tool_use_id to URLs of the images its result returned.
+	ToolImages map[string][]string `json:"tool_images,omitempty"`
 }
 
 // WebSocket handles a Claude chat WebSocket connection for a specific session.
@@ -158,6 +160,7 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 			SlashCommands:            cmds,
 			Skills:                   skills,
 			Activity:                 session.CurrentActivity(),
+			ToolImages:               toolImageURLs(session),
 		})
 	}
 	sendHistory()
@@ -506,6 +509,36 @@ func (h *ClaudeHandler) GetPlanAPI(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"plans": session.Plans(),
 	})
+}
+
+// toolImageURLs maps each tool_use_id to the URLs of its saved result images.
+func toolImageURLs(session *claude.Session) map[string][]string {
+	images := session.ToolImages()
+	for id, names := range images {
+		for i, name := range names {
+			names[i] = "/api/v1/claude/sessions/" + session.ID() + "/images/" + name
+		}
+		images[id] = names
+	}
+	return images
+}
+
+// ToolImageAPI serves an image a tool returned (e.g. a browser screenshot).
+func (h *ClaudeHandler) ToolImageAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	session := h.manager.GetSession(vars["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	path := session.ToolImagePath(vars["name"])
+	if path == "" {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "image not found")
+		return
+	}
+	// Names are unique per tool call, so the bytes never change.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	http.ServeFile(w, r, path)
 }
 
 // UpdatePlanAPI appends a user-edited version to a session's plan history.

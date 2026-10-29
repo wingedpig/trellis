@@ -31,6 +31,7 @@
     let currentActivityLabel = ''; // Authoritative "what the agent is doing now" label
     let runningTicker = null;     // Interval that refreshes live elapsed timers
     let historyGenerating = false; // True while rendering history for an in-flight turn
+    let historyToolImages = {};   // tool_use_id -> saved image URLs, from the history message
 
     // Context window per model: Fable/Mythos and Opus 4.6+ / Sonnet 4.6+
     // run with a 1M window; everything else (Haiku, older models) is 200K.
@@ -470,6 +471,7 @@
     function handleServerMessage(msg) {
         switch (msg.type) {
             case 'history':
+                historyToolImages = msg.tool_images || {};
                 renderHistory(msg.messages || [], !!msg.generating);
                 currentActivityLabel = msg.activity || '';
                 if (msg.generating) {
@@ -517,8 +519,11 @@
                     sessionCostUSD = msg.cost_usd;
                 }
                 updateContextUsage();
+                var finishedBubble = currentBubble;
+                var finishedText = accumulatedText;
                 finishAssistantTurn();
                 setGenerating(false);
+                offerQuickReplies(finishedBubble, finishedText);
                 break;
             case 'error':
                 showError(msg.message || 'Unknown error');
@@ -1228,6 +1233,7 @@
     function renderBashInput(body, input) {
         var block = document.createElement('div');
         block.className = 'claude-bash-block';
+        block.dataset.command = input.command;
         if (input.description) {
             var desc = document.createElement('div');
             desc.className = 'claude-bash-description';
@@ -1485,10 +1491,9 @@
             resultDiv.style.display = 'block';
             const resultPre = resultDiv.querySelector('pre');
             if (resultPre) {
-                let content = block.content || '';
-                if (typeof content !== 'string') {
-                    try { content = JSON.stringify(content, null, 2); } catch(e) { content = String(content); }
-                }
+                const parts = splitToolResultContent(block.content || '');
+                const content = parts.text;
+                appendToolImages(toolDiv, parts.images);
                 // Determine tool name and file path for highlighting
                 var nameEl = toolDiv.querySelector('.claude-tool-name');
                 var toolName = nameEl ? nameEl.textContent : '';
@@ -1496,6 +1501,8 @@
                 var filePath = (toolName === 'Read' && subEl) ? subEl.textContent : '';
                 if (toolName === 'Bash') {
                     renderBashResult(resultPre, content);
+                    var bashBlock = toolDiv.querySelector('.claude-bash-block');
+                    if (bashBlock) decorateTrellisCtl(toolDiv, bashBlock.dataset.command, content);
                 } else {
                     renderToolResultContent(resultPre, content, toolName, filePath);
                 }
@@ -1585,9 +1592,123 @@
             // Re-attach so the single batched paint shows the full list at once.
             if (parent) parent.insertBefore(messagesEl, nextSibling);
         }
+        var lastMsg = messages[messages.length - 1];
+        if (!generating && lastMsg && lastMsg.role === 'assistant') {
+            var lastBubbles = messagesEl.querySelectorAll('.claude-bubble-assistant');
+            offerQuickReplies(lastBubbles[lastBubbles.length - 1], assistantMessageMarkdown(lastMsg));
+        }
         // Jump instantly to the bottom on initial render. scroll-behavior:smooth
         // on .claude-messages would otherwise animate through every message.
         scrollToBottomInstant();
+    }
+
+    // quickReplyOptions looks at the end of a finished assistant message for
+    // something answered in a word or two: a closing question, and — when
+    // there is one — the numbered options it refers to (a "1." list or
+    // "### 1." headings). Returns null when there's nothing to offer.
+    function quickReplyOptions(text) {
+        var lines = (text || '').split('\n');
+        var lastLine = '';
+        for (var i = lines.length - 1; i >= 0 && !lastLine; i--) {
+            lastLine = lines[i].replace(/[*_`>]/g, '').trim();
+        }
+        if (!/\?\s*\)?$/.test(lastLine)) return null;
+
+        // The last run of options numbered 1, 2, 3… in order.
+        var run = [];
+        var lastRun = [];
+        lines.forEach(function(line) {
+            var m = line.match(/^\s{0,3}(?:#{1,6}\s+)?(?:\*\*)?(\d{1,2})[.)]\s+\S/);
+            if (!m) return;
+            var n = parseInt(m[1], 10);
+            if (n === 1) run = [1];
+            else if (run.length && n === run[run.length - 1] + 1) run.push(n);
+            else return;
+            if (run.length >= 2) lastRun = run.slice();
+        });
+        return { items: lastRun.length <= 9 ? lastRun : [] };
+    }
+
+    // joinNumbers formats [1, 2, 4] as "1, 2 and 4".
+    function joinNumbers(nums) {
+        if (nums.length === 1) return String(nums[0]);
+        return nums.slice(0, -1).join(', ') + ' and ' + nums[nums.length - 1];
+    }
+
+    // sendQuickReply sends a quick reply — unless a draft is in the input box,
+    // in which case the reply goes in front of it for the user to finish.
+    function sendQuickReply(text) {
+        if (generating) return;
+        var draft = inputEl.value.trim();
+        if (draft) {
+            inputEl.value = text + '. ' + draft;
+            autoResize();
+            inputEl.focus();
+            return;
+        }
+        inputEl.value = text;
+        localClaudeSend();
+    }
+
+    // offerQuickReplies adds reply chips to the end of a finished assistant
+    // message that closes with a question: "Yes", plus a toggle per numbered
+    // option and a button that sends "Do 1 and 3". They go away once the next
+    // turn starts.
+    function offerQuickReplies(bubble, text) {
+        messagesEl.querySelectorAll('.claude-quick-replies').forEach(function(el) { el.remove(); });
+        var opts = bubble && quickReplyOptions(text);
+        if (!opts) return;
+
+        var row = document.createElement('div');
+        row.className = 'claude-quick-replies';
+        function chip(label, cls) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'claude-quick-reply' + (cls ? ' ' + cls : '');
+            b.textContent = label;
+            row.appendChild(b);
+            return b;
+        }
+        chip('Yes').addEventListener('click', function() { sendQuickReply('Yes'); });
+
+        if (opts.items.length) {
+            var selected = [];
+            var numberChips = [];
+            var doBtn = null;
+            var allBtn = null;
+            var refresh = function() {
+                selected.sort(function(a, b) { return a - b; });
+                numberChips.forEach(function(c) {
+                    c.classList.toggle('selected', selected.indexOf(c.__n) !== -1);
+                });
+                allBtn.classList.toggle('selected', selected.length === opts.items.length);
+                doBtn.hidden = selected.length === 0;
+                doBtn.textContent = selected.length === opts.items.length ?
+                    'Do all of them' : 'Do ' + joinNumbers(selected);
+            };
+            opts.items.forEach(function(n) {
+                var c = chip(String(n), 'claude-quick-reply-number');
+                c.__n = n;
+                c.title = 'Select option ' + n;
+                c.addEventListener('click', function() {
+                    var at = selected.indexOf(n);
+                    if (at === -1) selected.push(n); else selected.splice(at, 1);
+                    refresh();
+                });
+                numberChips.push(c);
+            });
+            allBtn = chip('All', 'claude-quick-reply-number');
+            allBtn.title = 'Select every option';
+            allBtn.addEventListener('click', function() {
+                selected = selected.length === opts.items.length ? [] : opts.items.slice();
+                refresh();
+            });
+            doBtn = chip('', 'claude-quick-reply-send');
+            doBtn.addEventListener('click', function() { sendQuickReply(doBtn.textContent); });
+            refresh();
+        }
+        bubble.appendChild(row);
+        scrollToBottom();
     }
 
     function scrollToBottomInstant() {
@@ -2480,10 +2601,7 @@
                     resultLabel.className = 'claude-tool-result-label';
                     resultLabel.textContent = 'Result';
                     const resultPre = document.createElement('pre');
-                    let content = b.content || '';
-                    if (typeof content !== 'string') {
-                        try { content = JSON.stringify(content, null, 2); } catch(e) { content = String(content); }
-                    }
+                    const content = splitToolResultContent(b.content || '').text;
                     var filePath = (block.input && block.input.file_path) ? block.input.file_path : '';
                     resultDiv.appendChild(resultLabel);
                     resultDiv.appendChild(resultPre);
@@ -2501,6 +2619,202 @@
         toolDiv.appendChild(header);
         toolDiv.appendChild(body);
         bubble.appendChild(toolDiv);
+        if (block.id) appendToolImages(toolDiv, historyToolImages[block.id]);
+        if (block.name === 'Bash' && block.input && block.input.command) {
+            var historyResult = '';
+            for (const b of allBlocks) {
+                if (b.type === 'tool_result' && b.tool_use_id === block.id) {
+                    historyResult = splitToolResultContent(b.content || '').text;
+                }
+            }
+            decorateTrellisCtl(toolDiv, block.input.command, historyResult);
+        }
+    }
+
+    // --- trellis-ctl commands ---
+    // Agents drive the dev environment through trellis-ctl. Its common
+    // commands get a badge in the Bash block's header: a workflow run's
+    // pass/fail, or a link to the page that shows what the command looked at.
+
+    // parseTrellisCtl splits the first trellis-ctl invocation in a shell
+    // command into {cmd, args}, skipping global flags. Returns null if none.
+    function parseTrellisCtl(command) {
+        var m = /(?:^|[\s;&|(])(?:\S*\/)?trellis-ctl\s+([^;&|\n]*)/.exec(command || '');
+        if (!m) return null;
+        var words = (m[1].match(/"[^"]*"|'[^']*'|\S+/g) || []).map(function(w) {
+            return /^(["']).*\1$/.test(w) ? w.slice(1, -1) : w;
+        });
+        var i = 0;
+        while (i < words.length && words[i].charAt(0) === '-') {
+            if (words[i] === '-config' || words[i] === '-timeout') i++;
+            i++;
+        }
+        if (i >= words.length) return null;
+        return { cmd: words[i], args: words.slice(i + 1) };
+    }
+
+    // ctlFlag returns the value of -name / --name / -name=value in args.
+    function ctlFlag(args, name) {
+        for (var i = 0; i < args.length; i++) {
+            var a = args[i].replace(/^--?/, '');
+            if (a === name && args[i] !== a) return args[i + 1] || '';
+            if (a.indexOf(name + '=') === 0 && args[i] !== a) return a.slice(name.length + 1);
+        }
+        return '';
+    }
+
+    // ctlPositional returns args that aren't flags or flag values.
+    function ctlPositional(args) {
+        var out = [];
+        for (var i = 0; i < args.length; i++) {
+            var a = args[i];
+            if (a.charAt(0) !== '-') { out.push(a); continue; }
+            // -flag value pairs; boolean flags (-json, -f, -raw…) take none.
+            if (a.indexOf('=') === -1 && /^--?(viewer|since|until|n|grep|level|field|format|name|worktree|group|where|kind|top|A|B|C)$/.test(a)) i++;
+        }
+        return out;
+    }
+
+    function sessionWorktree() {
+        var chat = messagesEl.closest('.claude-chat-container');
+        if (chat && chat.dataset.worktree) return chat.dataset.worktree;
+        return typeof CLAUDE_WORKTREE !== 'undefined' ? CLAUDE_WORKTREE : '';
+    }
+
+    // trellisCtlBadge describes the header badge for a trellis-ctl command:
+    // {label, href, state} where state is 'ok', 'fail' or ''. output is the
+    // command's output, or '' when it isn't known (history keeps none).
+    function trellisCtlBadge(command, output) {
+        var ctl = parseTrellisCtl(command);
+        if (!ctl) return null;
+        var pos = ctlPositional(ctl.args);
+        var enc = encodeURIComponent;
+        switch (ctl.cmd) {
+            case 'workflow': {
+                if (pos[0] !== 'run' || !pos[1]) return null;
+                var badge = { label: pos[1], href: '', state: '' };
+                if (/"Success":\s*true|✓ Workflow completed/.test(output)) badge.state = 'ok';
+                else if (/"Success":\s*false|✗ Workflow failed/.test(output)) badge.state = 'fail';
+                var failed = /"TestsFailed":\s*([1-9]\d*)|(\d+) failed/.exec(output);
+                var errors = /"Errors":\s*([1-9]\d*)|(\d+) errors/.exec(output);
+                if (failed) badge.label += ' · ' + (failed[1] || failed[2]) + ' tests failed';
+                else if (errors) badge.label += ' · ' + (errors[1] || errors[2]) + ' errors';
+                return badge;
+            }
+            case 'logs': {
+                if (pos[0] === 'bubbleup' || ctl.args.indexOf('-list') !== -1) return null;
+                var viewer = ctlFlag(ctl.args, 'viewer').split(',')[0];
+                if (viewer && viewer.charAt(0) !== '$') {
+                    return { label: viewer, href: '/terminal/logviewer/' + enc(viewer), state: '' };
+                }
+                if (pos[0] && pos[0].charAt(0) !== '$') {
+                    return { label: pos[0] + ' logs', href: '/terminal/service/' + enc(pos[0]), state: '' };
+                }
+                return null;
+            }
+            case 'trace': {
+                var name = ctlFlag(ctl.args, 'name');
+                var m = /Trace completed: (\S+)|"Name":\s*"([^"]+)"/.exec(output);
+                if (m) name = m[1] || m[2];
+                return name ? { label: 'trace report', href: '/trace/report/' + enc(name), state: '' } : null;
+            }
+            case 'trace-report':
+                if (!pos[0]) return null;
+                return { label: 'trace report', href: '/trace/report/' + enc(pos[0]), state: '' };
+            case 'case': {
+                var wt = ctlFlag(ctl.args, 'worktree') || sessionWorktree();
+                if (pos[0] !== 'show' || !pos[1] || !wt) return null;
+                return { label: 'case', href: '/case/' + enc(wt) + '/' + enc(pos[1]), state: '' };
+            }
+            case 'crash':
+                if (pos[0] && pos[0] !== 'list' && pos[0] !== 'newest' && pos[0] !== 'delete' && pos[0] !== 'clear') {
+                    return { label: 'crash', href: '/crashes/' + enc(pos[0]), state: '' };
+                }
+                return { label: 'crashes', href: '/crashes', state: '' };
+            case 'restart':
+            case 'start':
+            case 'stop':
+            case 'status':
+                if (!pos[0] || pos[0].charAt(0) === '$') return null;
+                return { label: pos[0], href: '/services/' + enc(pos[0]), state: '' };
+        }
+        return null;
+    }
+
+    // decorateTrellisCtl adds (or refreshes) the trellis-ctl badge in a Bash
+    // tool block's header.
+    function decorateTrellisCtl(toolDiv, command, output) {
+        var badge = trellisCtlBadge(command, output || '');
+        var header = toolDiv.querySelector('.claude-tool-header');
+        if (!badge || !header) return;
+        var old = header.querySelector('.claude-ctl-badge');
+        if (old) old.remove();
+        var el = document.createElement(badge.href ? 'a' : 'span');
+        el.className = 'claude-ctl-badge' + (badge.state ? ' ' + badge.state : '');
+        var icon = badge.state === 'ok' ? 'fa-circle-check' :
+                   badge.state === 'fail' ? 'fa-circle-xmark' :
+                   badge.href ? 'fa-arrow-up-right-from-square' : 'fa-bolt';
+        el.innerHTML = '<i class="fa-solid ' + icon + '"></i> ';
+        el.appendChild(document.createTextNode(badge.label));
+        if (badge.href) {
+            el.href = badge.href;
+            el.target = '_blank';
+            el.rel = 'noopener';
+            el.title = 'Open in Trellis';
+            // Don't let the click also toggle the tool block open or closed.
+            el.addEventListener('click', function(e) { e.stopPropagation(); });
+        }
+        var chevron = header.querySelector('.claude-tool-chevron');
+        if (chevron) header.insertBefore(el, chevron); else header.appendChild(el);
+    }
+
+    // splitToolResultContent separates a tool_result's content into text and
+    // images. Content is a string, or an array of text and image blocks (MCP
+    // tools such as browser screenshots return the latter).
+    function splitToolResultContent(content) {
+        if (typeof content === 'string') return { text: content, images: [] };
+        if (!Array.isArray(content)) {
+            try { return { text: JSON.stringify(content, null, 2), images: [] }; }
+            catch (e) { return { text: String(content), images: [] }; }
+        }
+        var texts = [];
+        var images = [];
+        content.forEach(function(part) {
+            if (!part) return;
+            if (part.type === 'text') {
+                texts.push(part.text || '');
+            } else if (part.type === 'image' && part.source && part.source.type === 'base64' &&
+                       /^image\/(png|jpeg|gif|webp)$/.test(part.source.media_type || '')) {
+                images.push('data:' + part.source.media_type + ';base64,' + part.source.data);
+            }
+        });
+        return { text: texts.join('\n'), images: images };
+    }
+
+    // appendToolImages shows the images a tool returned in a strip under its
+    // block, outside the collapsible body so they're visible without expanding
+    // it. Clicking an image toggles it between thumbnail and full width.
+    function appendToolImages(toolDiv, urls) {
+        if (!toolDiv || !toolDiv.parentNode || !urls || !urls.length) return;
+        var strip = toolDiv.nextElementSibling;
+        if (!strip || !strip.classList.contains('claude-tool-images')) {
+            strip = document.createElement('div');
+            strip.className = 'claude-tool-images';
+            toolDiv.parentNode.insertBefore(strip, toolDiv.nextSibling);
+        }
+        urls.forEach(function(url) {
+            var img = document.createElement('img');
+            img.src = url;
+            img.alt = 'Image returned by the tool';
+            img.loading = 'lazy';
+            img.title = 'Click to enlarge';
+            img.addEventListener('click', function() {
+                img.classList.toggle('expanded');
+                img.title = img.classList.contains('expanded') ? 'Click to shrink' : 'Click to enlarge';
+            });
+            strip.appendChild(img);
+        });
+        scrollToBottom();
     }
 
     function showEmptyState() {
@@ -2974,6 +3288,9 @@
 
     function setGenerating(value) {
         generating = value;
+        if (value) {
+            messagesEl.querySelectorAll('.claude-quick-replies').forEach(function(el) { el.remove(); });
+        }
         sendBtn.style.display = value ? 'none' : 'flex';
         cancelBtn.style.display = value ? 'flex' : 'none';
         // Effort changes restart an idle process, so lock the picker during a turn.

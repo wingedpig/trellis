@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wingedpig/trellis/internal/agentmsg"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/githook"
 	"github.com/wingedpig/trellis/internal/serialq"
@@ -311,6 +312,7 @@ type Session struct {
 	// Callback to persist after session ID is captured from init
 	persistFn    func()
 	messagesFile string // path for per-session message persistence
+	imagesDir    string // where tool-result images are saved (see images.go)
 	// Plan artifacts captured from ExitPlanMode (and user edits), persisted
 	// to plansFile as a JSON array of versions.
 	plans     []PlanVersion
@@ -375,6 +377,7 @@ type Manager struct {
 	sessionsFile   string                // full path to sessions.json
 	messagesDir    string                // directory for per-session message files
 	plansDir       string                // directory for per-session plan files
+	imagesDir      string                // directory holding a subdirectory of tool-result images per session
 	bus            events.EventBus       // optional; for publishing inbox state changes
 	// persistMu serializes persist() end to end — snapshot, write, rename.
 	// Without it two concurrent persists race on the same sessions.json.tmp
@@ -426,6 +429,7 @@ func NewManager(stateDir string) *Manager {
 		m.sessionsFile = filepath.Join(stateDir, "sessions.json")
 		m.messagesDir = filepath.Join(stateDir, "messages")
 		m.plansDir = filepath.Join(stateDir, "plans")
+		m.imagesDir = filepath.Join(stateDir, "images")
 		m.loadFromDisk()
 	}
 	return m
@@ -445,6 +449,9 @@ func (m *Manager) loadFromDisk() {
 			if m.messagesDir != "" {
 				os.Remove(filepath.Join(m.messagesDir, rec.ID+".jsonl"))
 				os.Remove(filepath.Join(m.messagesDir, rec.ID+".json"))
+			}
+			if m.imagesDir != "" {
+				os.RemoveAll(filepath.Join(m.imagesDir, rec.ID))
 			}
 			if m.plansDir != "" {
 				os.Remove(filepath.Join(m.plansDir, rec.ID+".json"))
@@ -471,6 +478,9 @@ func (m *Manager) loadFromDisk() {
 			manager:         m,
 		}
 		s.persistFn = m.makePersistFn()
+		if m.imagesDir != "" {
+			s.imagesDir = filepath.Join(m.imagesDir, rec.ID)
+		}
 		if m.messagesDir != "" {
 			// Prefer .jsonl (new format), fall back to .json (legacy)
 			jsonlPath := filepath.Join(m.messagesDir, rec.ID+".jsonl")
@@ -614,6 +624,9 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	if m.messagesDir != "" {
 		s.messagesFile = filepath.Join(m.messagesDir, id+".jsonl")
 	}
+	if m.imagesDir != "" {
+		s.imagesDir = filepath.Join(m.imagesDir, id)
+	}
 	if m.plansDir != "" {
 		s.plansFile = filepath.Join(m.plansDir, id+".json")
 	}
@@ -710,6 +723,7 @@ func (m *Manager) DeleteSession(sessionID string) {
 	s.closeAllSubscribers()
 	msgFile := s.messagesFile
 	plansFile := s.plansFile
+	imagesDir := s.imagesDir
 	s.mu.Unlock()
 
 	// Remove messages and plans files, after any queued write that would
@@ -720,6 +734,9 @@ func (m *Manager) DeleteSession(sessionID string) {
 	}
 	if plansFile != "" {
 		os.Remove(plansFile)
+	}
+	if imagesDir != "" {
+		os.RemoveAll(imagesDir)
 	}
 
 	m.persist()
@@ -1383,6 +1400,7 @@ func (s *Session) publishStateLocked() {
 		"unread":       s.unread,
 		"trashed":      s.trashedAt != nil,
 		"archived":     s.archivedAt != nil,
+		"preview":      s.replyPreviewLocked(),
 	}
 	_ = bus.Publish(context.Background(), events.Event{
 		Type:     events.EventSessionStateChanged,
@@ -1390,6 +1408,36 @@ func (s *Session) publishStateLocked() {
 		Payload:  payload,
 	})
 }
+
+// ReplyPreview returns the closing line of the last assistant reply, or ""
+// while a turn is running. See agentmsg.ReplyPreview.
+func (s *Session) ReplyPreview() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.replyPreviewLocked()
+}
+
+// replyPreviewLocked is ReplyPreview for callers holding s.mu.
+func (s *Session) replyPreviewLocked() string {
+	if s.generating {
+		return ""
+	}
+	for i := len(s.messages) - 1; i >= 0; i-- {
+		msg := s.messages[i]
+		if msg.Role == "user" {
+			return ""
+		}
+		for j := len(msg.Content) - 1; j >= 0; j-- {
+			if b := msg.Content[j]; b.Type == "text" && strings.TrimSpace(b.Text) != "" {
+				return agentmsg.ReplyPreview(b.Text, replyPreviewLen)
+			}
+		}
+	}
+	return ""
+}
+
+// replyPreviewLen caps the inbox reply preview, in runes.
+const replyPreviewLen = 160
 
 // reasonLocked derives the fine-grained inbox reason that refines the coarse
 // running/needs-you state for presentation. Caller must hold s.mu.
@@ -2129,6 +2177,12 @@ func (s *Session) readLoop(stdout io.Reader, cmd *exec.Cmd, gen int, stderr *std
 			s.mu.Unlock()
 		}
 
+		// Tool results are not stored with the transcript; keep their images
+		// (browser screenshots) so the page can show them after a reload.
+		if event.Type == "user" && event.Message != nil {
+			s.saveToolImages(event.Message)
+		}
+
 		// Fan out to all subscribers
 		s.fanOut(event)
 	}
@@ -2797,6 +2851,7 @@ func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayN
 	newSession.messages = tail
 	newSession.persistAllMessages()
 	newSession.mu.Unlock()
+	copyToolImages(src.imagesDir, newSession.imagesDir)
 
 	m.persist()
 	return newSession, nil

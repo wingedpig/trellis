@@ -183,3 +183,25 @@ func nonEmpty(s, fallback string) string {
 	}
 	return s
 }
+
+// ReplyPreview returns the last non-empty line of an agent's reply with
+// markdown markers stripped — usually the question it closed on — cut to
+// maxLen runes. The inbox shows it so a waiting session can be answered
+// without opening it.
+func ReplyPreview(text string, maxLen int) string {
+	lines := strings.Split(text, "\n")
+	line := ""
+	for i := len(lines) - 1; i >= 0 && line == ""; i-- {
+		line = strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "```") {
+			line = ""
+		}
+	}
+	line = strings.TrimLeft(line, "#>-*+ ")
+	line = strings.NewReplacer("**", "", "__", "", "`", "").Replace(line)
+	line = strings.TrimSpace(line)
+	if r := []rune(line); len(r) > maxLen {
+		line = string(r[:maxLen]) + "…"
+	}
+	return line
+}
