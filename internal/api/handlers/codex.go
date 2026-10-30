@@ -55,6 +55,8 @@ type codexClientMessage struct {
 	Content   string `json:"content,omitempty"`
 	RequestID string `json:"request_id,omitempty"` // for approval responses
 	Decision  string `json:"decision,omitempty"`   // "accept" | "acceptForSession" | "decline" | "cancel"
+	// Attachments are IDs from UploadAttachmentAPI to include with a message.
+	Attachments []string `json:"attachments,omitempty"`
 }
 
 // codexServerMessage is a message to the JS client.
@@ -244,11 +246,17 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 		case msg := <-readCh:
 			switch msg.Type {
 			case "message":
-				if msg.Content == "" || session.IsGenerating() {
+				if (msg.Content == "" && len(msg.Attachments) == 0) || session.IsGenerating() {
+					continue
+				}
+				files, err := session.LoadAttachments(msg.Attachments)
+				if err != nil {
+					writeJSON(codexServerMessage{Type: "error", Message: err.Error()})
+					writeJSON(codexServerMessage{Type: "done"})
 					continue
 				}
 				writeJSON(codexServerMessage{Type: "status", Generating: true})
-				if err := session.Send(context.Background(), msg.Content); err != nil {
+				if err := session.SendWithAttachments(context.Background(), msg.Content, files); err != nil {
 					log.Printf("codex: send error for %s: %v", session.ID(), err)
 					writeJSON(codexServerMessage{Type: "error", Message: err.Error()})
 					writeJSON(codexServerMessage{Type: "done"})
@@ -269,6 +277,27 @@ func (h *CodexHandler) serveSession(w http.ResponseWriter, r *http.Request, sess
 			return
 		}
 	}
+}
+
+// UploadAttachmentAPI stores a file to include with the session's next message.
+func (h *CodexHandler) UploadAttachmentAPI(w http.ResponseWriter, r *http.Request) {
+	session := h.manager.GetSession(mux.Vars(r)["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	uploadAttachment(w, r, session)
+}
+
+// AttachmentAPI serves a file the user included with a message.
+func (h *CodexHandler) AttachmentAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	session := h.manager.GetSession(vars["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	serveAttachment(w, r, session, vars["id"])
 }
 
 // ListSessions returns all Codex sessions for a worktree.

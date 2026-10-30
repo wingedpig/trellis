@@ -108,12 +108,14 @@ type sandboxPolicy struct {
 	Type string `json:"type"` // e.g. "dangerFullAccess"
 }
 
-// UserInput is one item in the user's turn input. text_elements is required
-// (may be empty) — the spec is strict about it.
+// UserInput is one item in the user's turn input. text items always carry
+// text_elements (may be empty) — the spec is strict about it; localImage
+// items carry only a path.
 type UserInput struct {
-	Type         string        `json:"type"` // "text"
-	Text         string        `json:"text,omitempty"`
-	TextElements []interface{} `json:"text_elements"` // always present, may be empty
+	Type         string         `json:"type"` // "text" | "localImage"
+	Text         string         `json:"text,omitempty"`
+	TextElements *[]interface{} `json:"text_elements,omitempty"` // set (possibly empty) on text items
+	Path         string         `json:"path,omitempty"`          // localImage
 }
 
 // turnInterruptParams cancels an in-flight turn.

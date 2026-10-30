@@ -10,6 +10,17 @@
     const messagesEl = document.getElementById('codex-messages');
     const inputEl = document.getElementById('codex-input');
     const sendBtn = document.getElementById('codex-send-btn');
+    // The page's own session, not window.CODEX_SESSION, which goes stale
+    // when the SPA swaps pages.
+    const pageSessionId = inputEl ? inputEl.closest('[data-session]').dataset.session : '';
+    const attachments = inputEl ? window.TrellisAttachments.create({
+        agent: 'codex',
+        sessionId: pageSessionId,
+        inputEl: inputEl,
+        dropEl: document.getElementById('codex-input-area'),
+        button: document.getElementById('codex-attach-btn'),
+        listEl: document.getElementById('codex-attachments')
+    }) : null;
     const cancelBtn = document.getElementById('codex-cancel-btn');
 
     // ---------- State ----------
@@ -462,6 +473,9 @@
         bubble.className = 'codex-bubble codex-bubble-user';
         const text = (msg.items && msg.items[0] && msg.items[0].text) || '';
         bubble.textContent = text;
+        if (msg.attachments && msg.attachments.length) {
+            bubble.appendChild(window.TrellisAttachments.renderList('codex', pageSessionId, msg.attachments));
+        }
         wrapper.appendChild(bubble);
 
         attachMessageActions(wrapper, function () {
@@ -1340,8 +1354,10 @@
     // detached DOM and a stale WebSocket.
     function localCodexSend() {
         const text = inputEl.value.trim();
-        if (!text || generating) return;
+        const files = attachments.files();
+        if ((!text && !files.length) || generating || !attachments.ready()) return;
         inputEl.value = '';
+        attachments.clear();
         sessionStorage.removeItem('codex-draft-' + (window.CODEX_SESSION || ''));
         autoResizeInput();
 
@@ -1352,11 +1368,14 @@
         const bubble = document.createElement('div');
         bubble.className = 'codex-bubble codex-bubble-user';
         bubble.textContent = text;
+        if (files.length) {
+            bubble.appendChild(window.TrellisAttachments.renderList('codex', pageSessionId, files));
+        }
         wrapper.appendChild(bubble);
         attachMessageActions(wrapper, function () { return text; }, 'user');
         messagesEl.appendChild(wrapper);
 
-        sendWS({ type: 'message', content: text });
+        sendWS({ type: 'message', content: text, attachments: files.map(function (f) { return f.id; }) });
         setGenerating(true);
         showWorking();
         scrollToBottom();

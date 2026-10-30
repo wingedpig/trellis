@@ -42,7 +42,11 @@ type ClaudePage struct {
         </aside>
     </div>
     <div id="claude-input-area" class="claude-input-area">
+        <div id="claude-attachments" class="agent-attach-pending" style="display:none;"></div>
         <div class="claude-input-row">
+            <button id="claude-attach-btn" type="button" class="btn btn-outline-secondary claude-btn" title="Attach files (or drop / paste them)">
+                <i class="fa-solid fa-paperclip"></i>
+            </button>
             <textarea id="claude-input" class="claude-input" placeholder="Ask Claude Code..." rows="1"></textarea>
             <button id="claude-send-btn" class="btn btn-primary claude-btn" onclick="claudeSend()" title="Send (Enter)">
                 <i class="fa-solid fa-paper-plane"></i>
@@ -456,6 +460,7 @@ if (container) {
 <script src="/static/js/marked_setup.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="/static/js/attachments.js"></script>
 <script src="/static/js/claude.js"></script>
 <script src="/static/js/pair.js"></script>
 <script src="/static/js/checklist.js"></script>

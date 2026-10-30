@@ -6,6 +6,7 @@ package claude
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/agentmsg"
+	"github.com/wingedpig/trellis/internal/attachment"
 	"github.com/wingedpig/trellis/internal/events"
 	"github.com/wingedpig/trellis/internal/githook"
 	"github.com/wingedpig/trellis/internal/serialq"
@@ -59,6 +61,10 @@ type Message struct {
 	Role      string         `json:"role"`
 	Content   []ContentBlock `json:"content"`
 	Timestamp time.Time      `json:"timestamp"`
+	// Attachments are the files the user included with a user message. The
+	// text block holds only what the user typed; the CLI was also given the
+	// files' paths (and images inline).
+	Attachments []attachment.File `json:"attachments,omitempty"`
 }
 
 // PermissionDenial represents a tool that was denied permission during a turn.
@@ -136,8 +142,18 @@ type stdinUserMessage struct {
 }
 
 type stdinMessageInner struct {
-	Role    string         `json:"role"`
-	Content []ContentBlock `json:"content"`
+	Role    string        `json:"role"`
+	Content []interface{} `json:"content"` // ContentBlock or stdinImageBlock
+}
+
+// stdinImageBlock is a base64 image content block in a user message.
+type stdinImageBlock struct {
+	Type   string `json:"type"` // always "image"
+	Source struct {
+		Type      string `json:"type"` // always "base64"
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+	} `json:"source"`
 }
 
 // stdinControlRequest is the JSON format for control requests sent to claude's
@@ -313,6 +329,8 @@ type Session struct {
 	persistFn    func()
 	messagesFile string // path for per-session message persistence
 	imagesDir    string // where tool-result images are saved (see images.go)
+	// attachmentsDir holds the files the user included with their messages.
+	attachmentsDir string
 	// Plan artifacts captured from ExitPlanMode (and user edits), persisted
 	// to plansFile as a JSON array of versions.
 	plans     []PlanVersion
@@ -385,6 +403,7 @@ type Manager struct {
 	messagesDir    string                // directory for per-session message files
 	plansDir       string                // directory for per-session plan files
 	imagesDir      string                // directory holding a subdirectory of tool-result images per session
+	attachmentsDir string                // directory holding a subdirectory of user attachments per session
 	bus            events.EventBus       // optional; for publishing inbox state changes
 	// persistMu serializes persist() end to end — snapshot, write, rename.
 	// Without it two concurrent persists race on the same sessions.json.tmp
@@ -437,6 +456,7 @@ func NewManager(stateDir string) *Manager {
 		m.messagesDir = filepath.Join(stateDir, "messages")
 		m.plansDir = filepath.Join(stateDir, "plans")
 		m.imagesDir = filepath.Join(stateDir, "images")
+		m.attachmentsDir = filepath.Join(stateDir, "attachments")
 		m.loadFromDisk()
 	}
 	return m
@@ -459,6 +479,9 @@ func (m *Manager) loadFromDisk() {
 			}
 			if m.imagesDir != "" {
 				os.RemoveAll(filepath.Join(m.imagesDir, rec.ID))
+			}
+			if m.attachmentsDir != "" {
+				os.RemoveAll(filepath.Join(m.attachmentsDir, rec.ID))
 			}
 			if m.plansDir != "" {
 				os.Remove(filepath.Join(m.plansDir, rec.ID+".json"))
@@ -487,6 +510,9 @@ func (m *Manager) loadFromDisk() {
 		s.persistFn = m.makePersistFn()
 		if m.imagesDir != "" {
 			s.imagesDir = filepath.Join(m.imagesDir, rec.ID)
+		}
+		if m.attachmentsDir != "" {
+			s.attachmentsDir = filepath.Join(m.attachmentsDir, rec.ID)
 		}
 		if m.messagesDir != "" {
 			// Prefer .jsonl (new format), fall back to .json (legacy)
@@ -634,6 +660,9 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	if m.imagesDir != "" {
 		s.imagesDir = filepath.Join(m.imagesDir, id)
 	}
+	if m.attachmentsDir != "" {
+		s.attachmentsDir = filepath.Join(m.attachmentsDir, id)
+	}
 	if m.plansDir != "" {
 		s.plansFile = filepath.Join(m.plansDir, id+".json")
 	}
@@ -731,6 +760,7 @@ func (m *Manager) DeleteSession(sessionID string) {
 	msgFile := s.messagesFile
 	plansFile := s.plansFile
 	imagesDir := s.imagesDir
+	attachmentsDir := s.attachmentsDir
 	s.mu.Unlock()
 
 	// Remove messages and plans files, after any queued write that would
@@ -744,6 +774,9 @@ func (m *Manager) DeleteSession(sessionID string) {
 	}
 	if imagesDir != "" {
 		os.RemoveAll(imagesDir)
+	}
+	if attachmentsDir != "" {
+		os.RemoveAll(attachmentsDir)
 	}
 
 	m.persist()
@@ -1755,6 +1788,7 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	modelOverride := s.modelOverride
 	effortOverride := s.effortOverride
 	skipPermissions := s.skipPermissions
+	attachmentsDir := s.attachmentsDir
 	msgs := make([]Message, len(s.messages))
 	copy(msgs, s.messages)
 	gen := s.processGen + 1
@@ -1805,6 +1839,14 @@ func (s *Session) ensureProcess(ctx context.Context) error {
 	}
 	if effortOverride != "" {
 		args = append(args, "--effort", effortOverride)
+	}
+
+	// Let Claude read the user's attachments without a permission prompt;
+	// they live in trellis state, outside the worktree.
+	if attachmentsDir != "" {
+		if abs, err := filepath.Abs(attachmentsDir); err == nil && os.MkdirAll(abs, 0o755) == nil {
+			args = append(args, "--add-dir", abs)
+		}
 	}
 
 	// The caller's ctx gates only the spawn attempt. The process context is
@@ -2554,6 +2596,30 @@ func (s *Session) EnsureProcess(ctx context.Context) error {
 // Send sends a prompt to Claude by writing to the process stdin.
 // This is non-blocking — the response arrives via subscriber channels.
 func (s *Session) Send(ctx context.Context, prompt string) error {
+	return s.SendWithAttachments(ctx, prompt, nil)
+}
+
+// SaveAttachment stores a file the user is including with their next message.
+func (s *Session) SaveAttachment(name string, r io.Reader) (attachment.File, error) {
+	return attachment.Save(s.attachmentsDir, name, r)
+}
+
+// LoadAttachments resolves attachment IDs returned by SaveAttachment.
+func (s *Session) LoadAttachments(ids []string) ([]attachment.File, error) {
+	files := make([]attachment.File, 0, len(ids))
+	for _, id := range ids {
+		f, err := attachment.Load(s.attachmentsDir, id)
+		if err != nil {
+			return nil, fmt.Errorf("attachment %s: %w", id, err)
+		}
+		files = append(files, f)
+	}
+	return files, nil
+}
+
+// SendWithAttachments is Send with files included in the turn. Claude gets
+// each file's path, and images inline as well.
+func (s *Session) SendWithAttachments(ctx context.Context, prompt string, files []attachment.File) error {
 	s.mu.Lock()
 	if s.generating {
 		s.mu.Unlock()
@@ -2569,9 +2635,10 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 
 	// Add user message to history
 	userMsg := Message{
-		Role:      "user",
-		Content:   []ContentBlock{{Type: "text", Text: prompt}},
-		Timestamp: time.Now(),
+		Role:        "user",
+		Content:     []ContentBlock{{Type: "text", Text: prompt}},
+		Timestamp:   time.Now(),
+		Attachments: files,
 	}
 	s.messages = append(s.messages, userMsg)
 	s.persistMessage(userMsg)
@@ -2593,12 +2660,29 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 	sid := s.claudeSID
 	s.mu.Unlock()
 
+	content := []interface{}{ContentBlock{Type: "text", Text: attachment.WithNote(prompt, files)}}
+	for _, f := range files {
+		if !f.IsImage() || f.Size > attachment.MaxInlineImageSize {
+			continue
+		}
+		data, err := os.ReadFile(f.Path)
+		if err != nil {
+			log.Printf("claude [%s]: read attachment %s: %v", s.id, f.ID, err)
+			continue
+		}
+		var img stdinImageBlock
+		img.Type = "image"
+		img.Source.Type = "base64"
+		img.Source.MediaType = f.MIME
+		img.Source.Data = base64.StdEncoding.EncodeToString(data)
+		content = append(content, img)
+	}
 	msg := stdinUserMessage{
 		Type:      "user",
 		SessionID: sid,
 		Message: stdinMessageInner{
 			Role:    "user",
-			Content: []ContentBlock{{Type: "text", Text: prompt}},
+			Content: content,
 		},
 	}
 
@@ -2859,6 +2943,7 @@ func (m *Manager) ForkSession(sourceSessionID string, messageIndex int, displayN
 	newSession.persistAllMessages()
 	newSession.mu.Unlock()
 	copyToolImages(src.imagesDir, newSession.imagesDir)
+	attachment.CopyDir(src.attachmentsDir, newSession.attachmentsDir)
 
 	m.persist()
 	return newSession, nil

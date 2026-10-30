@@ -6,6 +6,17 @@
     const inputEl = document.getElementById('claude-input');
     const sendBtn = document.getElementById('claude-send-btn');
     const cancelBtn = document.getElementById('claude-cancel-btn');
+    // The page's own session, not window.CLAUDE_SESSION, which goes stale
+    // when the SPA swaps pages.
+    const pageSessionId = inputEl ? inputEl.closest('[data-session]').dataset.session : '';
+    const attachments = inputEl ? window.TrellisAttachments.create({
+        agent: 'claude',
+        sessionId: pageSessionId,
+        inputEl: inputEl,
+        dropEl: document.getElementById('claude-input-area'),
+        button: document.getElementById('claude-attach-btn'),
+        listEl: document.getElementById('claude-attachments')
+    }) : null;
 
     let ws = null;
     let reconnectTimer = null;
@@ -1742,6 +1753,9 @@
             }
         }
         bubble.textContent = text;
+        if (msg.attachments && msg.attachments.length) {
+            bubble.appendChild(window.TrellisAttachments.renderList('claude', pageSessionId, msg.attachments));
+        }
 
         // Buttons go BEFORE the bubble in the DOM — flex-end right-aligns the
         // row, so the buttons appear to the left of the bubble.
@@ -3322,7 +3336,8 @@
 
     function localClaudeSend() {
         const text = inputEl.value.trim();
-        if (!text || generating) return;
+        const files = attachments.files();
+        if ((!text && !files.length) || generating || !attachments.ready()) return;
 
         // Show user message immediately
         const wrapper = document.createElement('div');
@@ -3330,6 +3345,9 @@
         const bubble = document.createElement('div');
         bubble.className = 'claude-bubble claude-bubble-user';
         bubble.textContent = text;
+        if (files.length) {
+            bubble.appendChild(window.TrellisAttachments.renderList('claude', pageSessionId, files));
+        }
         wrapper.appendChild(bubble);
 
         // Remove empty state if present
@@ -3340,10 +3358,11 @@
         scrollToBottom();
 
         // Send to server
-        sendWS({ type: 'message', content: text });
+        sendWS({ type: 'message', content: text, attachments: files.map(function(f) { return f.id; }) });
 
         // Clear input and draft, show working indicator
         inputEl.value = '';
+        attachments.clear();
         sessionStorage.removeItem(draftKey);
         autoResize();
         setGenerating(true);

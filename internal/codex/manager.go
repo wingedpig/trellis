@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wingedpig/trellis/internal/agentmsg"
+	"github.com/wingedpig/trellis/internal/attachment"
 	"github.com/wingedpig/trellis/internal/githook"
 	"github.com/wingedpig/trellis/internal/serialq"
 	"github.com/wingedpig/trellis/internal/events"
@@ -40,6 +41,10 @@ type Message struct {
 	Items     []Item    `json:"items"`
 	Timestamp time.Time `json:"timestamp"`
 	TurnID    string    `json:"turn_id,omitempty"` // Codex turn id (for fork-from-this-turn)
+	// Attachments are the files the user included with a user message. The
+	// userMessage item holds only what the user typed; codex was also given
+	// the files' paths (and images as local image inputs).
+	Attachments []attachment.File `json:"attachments,omitempty"`
 }
 
 // SessionInfo is an exported, JSON-friendly summary of a session.
@@ -179,6 +184,8 @@ type Session struct {
 	// Persistence
 	persistFn    func()
 	messagesFile string
+	// attachmentsDir holds the files the user included with their messages.
+	attachmentsDir string
 
 	// Back-reference for publishing inbox state-change events. May be nil
 	// in tests that construct Session directly.
@@ -877,6 +884,30 @@ func (s *Session) allocateThreadID(ctx context.Context) (string, error) {
 
 // Send writes a user message and starts a turn.
 func (s *Session) Send(ctx context.Context, prompt string) error {
+	return s.SendWithAttachments(ctx, prompt, nil)
+}
+
+// SaveAttachment stores a file the user is including with their next message.
+func (s *Session) SaveAttachment(name string, r io.Reader) (attachment.File, error) {
+	return attachment.Save(s.attachmentsDir, name, r)
+}
+
+// LoadAttachments resolves attachment IDs returned by SaveAttachment.
+func (s *Session) LoadAttachments(ids []string) ([]attachment.File, error) {
+	files := make([]attachment.File, 0, len(ids))
+	for _, id := range ids {
+		f, err := attachment.Load(s.attachmentsDir, id)
+		if err != nil {
+			return nil, fmt.Errorf("attachment %s: %w", id, err)
+		}
+		files = append(files, f)
+	}
+	return files, nil
+}
+
+// SendWithAttachments is Send with files included in the turn. Codex gets
+// each file's path, and images as local image inputs as well.
+func (s *Session) SendWithAttachments(ctx context.Context, prompt string, files []attachment.File) error {
 	if err := s.EnsureProcess(ctx); err != nil {
 		return err
 	}
@@ -900,8 +931,9 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 
 	userMsg := Message{
 		Role:      agentmsg.RoleUser,
-		Items:     []Item{{Type: "userMessage", Text: prompt}},
-		Timestamp: time.Now(),
+		Items:       []Item{{Type: "userMessage", Text: prompt}},
+		Timestamp:   time.Now(),
+		Attachments: files,
 	}
 	s.messages = append(s.messages, userMsg)
 	s.persistMessage(userMsg)
@@ -930,9 +962,14 @@ func (s *Session) Send(ctx context.Context, prompt string) error {
 		Cwd:      s.workDir,
 		Input: []UserInput{{
 			Type:         "text",
-			Text:         prompt,
-			TextElements: []interface{}{},
+			Text:         attachment.WithNote(prompt, files),
+			TextElements: &[]interface{}{},
 		}},
+	}
+	for _, f := range files {
+		if f.IsImage() && f.Size <= attachment.MaxInlineImageSize {
+			params.Input = append(params.Input, UserInput{Type: "localImage", Path: f.Path})
+		}
 	}
 	if skipPermissions {
 		params.ApprovalPolicy = "never"
@@ -1596,6 +1633,8 @@ type Manager struct {
 	stateDir     string
 	sessionsFile string
 	messagesDir  string
+	// attachmentsDir holds a subdirectory of user attachments per session.
+	attachmentsDir string
 
 	bus events.EventBus // optional; for publishing inbox state changes
 
@@ -1647,6 +1686,7 @@ func NewManager(stateDir string) *Manager {
 	if stateDir != "" {
 		m.sessionsFile = filepath.Join(stateDir, "sessions.json")
 		m.messagesDir = filepath.Join(stateDir, "messages")
+		m.attachmentsDir = filepath.Join(stateDir, "attachments")
 		m.loadFromDisk()
 	}
 	return m
@@ -1663,6 +1703,9 @@ func (m *Manager) loadFromDisk() {
 		if rec.TrashedAt != nil && time.Since(*rec.TrashedAt) > 7*24*time.Hour {
 			if m.messagesDir != "" {
 				os.Remove(filepath.Join(m.messagesDir, rec.ID+".jsonl"))
+			}
+			if m.attachmentsDir != "" {
+				os.RemoveAll(filepath.Join(m.attachmentsDir, rec.ID))
 			}
 			purged++
 			continue
@@ -1687,6 +1730,9 @@ func (m *Manager) loadFromDisk() {
 			s.effort = ""
 		}
 		s.persistFn = m.makePersistFn()
+		if m.attachmentsDir != "" {
+			s.attachmentsDir = filepath.Join(m.attachmentsDir, rec.ID)
+		}
 		if m.messagesDir != "" {
 			s.messagesFile = filepath.Join(m.messagesDir, rec.ID+".jsonl")
 			if msgs, err := loadMessages(s.messagesFile); err != nil {
@@ -1805,6 +1851,9 @@ func (m *Manager) CreateSession(worktreeName, workDir, displayName string) *Sess
 	s.persistFn = m.makePersistFn()
 	if m.messagesDir != "" {
 		s.messagesFile = filepath.Join(m.messagesDir, id+".jsonl")
+	}
+	if m.attachmentsDir != "" {
+		s.attachmentsDir = filepath.Join(m.attachmentsDir, id)
 	}
 
 	m.sessions[id] = s
@@ -2017,11 +2066,15 @@ func (m *Manager) DeleteSession(sessionID string) {
 	s.mu.Lock()
 	s.closeAllSubscribers()
 	msgFile := s.messagesFile
+	attachmentsDir := s.attachmentsDir
 	s.mu.Unlock()
 	// Wait out any queued write that would otherwise recreate the file.
 	s.persistQ.Wait()
 	if msgFile != "" {
 		os.Remove(msgFile)
+	}
+	if attachmentsDir != "" {
+		os.RemoveAll(attachmentsDir)
 	}
 	m.persist()
 }
@@ -2160,6 +2213,7 @@ func (m *Manager) ForkSession(sourceID string, messageIndex int, displayName str
 	newSession.messages = tail
 	newSession.persistAllMessages()
 	newSession.mu.Unlock()
+	attachment.CopyDir(src.attachmentsDir, newSession.attachmentsDir)
 
 	m.persist()
 	return newSession, nil

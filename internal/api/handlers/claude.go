@@ -56,6 +56,8 @@ type clientMessage struct {
 	Type    string          `json:"type"`
 	Content string          `json:"content,omitempty"`
 	Data    json.RawMessage `json:"data,omitempty"` // For permission responses
+	// Attachments are IDs from UploadAttachmentAPI to include with a message.
+	Attachments []string `json:"attachments,omitempty"`
 }
 
 // serverMessage is a message to the client.
@@ -276,7 +278,13 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 		case msg := <-readCh:
 			switch msg.Type {
 			case "message":
-				if msg.Content == "" || session.IsGenerating() {
+				if (msg.Content == "" && len(msg.Attachments) == 0) || session.IsGenerating() {
+					continue
+				}
+				files, err := session.LoadAttachments(msg.Attachments)
+				if err != nil {
+					writeJSON(serverMessage{Type: "error", Message: err.Error()})
+					writeJSON(serverMessage{Type: "done"})
 					continue
 				}
 
@@ -284,7 +292,7 @@ func (h *ClaudeHandler) serveSession(w http.ResponseWriter, r *http.Request, ses
 
 				// Send is non-blocking — writes to stdin and returns.
 				// Response events arrive via the subscriber channel.
-				if err := session.Send(context.Background(), msg.Content); err != nil {
+				if err := session.SendWithAttachments(context.Background(), msg.Content, files); err != nil {
 					log.Printf("claude: send error for session %s: %v", session.ID(), err)
 					writeJSON(serverMessage{Type: "error", Message: err.Error()})
 					writeJSON(serverMessage{Type: "done"})
@@ -522,6 +530,27 @@ func toolImageURLs(session *claude.Session) map[string][]string {
 		images[id] = names
 	}
 	return images
+}
+
+// UploadAttachmentAPI stores a file to include with the session's next message.
+func (h *ClaudeHandler) UploadAttachmentAPI(w http.ResponseWriter, r *http.Request) {
+	session := h.manager.GetSession(mux.Vars(r)["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	uploadAttachment(w, r, session)
+}
+
+// AttachmentAPI serves a file the user included with a message.
+func (h *ClaudeHandler) AttachmentAPI(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	session := h.manager.GetSession(vars["session"])
+	if session == nil {
+		WriteError(w, http.StatusNotFound, ErrNotFound, "session not found")
+		return
+	}
+	serveAttachment(w, r, session, vars["id"])
 }
 
 // ToolImageAPI serves an image a tool returned (e.g. a browser screenshot).

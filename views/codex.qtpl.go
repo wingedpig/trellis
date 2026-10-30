@@ -67,7 +67,11 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 	qw422016.N().S(`">
     <div id="codex-messages" class="codex-messages"></div>
     <div id="codex-input-area" class="codex-input-area">
+        <div id="codex-attachments" class="agent-attach-pending" style="display:none;"></div>
         <div class="codex-input-row">
+            <button id="codex-attach-btn" type="button" class="btn btn-outline-secondary codex-btn" title="Attach files (or drop / paste them)">
+                <i class="fa-solid fa-paperclip"></i>
+            </button>
             <textarea id="codex-input" class="codex-input" placeholder="Ask Codex..." rows="1"></textarea>
             <button id="codex-send-btn" class="btn btn-primary codex-btn" onclick="codexSend()" title="Send (Enter)">
                 <i class="fa-solid fa-paper-plane"></i>
@@ -114,37 +118,37 @@ func (p *CodexPage) StreamRender(qw422016 *qt422016.Writer) {
 // page-leaving. Without this, the SPA cache restore would leave globals
 // pointing at whichever Codex session was most recently fresh-loaded.
 var PAGE_WORKTREE = '`)
-//line views/codex.qtpl:82
+//line views/codex.qtpl:86
 	qw422016.E().S(JSAttr(p.WorktreeName))
-//line views/codex.qtpl:82
+//line views/codex.qtpl:86
 	qw422016.N().S(`';
 var PAGE_SESSION = '`)
-//line views/codex.qtpl:83
+//line views/codex.qtpl:87
 	qw422016.E().S(JSAttr(p.SessionID))
-//line views/codex.qtpl:83
+//line views/codex.qtpl:87
 	qw422016.N().S(`';
 var PAGE_SESSION_NAME = '`)
-//line views/codex.qtpl:84
+//line views/codex.qtpl:88
 	qw422016.E().S(JSAttr(p.SessionName))
-//line views/codex.qtpl:84
+//line views/codex.qtpl:88
 	qw422016.N().S(`';
 var PAGE_SESSION_CREATED = '`)
-//line views/codex.qtpl:85
+//line views/codex.qtpl:89
 	qw422016.E().S(JSAttr(p.SessionCreatedAt))
-//line views/codex.qtpl:85
+//line views/codex.qtpl:89
 	qw422016.N().S(`';
 var PAGE_IS_DEFAULT_BRANCH = `)
-//line views/codex.qtpl:86
+//line views/codex.qtpl:90
 	if p.IsDefaultBranch {
-//line views/codex.qtpl:86
+//line views/codex.qtpl:90
 		qw422016.N().S(`true`)
-//line views/codex.qtpl:86
+//line views/codex.qtpl:90
 	} else {
-//line views/codex.qtpl:86
+//line views/codex.qtpl:90
 		qw422016.N().S(`false`)
-//line views/codex.qtpl:86
+//line views/codex.qtpl:90
 	}
-//line views/codex.qtpl:86
+//line views/codex.qtpl:90
 	qw422016.N().S(`;
 var PAGE_WORKTREE_NAME_HUMANIZED = (PAGE_WORKTREE || '').split(/[-_]+/).map(function(w) {
     return w ? w[0].toUpperCase() + w.slice(1) : '';
@@ -433,6 +437,7 @@ if (container) {
 <script src="/static/js/marked_setup.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="/static/js/attachments.js"></script>
 <script src="/static/js/codex.js"></script>
 <script src="/static/js/pair.js"></script>
 <script src="/static/js/checklist.js"></script>
@@ -440,36 +445,36 @@ if (container) {
 <script src="/static/js/workflow_picker.js"></script>
 
 `)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:385
 	p.StreamFooter(qw422016)
-//line views/codex.qtpl:380
+//line views/codex.qtpl:385
 	qw422016.N().S(`
 `)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 }
 
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 func (p *CodexPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	p.StreamRender(qw422016)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	qt422016.ReleaseWriter(qw422016)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 }
 
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 func (p *CodexPage) Render() string {
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	p.WriteRender(qb422016)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	qs422016 := string(qb422016.B)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 	return qs422016
-//line views/codex.qtpl:381
+//line views/codex.qtpl:386
 }

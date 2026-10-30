@@ -33,7 +33,11 @@ type CodexPage struct {
 <div id="codex-chat" class="codex-chat-container" data-agent="codex" data-session="{%s p.SessionID %}" data-worktree="{%s p.WorktreeName %}">
     <div id="codex-messages" class="codex-messages"></div>
     <div id="codex-input-area" class="codex-input-area">
+        <div id="codex-attachments" class="agent-attach-pending" style="display:none;"></div>
         <div class="codex-input-row">
+            <button id="codex-attach-btn" type="button" class="btn btn-outline-secondary codex-btn" title="Attach files (or drop / paste them)">
+                <i class="fa-solid fa-paperclip"></i>
+            </button>
             <textarea id="codex-input" class="codex-input" placeholder="Ask Codex..." rows="1"></textarea>
             <button id="codex-send-btn" class="btn btn-primary codex-btn" onclick="codexSend()" title="Send (Enter)">
                 <i class="fa-solid fa-paper-plane"></i>
@@ -371,6 +375,7 @@ if (container) {
 <script src="/static/js/marked_setup.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="/static/js/attachments.js"></script>
 <script src="/static/js/codex.js"></script>
 <script src="/static/js/pair.js"></script>
 <script src="/static/js/checklist.js"></script>
