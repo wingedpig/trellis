@@ -25,7 +25,7 @@ import (
 	"github.com/wingedpig/trellis/internal/tsnode"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
-	"tailscale.com/types/netmap"
+	"tailscale.com/tailcfg"
 )
 
 // Fake is a scriptable tsnode.Backend. Zero values give a node that starts
@@ -441,9 +441,10 @@ func (l *FakeListener) Close() error {
 // Closed reports whether Close was called.
 func (l *FakeListener) Closed() bool { l.mu.Lock(); defer l.mu.Unlock(); return l.closed > 0 }
 
-// NetMapNotify returns a notification carrying only a (non-nil) NetMap.
+// NetMapNotify returns a notification carrying only a (non-nil) SelfChange,
+// which tailscaled sends on every netmap update.
 func NetMapNotify() ipn.Notify {
-	return ipn.Notify{NetMap: &netmap.NetworkMap{}}
+	return ipn.Notify{SelfChange: &tailcfg.Node{}}
 }
 
 // selfSigned returns a self-signed certificate for host.

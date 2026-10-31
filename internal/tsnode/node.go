@@ -352,7 +352,7 @@ func (n *node) handleNotify(nt ipn.Notify) {
 			n.setStateLocked(StateStopped)
 		}
 	}
-	if nt.NetMap != nil {
+	if nt.SelfChange != nil {
 		scheduleCheck = true
 	}
 	n.mu.Unlock()
