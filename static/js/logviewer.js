@@ -301,7 +301,10 @@ function expandEntry(entry, ctx) {
     // Add raw line
     const rawLine = entry.raw || entry._raw;
     if (rawLine) {
-        html += '<div class="raw-log">' + escapeHtml(rawLine) + '</div>';
+        const encodedRaw = btoa(unescape(encodeURIComponent(String(rawLine))));
+        html += '<div class="raw-log"><i class="fa-regular fa-copy copy-btn" title="Copy raw line" ' +
+                'data-copy-value="' + encodedRaw + '" onclick="copyFieldValue(this)"></i>' +
+                escapeHtml(rawLine) + '</div>';
     }
 
     ctx.contentEl.innerHTML = html;

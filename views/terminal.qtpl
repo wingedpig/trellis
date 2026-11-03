@@ -781,12 +781,30 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
         color: var(--bs-body-color);
     }
     .logviewer-expanded-content .raw-log {
+        position: relative;
         margin-top: 15px;
         padding: 10px;
+        padding-right: 28px;
         background: var(--trellis-pre-bg);
         border-radius: 4px;
         white-space: pre-wrap;
         word-break: break-all;
+    }
+    .logviewer-expanded-content .raw-log .copy-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        cursor: pointer;
+        opacity: 0.5;
+        font-size: 11px;
+        transition: opacity 0.15s, color 0.15s;
+    }
+    .logviewer-expanded-content .raw-log .copy-btn:hover {
+        opacity: 1;
+    }
+    .logviewer-expanded-content .raw-log .copy-btn.copied {
+        opacity: 1;
+        color: var(--bs-success);
     }
     .logviewer-open-editor {
         margin-top: 12px;
