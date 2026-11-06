@@ -86,6 +86,10 @@ func (f *Formatter) formatPlain(entry *LogEntry) error {
 	if level == "" {
 		level = "INFO"
 	}
+	if f.opts.ShowSource {
+		_, err := fmt.Fprintf(f.writer, "%s %-5s [%s] %s\n", ts, level, entry.Source, entry.Message)
+		return err
+	}
 	_, err := fmt.Fprintf(f.writer, "%s %-5s %s\n", ts, level, entry.Message)
 	return err
 }

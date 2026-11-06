@@ -5576,7 +5576,9 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
             const response = await fetch(url);
             if (!response.ok) {
                 const text = await response.text();
-                throw new Error(text || `HTTP ${response.status}`);
+                let message = text;
+                try { message = JSON.parse(text).error?.message || text; } catch (_) {}
+                throw new Error(message || `HTTP ${response.status}`);
             }
 
             const response_data = await response.json();

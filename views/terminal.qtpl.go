@@ -6113,7 +6113,9 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
             const response = await fetch(url);
             if (!response.ok) {
                 const text = await response.text();
-                throw new Error(text || `)
+                let message = text;
+                try { message = JSON.parse(text).error?.message || text; } catch (_) {}
+                throw new Error(message || `)
 //line views/terminal.qtpl:1132
 	qw422016.N().S("`")
 //line views/terminal.qtpl:1132
@@ -6204,36 +6206,36 @@ func (p *TerminalWindowPage) StreamRender(qw422016 *qt422016.Writer) {
 
 <script src="/static/js/inbox_main_ws.js"></script>
 `)
-//line views/terminal.qtpl:5653
+//line views/terminal.qtpl:5655
 	p.StreamFooter(qw422016)
-//line views/terminal.qtpl:5653
+//line views/terminal.qtpl:5655
 	qw422016.N().S(`
 `)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 }
 
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 func (p *TerminalWindowPage) WriteRender(qq422016 qtio422016.Writer) {
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	qw422016 := qt422016.AcquireWriter(qq422016)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	p.StreamRender(qw422016)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	qt422016.ReleaseWriter(qw422016)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 }
 
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 func (p *TerminalWindowPage) Render() string {
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	qb422016 := qt422016.AcquireByteBuffer()
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	p.WriteRender(qb422016)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	qs422016 := string(qb422016.B)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	qt422016.ReleaseByteBuffer(qb422016)
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 	return qs422016
-//line views/terminal.qtpl:5654
+//line views/terminal.qtpl:5656
 }

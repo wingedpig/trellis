@@ -13,14 +13,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/wingedpig/trellis/cmd/trellis-ctl/logs"
-	"github.com/wingedpig/trellis/internal/config"
 	"github.com/wingedpig/trellis/pkg/client"
 )
 
@@ -63,23 +62,7 @@ func main() {
 		}
 	}
 
-	// Resolve API URL with this precedence (highest to lowest):
-	//   1. TRELLIS_API env (set automatically in Trellis-managed terminals)
-	//   2. -config flag / TRELLIS_CONFIG env pointing to a trellis.hjson
-	//   3. trellis.hjson auto-discovered by walking up from cwd
-	//   4. http://localhost:1234 fallback
-	if env := os.Getenv("TRELLIS_API"); env != "" {
-		apiURL = strings.TrimSuffix(env, "/")
-	} else {
-		if configPath == "" {
-			configPath = os.Getenv("TRELLIS_CONFIG")
-		}
-		if url, err := apiURLFromConfig(configPath); err == nil {
-			apiURL = url
-		} else if configPath != "" {
-			fmt.Fprintf(os.Stderr, "Warning: %v; falling back to %s\n", err, defaultAPIURL)
-		}
-	}
+	resolveAPIURL(configPath)
 
 	if len(filteredArgs) < 1 {
 		printUsage()
@@ -159,29 +142,11 @@ func main() {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if hint := connectionHint(err); hint != "" {
+			fmt.Fprintln(os.Stderr, hint)
+		}
 		os.Exit(1)
 	}
-}
-
-// apiURLFromConfig resolves the API URL from a Trellis config file.
-// If path is empty, walks up from the current directory looking for
-// trellis.hjson / trellis.json. Returns the constructed URL on success.
-func apiURLFromConfig(path string) (string, error) {
-	loader := config.NewLoader()
-	if path == "" {
-		found, err := loader.FindConfigUp("")
-		if err != nil {
-			return "", err
-		}
-		path = found
-	}
-
-	cfg, err := loader.LoadWithDefaults(context.Background(), path)
-	if err != nil {
-		return "", fmt.Errorf("load %s: %w", path, err)
-	}
-
-	return cfg.APIBaseURL(), nil
 }
 
 func printUsage() {
@@ -200,7 +165,8 @@ Connection:
     1. TRELLIS_API env var (set automatically in Trellis terminals)
     2. -config flag or TRELLIS_CONFIG env var
     3. trellis.hjson found by walking up from the current directory
-    4. http://localhost:1234 fallback
+    4. the Trellis server running on this machine (recorded in ~/.trellis/run)
+    5. http://localhost:1234 fallback
 
 Environment:
   TRELLIS_API      Base URL of Trellis API (overrides config)
@@ -218,7 +184,9 @@ Commands:
     -since <duration>      Show logs since (e.g., 1h, 30m, 6:30am, 2024-01-15T10:00:00Z)
     -until <duration>      Show logs until (e.g., 1h, 30m, 7:00am, 2024-01-15T11:00:00Z)
     -level <levels>        Filter by level (error, warn,error, info+)
-    -grep <pattern>        Filter by regex pattern
+    -grep <pattern>        Filter by regex (Go syntax, matched against the raw line);
+                           a pattern that can't be run is an error, not an empty result
+    -i                     Case-insensitive -grep
     -B N                   Show N lines before each grep match
     -A N                   Show N lines after each grep match
     -C N                   Show N lines before and after each grep match
@@ -228,7 +196,11 @@ Commands:
     -csv                   Output as CSV
     -raw                   Output original raw lines
     -format <template>     Custom Go template format
-    -viewer <name>         Access a log viewer instead of service
+    -viewer <a,b>          Read log viewer(s) instead of a service (repeatable or
+                           comma-separated; results merged by time, -n per viewer)
+    -group <name>          Read every viewer in a trace group
+    -trace <id>            Find a trace ID's lines; without -since, searches the few
+                           minutes around the start time embedded in the ID
     -list                  List available log viewers
     -stats                 Show log statistics
     -clear                 Clear log buffer
@@ -292,7 +264,8 @@ Commands:
   events [-n N]            Show recent events (default: 50)
 
   trace <id> <group> [options]  Run a distributed trace search
-    -since <duration>      Start time (e.g., 1h, 30m, 6:30am)
+    -since <duration>      Start time (e.g., 1h, 30m, 6:30am). Default: around the
+                           start time embedded in the ID, else 1h
     -until <duration>      End time (default: now)
     -name <name>           Report name (default: auto-generated)
     -no-expand-by-id       Disable ID expansion (two-pass search)
@@ -392,7 +365,6 @@ func cmdStatus(args []string) error {
 // logsConfig holds parsed command-line options for the logs command
 type logsConfig struct {
 	service      string
-	viewer       string
 	lines        int
 	follow       bool
 	since        string
@@ -409,6 +381,11 @@ type logsConfig struct {
 	showURL      bool
 	before       int // -B: lines before match
 	after        int // -A: lines after match
+	linesSet     bool
+	ignoreCase   bool     // -i: case-insensitive -grep
+	viewers      []string // -viewer, repeatable / comma-separated
+	group        string   // -group: every viewer in a trace group
+	trace        string   // -trace: search for a trace ID
 }
 
 func parseLogsArgs(args []string) (*logsConfig, error) {
@@ -426,6 +403,15 @@ func parseLogsArgs(args []string) (*logsConfig, error) {
 				return nil, fmt.Errorf("invalid value for -n: %s", args[i])
 			}
 			cfg.lines = n
+			cfg.linesSet = true
+		case arg == "-i":
+			cfg.ignoreCase = true
+		case arg == "-group" && i+1 < len(args):
+			i++
+			cfg.group = args[i]
+		case arg == "-trace" && i+1 < len(args):
+			i++
+			cfg.trace = args[i]
 		case arg == "-f":
 			cfg.follow = true
 		case arg == "-since" && i+1 < len(args):
@@ -456,7 +442,7 @@ func parseLogsArgs(args []string) (*logsConfig, error) {
 			cfg.outputFormat = "raw"
 		case arg == "-viewer" && i+1 < len(args):
 			i++
-			cfg.viewer = args[i]
+			cfg.viewers = append(cfg.viewers, splitList(args[i])...)
 		case arg == "-list":
 			cfg.list = true
 		case arg == "-clear":
@@ -517,15 +503,60 @@ func cmdLogs(args []string) error {
 		return cmdLogsListViewers()
 	}
 
+	viewers := cfg.viewers
+	if cfg.group != "" {
+		groupViewers, err := resolveTraceGroup(context.Background(), cfg.group)
+		if err != nil {
+			return err
+		}
+		viewers = append(viewers, groupViewers...)
+	}
+
 	// Need either service or viewer
-	if cfg.service == "" && cfg.viewer == "" {
-		return fmt.Errorf("usage: trellis-ctl logs <service> [options] or trellis-ctl logs -viewer <name> [options]")
+	if cfg.service == "" && len(viewers) == 0 {
+		return fmt.Errorf("usage: trellis-ctl logs <service> [options] or trellis-ctl logs (-viewer <name> | -group <trace group>) [options]")
 	}
 
 	name := cfg.service
-	isViewer := cfg.viewer != ""
+	isViewer := len(viewers) > 0
 	if isViewer {
-		name = cfg.viewer
+		name = viewers[0]
+	}
+	multi := len(viewers) > 1
+	if multi && (cfg.showURL || cfg.openBrowser || cfg.follow || cfg.stats) {
+		return fmt.Errorf("-url, -open, -f and -stats take a single viewer, not %d", len(viewers))
+	}
+
+	// -trace searches for the ID literally, over the window around the
+	// request start time the ID carries (when it carries one).
+	if cfg.trace != "" {
+		if cfg.grep != "" {
+			return fmt.Errorf("-trace and -grep can't be combined; -trace already searches for the ID")
+		}
+		cfg.grep = regexp.QuoteMeta(cfg.trace)
+		if !cfg.linesSet {
+			cfg.lines = 1000
+		}
+		if cfg.since == "" {
+			t, ok := traceIDTime(cfg.trace)
+			if !ok {
+				return fmt.Errorf("no timestamp found in trace ID %q; pass -since (and -until) to set the search window", cfg.trace)
+			}
+			cfg.since = t.Add(-traceWindowBefore).Format(time.RFC3339Nano)
+			if cfg.until == "" {
+				cfg.until = t.Add(traceWindowAfter).Format(time.RFC3339Nano)
+			}
+			fmt.Fprintf(os.Stderr, "Searching %s – %s (trace ID start time %s)\n",
+				t.Add(-traceWindowBefore).Local().Format("Jan 2 15:04:05"),
+				t.Add(traceWindowAfter).Local().Format("15:04:05"),
+				t.Local().Format("15:04:05.000"))
+		}
+	}
+	if cfg.ignoreCase {
+		if cfg.grep == "" {
+			return fmt.Errorf("-i needs -grep")
+		}
+		cfg.grep = "(?i)" + cfg.grep
 	}
 
 	// Handle --url
@@ -611,7 +642,7 @@ func cmdLogs(args []string) error {
 	}
 
 	// Build output options
-	outputOpts := logs.OutputOptions{}
+	outputOpts := logs.OutputOptions{ShowSource: multi}
 	if cfg.template != "" {
 		outputOpts.Format = logs.FormatTemplate
 		outputOpts.Template = cfg.template
@@ -637,7 +668,10 @@ func cmdLogs(args []string) error {
 	var entries []logs.LogEntry
 	if isViewer {
 		// For log viewers, pass time range, grep pattern, and context to server
-		entries, err = fetchLogViewerEntries(name, cfg.lines, filterOpts.Since, filterOpts.Until, cfg.grep, cfg.before, cfg.after)
+		entries, err = fetchViewers(viewers, viewerQuery{
+			limit: cfg.lines, since: filterOpts.Since, until: filterOpts.Until,
+			grep: cfg.grep, before: cfg.before, after: cfg.after,
+		})
 	} else {
 		entries, err = fetchServiceLogs(name, cfg.lines)
 	}
@@ -645,10 +679,13 @@ func cmdLogs(args []string) error {
 		return err
 	}
 
-	// Apply client-side filters (level, field filters - grep is done server-side for viewers)
-	// Clear grep from filterOpts for viewers since server already filtered
+	// Apply client-side filters (level, field filters). Viewers grep
+	// server-side; with context lines (-B/-A) the server's output is final,
+	// since context lines don't match. Without them, grep is re-applied here:
+	// a no-op against a current server, and a correct filter against an older
+	// one that ignores the /entries grep parameter.
 	clientFilterOpts := filterOpts
-	if isViewer && cfg.grep != "" {
+	if isViewer && cfg.grep != "" && (cfg.before > 0 || cfg.after > 0) {
 		clientFilterOpts.GrepPattern = ""
 		clientFilterOpts.Before = 0
 		clientFilterOpts.After = 0
@@ -874,70 +911,6 @@ func getServiceParserConfig(ctx context.Context, name string) logs.ParserConfig 
 		LevelField:     svc.LevelField,
 		MessageField:   svc.MessageField,
 	}
-}
-
-func fetchLogViewerEntries(name string, limit int, since, until time.Time, grep string, before, after int) ([]logs.LogEntry, error) {
-	ctx := context.Background()
-	var allEntries []logs.LogEntry
-
-	// If a time range is specified, query historical entries first
-	// The server's ReadRange already filters files by ModTime to avoid scanning unnecessary files
-	if !since.IsZero() {
-		end := until
-		if end.IsZero() {
-			end = time.Now()
-		}
-
-		histOpts := &client.LogEntriesOptions{
-			Limit:  limit,
-			Since:  since,
-			Until:  end,
-			Grep:   grep,
-			Before: before,
-			After:  after,
-		}
-
-		histEntries, err := apiClient.Logs.GetHistoryEntries(ctx, name, histOpts)
-		if err != nil {
-			// History might not be available (no rotated files, unsupported source), continue with live buffer
-			fmt.Fprintf(os.Stderr, "Warning: history not available for %s: %v\n", name, err)
-		} else {
-			allEntries = append(allEntries, convertClientLogEntries(histEntries)...)
-		}
-	}
-
-	// Also query live buffer
-	bufferOpts := &client.LogEntriesOptions{
-		Limit:  limit,
-		Since:  since,
-		Until:  until,
-		Grep:   grep,
-		Before: before,
-		After:  after,
-	}
-
-	bufferEntries, err := apiClient.Logs.GetEntries(ctx, name, bufferOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Merge entries from history and live buffer
-	allEntries = append(allEntries, convertClientLogEntries(bufferEntries)...)
-
-	// Dedupe by timestamp+message (history and buffer might overlap)
-	allEntries = dedupeLogEntries(allEntries)
-
-	// Sort by timestamp (ascending)
-	sort.Slice(allEntries, func(i, j int) bool {
-		return allEntries[i].Timestamp.Before(allEntries[j].Timestamp)
-	})
-
-	// Apply limit after merge - take the LAST N entries (newest)
-	if limit > 0 && len(allEntries) > limit {
-		allEntries = allEntries[len(allEntries)-limit:]
-	}
-
-	return allEntries, nil
 }
 
 // convertClientLogEntries converts client.LogEntry slice to logs.LogEntry slice.
@@ -1588,13 +1561,17 @@ func cmdTrace(args []string) error {
 	// Parse time range
 	var since, until time.Time
 
+	// With no -since, search the few minutes around the start time embedded
+	// in the trace ID, if it has one; otherwise the last hour.
+	idTime, hasIDTime := traceIDTime(cfg.traceID)
 	if cfg.since != "" {
 		since, err = logs.ParseDuration(cfg.since)
 		if err != nil {
 			return fmt.Errorf("invalid --since value: %w", err)
 		}
+	} else if hasIDTime {
+		since = idTime.Add(-traceWindowBefore)
 	} else {
-		// Default to 1 hour ago
 		since = time.Now().Add(-1 * time.Hour)
 	}
 
@@ -1602,6 +1579,11 @@ func cmdTrace(args []string) error {
 		until, err = logs.ParseDuration(cfg.until)
 		if err != nil {
 			return fmt.Errorf("invalid --until value: %w", err)
+		}
+	} else if cfg.since == "" && hasIDTime {
+		until = idTime.Add(traceWindowAfter)
+		if now := time.Now(); until.After(now) {
+			until = now
 		}
 	} else {
 		until = time.Now()

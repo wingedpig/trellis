@@ -492,9 +492,46 @@ func (s *SSHSource) readRangeFiles(ctx context.Context) ([]RotatedFile, error) {
 	return append(active, rotated...), nil
 }
 
+// remoteGrepPattern converts a user grep pattern (Go regexp syntax) into the
+// POSIX ERE handed to the remote `grep -E`. A pattern ERE can't express is
+// dropped from the remote command and left to the viewer's Go-side filter —
+// unless context lines were asked for, which only the remote grep produces.
+func (s *SSHSource) remoteGrepPattern(pattern string, grepBefore, grepAfter int) (string, error) {
+	if pattern == "" {
+		return "", nil
+	}
+	if _, err := CompileGrep(pattern); err != nil {
+		return "", err
+	}
+	ere, ok := translateToERE(pattern)
+	if ok {
+		return ere, nil
+	}
+	if grepBefore > 0 || grepAfter > 0 {
+		return "", &grepPatternError{fmt.Sprintf(
+			"grep pattern %q can't be run by grep -E on %s together with context lines (-B/-A/-C); drop the context flags or simplify the pattern",
+			pattern, s.cfg.Host)}
+	}
+	log.Printf("SSH ReadRange: pattern %q has no ERE form; filtering locally", pattern)
+	return "", nil
+}
+
+// ValidateGrep reports whether pattern can be run against this source.
+func (s *SSHSource) ValidateGrep(pattern string, grepBefore, grepAfter int) error {
+	_, err := s.remoteGrepPattern(pattern, grepBefore, grepAfter)
+	return err
+}
+
 // ReadRange reads log lines from a time range in rotated files.
 func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
 	log.Printf("SSH ReadRange: start=%v end=%v grep=%q before=%d after=%d", start, end, grep, grepBefore, grepAfter)
+
+	// The user pattern is Go regexp syntax; the remote grep speaks POSIX ERE.
+	// Translate it so (?i), \d and friends mean the same thing remotely.
+	grep, err := s.remoteGrepPattern(grep, grepBefore, grepAfter)
+	if err != nil {
+		return err
+	}
 
 	// With an active pattern there is no separate current file to append at the
 	// end: the files being written are part of the same set, so they go through

@@ -432,22 +432,19 @@ var errStreamLimitReached = errors.New("stream limit reached")
 func (v *Viewer) StreamHistoricalEntries(ctx context.Context, start, end time.Time, filter *Filter, limit int, grep string, grepBefore, grepAfter int, fn func(LogEntry) error) error {
 	log.Printf("StreamHistoricalEntries: start=%v end=%v limit=%d grep=%q before=%d after=%d", start, end, limit, grep, grepBefore, grepAfter)
 
-	// Determine whether the source filters grep server-side. Sources that
-	// don't (file, docker, k8s, command, service) require client-side grep
-	// here — otherwise the user's pattern would be silently discarded and
-	// every line in the time window would be returned (e.g., trace ID searches
-	// would return the full window with no filtering).
+	// Every line is re-checked against the Go regexp, whichever source
+	// produced it: sources without their own grep (file, docker, k8s,
+	// command) send every line, and the SSH source's remote grep is only a
+	// prefilter. Context lines (-B/-A) don't match by definition, so when
+	// they're requested a grepping source's output is trusted instead.
 	var grepRe *regexp.Regexp
 	if grep != "" {
-		serverHandles := false
-		if g, ok := v.source.(ServerSideGrep); ok && g.HandlesGrep() {
-			serverHandles = true
+		if err := v.ValidateGrep(grep, grepBefore, grepAfter); err != nil {
+			return err
 		}
-		if !serverHandles {
-			re, err := regexp.Compile(grep)
-			if err != nil {
-				return err
-			}
+		re, _ := CompileGrep(grep)
+		g, grepping := v.source.(ServerSideGrep)
+		if (grepBefore == 0 && grepAfter == 0) || !grepping || !g.HandlesGrep() {
 			grepRe = re
 		}
 	}
@@ -524,6 +521,28 @@ func (v *Viewer) StreamHistoricalEntries(ctx context.Context, start, end time.Ti
 	log.Printf("StreamHistoricalEntries: emitted %d entries from %d lines", emitted, linesReceived)
 	if fnErr != nil && !errors.Is(fnErr, errStreamLimitReached) {
 		return fnErr
+	}
+	return nil
+}
+
+// grepValidator is implemented by sources that run grep patterns themselves
+// and can refuse one they can't execute faithfully.
+type grepValidator interface {
+	ValidateGrep(pattern string, grepBefore, grepAfter int) error
+}
+
+// ValidateGrep checks a grep pattern before a history read, so a pattern the
+// viewer can't run is reported up front instead of silently matching nothing.
+// The returned error satisfies IsGrepPatternError.
+func (v *Viewer) ValidateGrep(pattern string, grepBefore, grepAfter int) error {
+	if pattern == "" {
+		return nil
+	}
+	if _, err := CompileGrep(pattern); err != nil {
+		return err
+	}
+	if gv, ok := v.source.(grepValidator); ok {
+		return gv.ValidateGrep(pattern, grepBefore, grepAfter)
 	}
 	return nil
 }

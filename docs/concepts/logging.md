@@ -218,9 +218,17 @@ trellis-ctl logs backend -level warn,error
 trellis-ctl logs backend -since 1h
 trellis-ctl logs backend -since 6:00am -until 7:00am
 
-# By pattern
+# By pattern (Go regular expression syntax; -i ignores case)
 trellis-ctl logs backend -grep "connection"
 trellis-ctl logs backend -grep "panic|fatal"
+trellis-ctl logs backend -grep "user@example\.com" -i
+
+# Several viewers at once, merged by timestamp and labeled by viewer
+trellis-ctl logs -group web -grep "req-abc123" -since 2h
+trellis-ctl logs -viewer app01-logs,app02-logs -grep "timeout"
+
+# A trace ID, searching only the window around the time embedded in the ID
+trellis-ctl logs -group web -trace web.app01.837569.1793982657140344307
 
 # By field
 trellis-ctl logs backend -field host=prod1
@@ -228,6 +236,17 @@ trellis-ctl logs backend -field host=prod1
 # Context lines (like grep -B/-A/-C)
 trellis-ctl logs backend -grep "error" -B 5 -A 10
 ```
+
+`-grep` patterns use Go regular expression syntax on every viewer type. For
+SSH viewers Trellis translates the pattern to a POSIX extended regex for the
+remote `grep -E` and re-checks each returned line with the Go pattern, so
+`(?i)`, `\d` and similar constructs work the same remotely as locally. A
+pattern that is invalid, or that can't be translated when context lines are
+requested, is rejected with an error rather than silently matching nothing.
+
+Searches return the first `-n` matches from the start of the window. When the
+limit cuts a search short, `trellis-ctl` prints a note on stderr giving the
+timestamp where the results stop; narrow the window or raise `-n` to see more.
 
 ### Web UI Filter Syntax
 

@@ -24,6 +24,7 @@ type filterClause struct {
 	negate   bool         // Negate the match
 	contains bool         // Contains match (vs exact)
 	regex    *regexp.Regexp // Compiled regex for contains
+	grep     *regexp.Regexp // Raw-line regexp (see AndGrep); other fields unused
 }
 
 // filterOp represents a comparison operator.
@@ -160,6 +161,17 @@ func parseClause(token string) (filterClause, error) {
 	return clause, nil
 }
 
+// AndGrep returns a filter that also requires re to match the entry's raw
+// line (its message when there is no raw line). f may be nil.
+func AndGrep(f *Filter, re *regexp.Regexp) *Filter {
+	out := &Filter{}
+	if f != nil {
+		out.clauses = append(out.clauses, f.clauses...)
+	}
+	out.clauses = append(out.clauses, filterClause{grep: re})
+	return out
+}
+
 // Match returns true if the entry matches the filter.
 func (f *Filter) Match(entry LogEntry) bool {
 	if len(f.clauses) == 0 {
@@ -186,6 +198,13 @@ func (c *filterClause) match(entry LogEntry) bool {
 
 // matchInternal performs the actual match logic.
 func (c *filterClause) matchInternal(entry LogEntry) bool {
+	if c.grep != nil {
+		line := entry.Raw
+		if line == "" {
+			line = entry.Message
+		}
+		return c.grep.MatchString(line)
+	}
 	// Get the field value
 	var fieldValue string
 	switch c.field {
@@ -369,6 +388,9 @@ func (f *Filter) String() string {
 
 // String returns the string representation of a clause.
 func (c *filterClause) String() string {
+	if c.grep != nil {
+		return fmt.Sprintf("grep:%q", c.grep.String())
+	}
 	var prefix string
 	if c.negate {
 		prefix = "-"

@@ -62,16 +62,12 @@ func (l *LogClient) GetEntries(ctx context.Context, name string, opts *LogEntrie
 		if !opts.Until.IsZero() {
 			params.Set("before", opts.Until.Format(time.RFC3339))
 		}
-		// Build filter string from Level and Grep options
-		var filterParts []string
 		if opts.Level != "" {
-			filterParts = append(filterParts, "level:"+opts.Level)
+			params.Set("filter", "level:"+opts.Level)
 		}
+		// Grep is a regexp over the raw line, matching GetHistoryEntries.
 		if opts.Grep != "" {
-			filterParts = append(filterParts, fmt.Sprintf("%q", opts.Grep))
-		}
-		if len(filterParts) > 0 {
-			params.Set("filter", strings.Join(filterParts, " "))
+			params.Set("grep", opts.Grep)
 		}
 		if len(params) > 0 {
 			path += "?" + params.Encode()

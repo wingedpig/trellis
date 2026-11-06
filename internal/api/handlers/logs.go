@@ -144,6 +144,7 @@ func (h *LogHandler) GetEntries(w http.ResponseWriter, r *http.Request) {
 	limitStr := query.Get("limit")
 	beforeStr := query.Get("before")
 	afterStr := query.Get("after")
+	grepStr := query.Get("grep")
 
 	// Parse filter
 	var filter *logs.Filter
@@ -154,6 +155,18 @@ func (h *LogHandler) GetEntries(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, http.StatusBadRequest, ErrBadRequest, "invalid filter: "+err.Error())
 			return
 		}
+	}
+
+	// grep is a regexp over the raw line, the same as for /history, so a
+	// search means the same thing whether its lines are still buffered or
+	// have rotated to disk.
+	if grepStr != "" {
+		re, err := logs.CompileGrep(grepStr)
+		if err != nil {
+			WriteError(w, http.StatusBadRequest, ErrBadRequest, err.Error())
+			return
+		}
+		filter = logs.AndGrep(filter, re)
 	}
 
 	// Parse limit
@@ -316,6 +329,13 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			timeout = d
 		}
 	}
+	// Refuse a pattern that can't be run before any streaming starts, so the
+	// caller gets a 400 with the reason instead of an empty result.
+	if err := viewer.ValidateGrep(grepStr, grepBefore, grepAfter); err != nil {
+		WriteError(w, http.StatusBadRequest, ErrBadRequest, err.Error())
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 

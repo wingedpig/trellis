@@ -82,6 +82,9 @@ type OutputOptions struct {
 	Format   OutputFormat
 	Template string // Go template string for FormatTemplate
 	Columns  []string // Column names for CSV output
+	// ShowSource prefixes plain-format lines with the entry's source, for
+	// output merged from several log viewers.
+	ShowSource bool
 }
 
 // LogStats contains statistics about a set of log entries.

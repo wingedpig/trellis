@@ -74,21 +74,11 @@ func cmdLogsBubbleUp(args []string) error {
 
 	ctx := context.Background()
 	if group != "" {
-		groups, err := apiClient.Trace.ListGroups(ctx)
+		groupViewers, err := resolveTraceGroup(ctx, group)
 		if err != nil {
-			return fmt.Errorf("listing trace groups: %w", err)
+			return err
 		}
-		found := false
-		for _, g := range groups {
-			if g.Name == group {
-				opts.Viewers = append(opts.Viewers, g.LogViewers...)
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("trace group not found: %s", group)
-		}
+		opts.Viewers = append(opts.Viewers, groupViewers...)
 	}
 	if len(opts.Viewers) == 0 {
 		return fmt.Errorf("specify -viewer or -group")

@@ -30,7 +30,16 @@ go build -o trellis-ctl ./cmd/trellis-ctl
    (`server.tls_tailscale` or `server.tls_cert` / `server.tls_key`).
 3. `trellis.hjson` (or `trellis.json`) auto-discovered by walking up from the
    current directory, resolved the same way.
-4. `http://localhost:1234` fallback if no config or env override is found.
+4. The Trellis server running on this machine. Each server records its URL
+   in `~/.trellis/run/<pid>.json` while it runs, so the CLI works from any
+   directory, e.g. a shell or agent session started outside Trellis. If several
+   are running, the most recently started one is used and a note names the
+   others.
+5. `http://localhost:1234` fallback if none of the above applies.
+
+If the server can't be reached, the error says where the address came from,
+lists any running servers at a different address, and names the fix
+(`TRELLIS_API`, `-config`, or `server.public_url`).
 
 `server.public_url`, when set, is used verbatim — useful when the bind
 address differs from the address clients should connect to (e.g., binding
@@ -110,7 +119,12 @@ trellis-ctl logs <service> -f           # Follow mode
 
 # Log viewers
 trellis-ctl logs -viewer <name>         # View log viewer
+trellis-ctl logs -viewer karld01-logs,karld02-logs -grep 'tal01@ca\.org' -since 30h
+trellis-ctl logs -group web -grep '(?i)tal01@ca\.org' -since 30h   # every viewer in a trace group
 trellis-ctl logs -list                  # List available viewers
+
+# Look up a trace ID (searches the minutes around the time embedded in the ID)
+trellis-ctl logs -group web -trace web.app01-g2.837569.1793982657140344307
 
 # Time filtering
 trellis-ctl logs <service> -since 1h
@@ -126,6 +140,7 @@ trellis-ctl logs <service> -level info+
 # Pattern filtering
 trellis-ctl logs <service> -grep "pattern"
 trellis-ctl logs <service> -grep "panic|fatal"
+trellis-ctl logs <service> -grep "tal01@ca\.org" -i      # case-insensitive
 trellis-ctl logs <service> -field host=prod1
 
 # Context lines
@@ -144,6 +159,27 @@ trellis-ctl logs <service> -format "{{.timestamp}} [{{.level}}] {{.message}}"
 trellis-ctl logs <service> -clear
 trellis-ctl logs <service> -stats
 ```
+
+`-grep` patterns use Go regexp syntax everywhere and match the raw log line,
+whether the line is still in the live buffer or comes from rotated files on
+another host: for SSH viewers the pattern is translated to the remote
+`grep -E`'s dialect (so `(?i)`, `\d` and `\w` work), and every returned line is
+re-checked with the Go pattern. A pattern that can't be run is rejected with
+an error instead of silently matching nothing.
+
+With several viewers (`-viewer a,b` or `-group`), results are merged by
+timestamp, plain output prefixes each line with its viewer, and `-n` applies
+per viewer.
+
+A search returns the first matches from the start of the window. When `-n`
+cuts it off, a note on stderr says so and where the results end, e.g.
+`Note: karld01-logs: stopped at the -n limit of 300 matches; results end at
+Nov 5 14:02:11.120, so matches between then and now are not shown.`
+
+`-trace <id>` searches for the ID literally. If the ID embeds its request's
+start time (a Unix timestamp in s/ms/µs/ns as one of its components, or a
+UUIDv7), the window defaults to one minute before to five minutes after that
+time, rather than scanning hours of logs. Pass `-since`/`-until` to override.
 
 #### BubbleUp: what's different about these lines?
 
@@ -406,8 +442,9 @@ The table lists each node's hostname, state, FQDN and tailnet IPs. Below each no
 trellis-ctl trace <id> <group> [options]
 
 # Options
--since <time>         # Start time (1h, 30m, 6:00am, 2026-01-10)
--until <time>         # End time (default: now)
+-since <time>         # Start time (1h, 30m, 6:00am, 2026-01-10). Default: 1m before
+                      # the start time embedded in the ID, if any; else 1h ago
+-until <time>         # End time (default: 5m after the embedded time, else now)
 -name <name>          # Report name
 -no-expand-by-id      # Disable ID expansion
 

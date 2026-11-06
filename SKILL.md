@@ -7,7 +7,7 @@ description: Control the Trellis development environment - check service status,
 
 # Trellis Development Environment Control
 
-Use `trellis-ctl` to interact with the running Trellis instance. It auto-discovers the API URL by walking up from the current directory looking for `trellis.hjson`. If `server.public_url` is set, it's used verbatim; otherwise the URL is built from `server.host`, `server.port`, and the configured TLS mode (`server.tls_tailscale` or `server.tls_cert`/`tls_key`). Set `server.public_url` when bind address ≠ connect address — for example, binding to a Tailscale IP while clients use the Tailscale hostname required for SNI. In Trellis-managed terminal sessions, `TRELLIS_API` is set automatically (using the same resolution) and takes precedence over the config file. You can also pass `-config <path>` or set `TRELLIS_CONFIG` to point at a specific config file.
+Use `trellis-ctl` to interact with the running Trellis instance. It auto-discovers the API URL by walking up from the current directory looking for `trellis.hjson`. If `server.public_url` is set, it's used verbatim; otherwise the URL is built from `server.host`, `server.port`, and the configured TLS mode (`server.tls_tailscale` or `server.tls_cert`/`tls_key`). Set `server.public_url` when bind address ≠ connect address — for example, binding to a Tailscale IP while clients use the Tailscale hostname required for SNI. In Trellis-managed terminal sessions, `TRELLIS_API` is set automatically (using the same resolution) and takes precedence over the config file. You can also pass `-config <path>` or set `TRELLIS_CONFIG` to point at a specific config file. With no config above the current directory, it uses the Trellis server running on this machine (recorded in `~/.trellis/run`); if it still can't connect, the error says where the address came from and how to fix it.
 
 **Important:** Always use the `-json` flag for structured output that's easier to parse:
 ```bash
@@ -63,7 +63,16 @@ trellis-ctl logs backend -grep "error" -C 3  # 3 lines before and after
 
 # Combined example: find "started" with context in a time window
 trellis-ctl logs -viewer api-logs -grep "started" -B 10 -since 6:00am -until 7:00am
+
+# Several viewers at once, merged by time (-n applies per viewer)
+trellis-ctl logs -viewer karld01-logs,karld02-logs -grep 'user@example\.com' -i -since 30h
+trellis-ctl logs -group web -grep 'user@example\.com' -i -since 30h   # every viewer in a trace group
+
+# All lines for one trace ID; the window comes from the time embedded in the ID
+trellis-ctl logs -group web -trace web.app01-g2.837569.1793982657140344307
 ```
+
+`-grep` is a Go regexp matched against the raw line on every viewer type (remote viewers translate it for the host's `grep -E`). An invalid pattern is an error, never an empty result. When `-n` cuts a search short, a `Note:` on stderr says where the results end; raise `-n` or narrow the window.
 
 #### Output Formats
 ```bash

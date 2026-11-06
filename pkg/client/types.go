@@ -572,7 +572,9 @@ type LogEntriesOptions struct {
 	// Level filters to entries at or above this level.
 	Level string
 
-	// Grep filters to entries matching this pattern.
+	// Grep filters to entries whose raw line matches this regular expression
+	// (Go regexp syntax; prefix (?i) for case-insensitive). The server rejects
+	// a pattern it cannot run rather than returning no matches.
 	Grep string
 
 	// Before specifies how many context lines to include before each grep match.

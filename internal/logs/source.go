@@ -43,9 +43,10 @@ type LogSource interface {
 
 // ServerSideGrep is an optional capability for LogSources whose ReadRange
 // already filters lines against the grep pattern (and supplies -B/-A context)
-// at the server. Sources that implement this interface and return true are
-// trusted by the viewer to have done the filtering; the viewer skips its own
-// fallback client-side grep so context lines from -B/-A are preserved.
+// at the server. The viewer still re-checks every line with the Go regexp —
+// a remote grep is only a prefilter — except when -B/-A context lines were
+// requested: those don't match the pattern by definition, so the source's
+// output is trusted as-is.
 //
 // Sources that ignore the grep argument (FileSource, DockerSource,
 // KubernetesSource, CommandSource, ServiceSource) should NOT implement this

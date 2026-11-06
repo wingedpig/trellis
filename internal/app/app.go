@@ -982,6 +982,12 @@ func (app *App) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Let trellis-ctl find this server from directories with no
+	// trellis.hjson above them and no TRELLIS_API set.
+	if err := config.WriteRunFile(app.config.APIBaseURL(), app.configPath); err != nil {
+		log.Printf("Warning: failed to record run file: %v", err)
+	}
+
 	return nil
 }
 
@@ -1017,6 +1023,7 @@ func (app *App) Shutdown(ctx context.Context) error {
 	defer app.mu.Unlock()
 
 	log.Println("Shutting down...")
+	config.RemoveRunFile()
 
 	// Create shutdown context with timeout
 	shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

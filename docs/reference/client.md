@@ -253,11 +253,12 @@ entries, _ := c.Logs.GetEntries(ctx, "nginx", &client.LogEntriesOptions{
     Limit: 100,
     Since: time.Now().Add(-1 * time.Hour),
     Level: "error",
+    Grep:  "(?i)timeout", // Go regexp, matched against the raw line
 })
 
 // Get historical entries (from rotated files)
 entries, _ := c.Logs.GetHistoryEntries(ctx, "nginx", &client.LogEntriesOptions{
-    Grep:   "connection refused",
+    Grep:   "connection refused", // Go regexp, matched against the raw line
     Before: 3,  // Context lines before match
     After:  3,  // Context lines after match
 })

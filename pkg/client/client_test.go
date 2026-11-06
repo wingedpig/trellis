@@ -1330,8 +1330,8 @@ func TestLogClient_GetEntriesWithAllOptions(t *testing.T) {
 		if !strings.Contains(filterVal, "level:error") {
 			t.Errorf("expected filter to contain level:error, got %s", filterVal)
 		}
-		if !strings.Contains(filterVal, "\"pattern\"") {
-			t.Errorf("expected filter to contain quoted pattern, got %s", filterVal)
+		if query.Get("grep") != "pattern" {
+			t.Errorf("expected grep=pattern, got %q", query.Get("grep"))
 		}
 		if query.Get("after") == "" {
 			t.Error("expected after parameter")
