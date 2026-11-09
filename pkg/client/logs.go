@@ -122,6 +122,9 @@ func (l *LogClient) GetHistoryEntries(ctx context.Context, name string, opts *Lo
 		if opts.After > 0 {
 			params.Set("after", fmt.Sprintf("%d", opts.After))
 		}
+		if opts.Timeout > 0 {
+			params.Set("timeout", opts.Timeout.String())
+		}
 	}
 
 	path := "/api/v1/logs/" + url.PathEscape(name) + "/history"
@@ -262,4 +265,84 @@ func (l *LogClient) BubbleUp(ctx context.Context, opts BubbleUpOptions) (*Bubble
 		return nil, fmt.Errorf("failed to parse bubbleup result: %w", err)
 	}
 	return &result, nil
+}
+
+// Stats summarizes a numeric field (count, mean, min, max, p50/p90/p99)
+// across one or more log viewers, optionally grouped by other fields. The
+// HTTP client's per-request Timeout is bypassed — opts.Timeout bounds the
+// server's read, and ctx bounds the call.
+func (l *LogClient) Stats(ctx context.Context, opts LogStatsOptions) (*LogStatsResult, error) {
+	params := url.Values{}
+	params.Set("viewers", strings.Join(opts.Viewers, ","))
+	params.Set("field", opts.Field)
+	if len(opts.By) > 0 {
+		params.Set("by", strings.Join(opts.By, ","))
+	}
+	if opts.Where != "" {
+		params.Set("where", opts.Where)
+	}
+	if opts.Grep != "" {
+		params.Set("grep", opts.Grep)
+	}
+	setWindow(params, opts.Since, opts.Until, opts.Timeout)
+	if opts.Top > 0 {
+		params.Set("top", fmt.Sprintf("%d", opts.Top))
+	}
+	data, err := l.c.getUntimed(ctx, "/api/v1/logs/stats?"+params.Encode())
+	if err != nil {
+		return nil, err
+	}
+	var result LogStatsResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse stats result: %w", err)
+	}
+	return &result, nil
+}
+
+// Requests summarizes requests across one or more log viewers: for each
+// request whose start line matches, its start and end lines' fields, its
+// duration, and per-pattern line counts. The HTTP client's per-request
+// Timeout is bypassed — opts.Timeout bounds the server's read, and ctx
+// bounds the call.
+func (l *LogClient) Requests(ctx context.Context, opts LogRequestsOptions) (*LogRequestsResult, error) {
+	params := url.Values{}
+	params.Set("viewers", strings.Join(opts.Viewers, ","))
+	if opts.IDField != "" {
+		params.Set("id_field", opts.IDField)
+	}
+	if opts.IDPattern != "" {
+		params.Set("id_pattern", opts.IDPattern)
+	}
+	params.Set("start_match", opts.StartMatch)
+	if opts.EndMatch != "" {
+		params.Set("end_match", opts.EndMatch)
+	}
+	for _, c := range opts.Counts {
+		params.Add("count", c)
+	}
+	setWindow(params, opts.Since, opts.Until, opts.Timeout)
+	if opts.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
+	}
+	data, err := l.c.getUntimed(ctx, "/api/v1/logs/requests?"+params.Encode())
+	if err != nil {
+		return nil, err
+	}
+	var result LogRequestsResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse requests result: %w", err)
+	}
+	return &result, nil
+}
+
+func setWindow(params url.Values, since, until time.Time, timeout time.Duration) {
+	if !since.IsZero() {
+		params.Set("start", since.Format(time.RFC3339))
+	}
+	if !until.IsZero() {
+		params.Set("end", until.Format(time.RFC3339))
+	}
+	if timeout > 0 {
+		params.Set("timeout", timeout.String())
+	}
 }

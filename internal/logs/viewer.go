@@ -525,6 +525,15 @@ func (v *Viewer) StreamHistoricalEntries(ctx context.Context, start, end time.Ti
 	return nil
 }
 
+// SupportsHistory reports whether the viewer's source has history files to
+// search. Sources that don't say are assumed to.
+func (v *Viewer) SupportsHistory() bool {
+	if h, ok := v.source.(historyReporter); ok {
+		return h.SupportsHistory()
+	}
+	return true
+}
+
 // grepValidator is implemented by sources that run grep patterns themselves
 // and can refuse one they can't execute faithfully.
 type grepValidator interface {

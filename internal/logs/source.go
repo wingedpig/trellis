@@ -6,6 +6,7 @@ package logs
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -335,26 +336,31 @@ func DecompressCommand(filename string) string {
 	}
 }
 
-// perFileTimeout is the maximum time allowed for reading a single log file.
+// perFileTimeout is the maximum time allowed for reading a single log file
+// when the caller set no deadline of its own (trace reports run without one).
 const perFileTimeout = 60 * time.Second
 
-// fileContext creates a context with a per-file timeout that is independent of
-// the parent's deadline. This prevents a shared trace-level deadline from
-// starving later files. Explicit cancellation (e.g. user cancel, shutdown)
-// still propagates, but deadline expiration does not.
+// fileContext returns the context one file read runs under. When the parent
+// carries a deadline — a history request's ?timeout — that deadline governs
+// the whole read: a file in flight is stopped when it passes, rather than
+// running on for up to another minute after the caller was promised an
+// answer. A parent without a deadline gets a per-file cap so one stuck ssh
+// can't hold a read open forever. Cancellation always propagates.
 func fileContext(parent context.Context) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), perFileTimeout)
-	stop := context.AfterFunc(parent, func() {
-		// Only propagate explicit cancellation, not deadline expiration.
-		// DeadlineExceeded means the parent's timeout fired — each file
-		// has its own timeout so we don't need to inherit that.
-		// Canceled means an explicit cancel() call (user cancel, shutdown,
-		// limit reached, errgroup failure) which we do want to propagate.
-		if parent.Err() == context.Canceled {
-			cancel()
-		}
-	})
-	return ctx, func() { stop(); cancel() }
+	if _, ok := parent.Deadline(); ok {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, perFileTimeout)
+}
+
+// ErrHistoryUnsupported is returned by sources that keep no history to read,
+// so callers can tell "nothing to search" apart from a search that failed.
+var ErrHistoryUnsupported = errors.New("source does not support historical access")
+
+// historyReporter is implemented by sources that can say up front whether
+// ReadRange has anything to read.
+type historyReporter interface {
+	SupportsHistory() bool
 }
 
 // hasAnySuffix checks if s ends with any of the given suffixes.

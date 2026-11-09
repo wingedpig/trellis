@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -127,5 +128,78 @@ func TestFetchLogViewerEntriesBufferOnlySearchNote(t *testing.T) {
 	}
 	if len(got) != 2 || !strings.Contains(note, "-n limit of 2") {
 		t.Errorf("got %d entries, note %q; want 2 with a truncation note", len(got), note)
+	}
+}
+
+// historyServer serves a /history stream of hist followed by a final line
+// (an _error, or nothing), and a live buffer of buf.
+func historyServer(t *testing.T, hist []client.LogEntry, final string, buf []client.LogEntry, status int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/history"):
+			if status != 0 {
+				w.WriteHeader(status)
+				json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "HISTORY_UNSUPPORTED", "message": "no history"}})
+				return
+			}
+			if r.URL.Query().Get("timeout") != "7m0s" {
+				t.Errorf("timeout param = %q, want 7m0s", r.URL.Query().Get("timeout"))
+			}
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			enc := json.NewEncoder(w)
+			for _, e := range hist {
+				enc.Encode(e)
+			}
+			if final != "" {
+				fmt.Fprintln(w, final)
+			}
+		case strings.HasSuffix(r.URL.Path, "/entries"):
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"entries": buf}})
+		}
+	}))
+}
+
+func TestFetchViewersHistoryTimeoutIsPartial(t *testing.T) {
+	base := time.Now().Add(-time.Hour)
+	srv := historyServer(t, entriesAt(base, 1, 2), `{"_error":"history search timed out after 7m0s"}`, entriesAt(base, 3000), 0)
+	defer srv.Close()
+	apiClient = client.New(srv.URL)
+	historyTimeout = 7 * time.Minute
+	defer func() { historyTimeout = 0 }()
+
+	got, err := fetchViewers([]string{"karld01"}, viewerQuery{limit: 100, since: base, grep: "x"})
+	var partial *partialResultError
+	if !errors.As(err, &partial) {
+		t.Fatalf("err = %v, want a partialResultError", err)
+	}
+	if !strings.Contains(err.Error(), "timed out") || !strings.Contains(err.Error(), "raise -timeout") {
+		t.Errorf("err = %q, want the timeout and a hint", err)
+	}
+	// The matches found before the deadline are kept; the live buffer is
+	// not appended after the gap.
+	if len(got) != 2 || got[0].Message != "m1" || got[1].Message != "m2" {
+		t.Errorf("entries = %+v, want m1, m2", got)
+	}
+}
+
+func TestFetchViewersHistoryUnsupportedFallsBack(t *testing.T) {
+	base := time.Now().Add(-time.Hour)
+	srv := historyServer(t, nil, "", entriesAt(base, 5), http.StatusNotImplemented)
+	defer srv.Close()
+	apiClient = client.New(srv.URL)
+
+	got, err := fetchViewers([]string{"karld01"}, viewerQuery{limit: 100, since: base, grep: "x"})
+	if err != nil || len(got) != 1 {
+		t.Errorf("got %d entries, err %v; want the buffer's 1 entry and no error", len(got), err)
+	}
+}
+
+func TestParseLogsArgsHelpAndExtraArgs(t *testing.T) {
+	if _, err := parseLogsArgs([]string{"-viewer", "x", "-h"}); !errors.Is(err, errLogsHelp) {
+		t.Errorf("-h: err = %v, want errLogsHelp", err)
+	}
+	if _, err := parseLogsArgs([]string{"svc", "6:00am"}); err == nil {
+		t.Error("a second bare word should be an error, not silently ignored")
 	}
 }

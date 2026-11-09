@@ -14,48 +14,90 @@ import (
 	serverlogs "github.com/wingedpig/trellis/internal/logs"
 )
 
-// ParseDuration parses a duration string like "1h", "30m", "2d", a clock time like "6:30am",
-// or an ISO timestamp.
+// ParseDuration parses a -since value (the start of a window). See
+// ParseTimeBound for the accepted formats.
+func ParseDuration(s string) (time.Time, error) {
+	return ParseTimeBound(s, false)
+}
+
+// ParseUntil parses an -until value (the end of a window). A bare date or
+// "today"/"yesterday" means the end of that day, so "-since 2025-01-10
+// -until 2025-01-10" covers the whole day.
+func ParseUntil(s string) (time.Time, error) {
+	return ParseTimeBound(s, true)
+}
+
+// ParseTimeBound parses a time given on the command line. Times without an
+// explicit offset are in the local timezone.
 // Supported formats:
 //   - Relative: 1h, 30m, 2d, 1w (hours, minutes, days, weeks ago)
-//   - Clock time: 6:00am, 6:30pm, 14:00, 14:30 (today)
-//   - ISO timestamp: 2024-01-15T10:30:00Z, 2024-01-15
-func ParseDuration(s string) (time.Time, error) {
+//   - Clock time: 6:00am, 6:30pm, 6am, 14:00, 14:30:15 (today)
+//   - Date: 2024-01-15 (start of day, or end of day when isEnd)
+//   - Date + time: 2024-01-15 6:00am, 2024-01-15 14:30, 2024-01-15T14:30:00
+//   - RFC 3339: 2024-01-15T10:30:00Z, 2024-01-15T10:30:00-08:00
+//   - Keywords: now, today, yesterday
+func ParseTimeBound(s string, isEnd bool) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return time.Time{}, fmt.Errorf("empty duration string")
+		return time.Time{}, fmt.Errorf("empty time string")
+	}
+	now := time.Now()
+	lower := strings.ToLower(s)
+
+	dayBound := func(day time.Time) time.Time {
+		start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.Local)
+		if isEnd {
+			return start.AddDate(0, 0, 1).Add(-time.Nanosecond)
+		}
+		return start
 	}
 
-	// Try parsing as ISO 8601 timestamp first
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
-	}
-	// Try without timezone
-	if t, err := time.Parse("2006-01-02T15:04:05", s); err == nil {
-		return t, nil
-	}
-	// Try date only
-	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t, nil
+	switch lower {
+	case "now":
+		return now, nil
+	case "today":
+		return dayBound(now), nil
+	case "yesterday":
+		return dayBound(now.AddDate(0, 0, -1)), nil
 	}
 
-	// Try parsing as clock time (e.g., "6:00am", "6:30pm", "14:00")
-	if t, ok := parseClockTime(s); ok {
-		return t, nil
+	// Timestamps with an explicit offset.
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05Z07:00", "2006-01-02T15:04Z07:00", "2006-01-02 15:04Z07:00"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	// Timestamps without an offset are local time.
+	for _, layout := range []string{"2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05.999999999", "2006-01-02T15:04", "2006-01-02 15:04"} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+		return dayBound(t), nil
+	}
+	// Date followed by a clock time: "2024-01-15 6:00am".
+	if date, clock, ok := strings.Cut(s, " "); ok {
+		if d, err := time.ParseInLocation("2006-01-02", date, time.Local); err == nil {
+			if off, ok := parseClockOffset(clock); ok {
+				return d.Add(off), nil
+			}
+		}
 	}
 
-	// Parse as relative duration
-	re := regexp.MustCompile(`^(\d+)([smhdw])$`)
-	matches := re.FindStringSubmatch(s)
+	if off, ok := parseClockOffset(s); ok {
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).Add(off), nil
+	}
+
+	// Relative duration
+	matches := relativeRe.FindStringSubmatch(s)
 	if matches == nil {
-		return time.Time{}, fmt.Errorf("invalid duration format: %q (use e.g., 1h, 30m, 6:30am, or ISO timestamp)", s)
+		return time.Time{}, fmt.Errorf("invalid time %q (use e.g. 1h, 30m, 6:30am, 2025-01-10, \"2025-01-10 6:00am\", today, yesterday, or an RFC 3339 timestamp)", s)
 	}
 
 	value, _ := strconv.Atoi(matches[1])
-	unit := matches[2]
-
 	var duration time.Duration
-	switch unit {
+	switch matches[2] {
 	case "s":
 		duration = time.Duration(value) * time.Second
 	case "m":
@@ -67,56 +109,48 @@ func ParseDuration(s string) (time.Time, error) {
 	case "w":
 		duration = time.Duration(value) * 7 * 24 * time.Hour
 	}
-
-	return time.Now().Add(-duration), nil
+	return now.Add(-duration), nil
 }
 
-// parseClockTime parses clock times like "6:00am", "6:30pm", "14:00", "14:30"
-// and returns the time on today's date.
-func parseClockTime(s string) (time.Time, bool) {
+var (
+	relativeRe = regexp.MustCompile(`^(\d+)([smhdw])$`)
+	clock12Re  = regexp.MustCompile(`^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(am|pm)$`)
+	clock24Re  = regexp.MustCompile(`^(\d{1,2}):(\d{2})(?::(\d{2}))?$`)
+)
+
+// parseClockOffset parses a clock time ("6:00am", "6am", "6:30:15pm",
+// "14:00", "14:30:15") into an offset from midnight.
+func parseClockOffset(s string) (time.Duration, bool) {
 	s = strings.ToLower(strings.TrimSpace(s))
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-
-	// Try 12-hour format with am/pm: "6:00am", "6:30pm", "12:00am"
-	re12 := regexp.MustCompile(`^(\d{1,2}):(\d{2})(am|pm)$`)
-	if matches := re12.FindStringSubmatch(s); matches != nil {
-		hour, _ := strconv.Atoi(matches[1])
-		minute, _ := strconv.Atoi(matches[2])
-		ampm := matches[3]
-
-		if hour < 1 || hour > 12 || minute < 0 || minute > 59 {
-			return time.Time{}, false
+	var hour, minute, second int
+	if m := clock12Re.FindStringSubmatch(s); m != nil {
+		hour, _ = strconv.Atoi(m[1])
+		minute, _ = strconv.Atoi(m[2])
+		second, _ = strconv.Atoi(m[3])
+		if hour < 1 || hour > 12 {
+			return 0, false
 		}
-
-		// Convert to 24-hour
-		if ampm == "am" {
+		if m[4] == "am" {
 			if hour == 12 {
 				hour = 0 // 12:00am = 00:00
 			}
-		} else { // pm
-			if hour != 12 {
-				hour += 12 // 1pm = 13:00, but 12pm = 12:00
-			}
+		} else if hour != 12 {
+			hour += 12 // 1pm = 13:00, but 12pm = 12:00
 		}
-
-		return today.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute), true
-	}
-
-	// Try 24-hour format: "14:00", "14:30", "9:00"
-	re24 := regexp.MustCompile(`^(\d{1,2}):(\d{2})$`)
-	if matches := re24.FindStringSubmatch(s); matches != nil {
-		hour, _ := strconv.Atoi(matches[1])
-		minute, _ := strconv.Atoi(matches[2])
-
-		if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-			return time.Time{}, false
+	} else if m := clock24Re.FindStringSubmatch(s); m != nil {
+		hour, _ = strconv.Atoi(m[1])
+		minute, _ = strconv.Atoi(m[2])
+		second, _ = strconv.Atoi(m[3])
+		if hour > 23 {
+			return 0, false
 		}
-
-		return today.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute), true
+	} else {
+		return 0, false
 	}
-
-	return time.Time{}, false
+	if minute > 59 || second > 59 {
+		return 0, false
+	}
+	return time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute + time.Duration(second)*time.Second, true
 }
 
 // ParseLevel parses a log level string to LogLevel.

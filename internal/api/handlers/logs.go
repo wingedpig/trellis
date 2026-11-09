@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -336,17 +337,22 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !viewer.SupportsHistory() {
+		WriteError(w, http.StatusNotImplemented, ErrHistoryUnsupported, "log viewer "+name+" keeps no history files to search")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	if acceptsNDJSON(r) {
-		h.streamHistory(ctx, w, viewer, start, end, filter, limit, grepStr, grepBefore, grepAfter)
+		h.streamHistory(ctx, w, viewer, start, end, filter, limit, grepStr, grepBefore, grepAfter, timeout)
 		return
 	}
 
 	entries, err := viewer.GetHistoricalEntries(ctx, start, end, filter, limit, grepStr, grepBefore, grepAfter)
 	if err != nil {
-		WriteError(w, http.StatusInternalServerError, ErrLogViewerError, err.Error())
+		WriteError(w, http.StatusInternalServerError, ErrLogViewerError, historyErrorMessage(err, timeout))
 		return
 	}
 
@@ -356,6 +362,20 @@ func (h *LogHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		"start":   start,
 		"end":     end,
 	})
+}
+
+// ErrHistoryUnsupported is the error code for a history read of a viewer
+// whose source keeps no history (a command source).
+const ErrHistoryUnsupported = "HISTORY_UNSUPPORTED"
+
+// historyErrorMessage describes a failed history read. A deadline gets a
+// message saying so, and how to get more time, instead of Go's bare
+// "context deadline exceeded".
+func historyErrorMessage(err error, timeout time.Duration) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Sprintf("history search timed out after %s; the limit is %s", timeout, maxHistoryTimeout)
+	}
+	return err.Error()
 }
 
 // acceptsNDJSON returns true if the client signalled a preference for
@@ -375,7 +395,7 @@ func acceptsNDJSON(r *http.Request) bool {
 // streamHistory writes the historical entries as NDJSON, flushing after every
 // line. Headers are sent immediately so the client never sits in
 // "awaiting headers" while the disk scan runs.
-func (h *LogHandler) streamHistory(ctx context.Context, w http.ResponseWriter, viewer *logs.Viewer, start, end time.Time, filter *logs.Filter, limit int, grep string, grepBefore, grepAfter int) {
+func (h *LogHandler) streamHistory(ctx context.Context, w http.ResponseWriter, viewer *logs.Viewer, start, end time.Time, filter *logs.Filter, limit int, grep string, grepBefore, grepAfter int, timeout time.Duration) {
 	flusher, _ := w.(http.Flusher)
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
@@ -429,7 +449,7 @@ func (h *LogHandler) streamHistory(ctx context.Context, w http.ResponseWriter, v
 	if streamErr != nil && !isConnectionClosed(streamErr) {
 		// We've already written headers, so we can't change the status code.
 		// Surface the error as a final NDJSON line; the client checks for it.
-		_ = writeLine(map[string]interface{}{"_error": streamErr.Error()})
+		_ = writeLine(map[string]interface{}{"_error": historyErrorMessage(streamErr, timeout)})
 		log.Printf("streamHistory: %v", streamErr)
 	}
 }

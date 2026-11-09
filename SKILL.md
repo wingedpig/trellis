@@ -74,6 +74,22 @@ trellis-ctl logs -group web -trace web.app01-g2.837569.1793982657140344307
 
 `-grep` is a Go regexp matched against the raw line on every viewer type (remote viewers translate it for the host's `grep -E`). An invalid pattern is an error, never an empty result. When `-n` cuts a search short, a `Note:` on stderr says where the results end; raise `-n` or narrow the window.
 
+Times also accept dates: `-since "2026-11-08 6:00am" -until "2026-11-08 7:00am"`, `-since 2026-11-08` (a bare date as `-until` means the end of that day), `today`, `yesterday`. Times without an offset are local.
+
+A history search that runs out of time (global `-timeout`, default 5m, max 30m) prints the matches found so far, then an error saying how far they reach, and exits non-zero — check the exit status before treating results as complete. For long ranges raise `-timeout` or split the window.
+
+#### Summaries computed in Trellis
+Prefer these to fetching every line and counting client-side:
+```bash
+# p50/p90/p99 of a numeric field, grouped (duration strings like "1.5s" become ms)
+trellis-ctl -json logs stats -field duration -by route -grep END -group web -since 1h
+
+# One row per request whose start line matches: duration, start/end fields, per-pattern line counts
+trellis-ctl -json logs requests -id-field trace_id -start-match 'STRT.*/api/v1/post' -end-match END \
+    -count sql=SELECT -count retry='(?i)retry' -group web -since 1h
+```
+`trellis-ctl logs -h` lists every logs flag.
+
 #### Output Formats
 ```bash
 trellis-ctl logs backend -json               # JSON array

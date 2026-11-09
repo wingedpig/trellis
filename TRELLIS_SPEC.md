@@ -2279,7 +2279,56 @@ GET /api/v1/logs/:name/history
   &filter=level:error
 ```
 
-Returns entries from rotated logs in the time range.
+Returns entries from rotated logs in the time range. Other parameters: `grep`
+(Go regexp over the raw line), `before`/`after` (context lines), `limit`, and
+`timeout` (default 5m, max 30m). With `Accept: application/x-ndjson` the
+entries stream one per line; when the read fails partway — including when the
+timeout passes — the entries found so far are followed by a final
+`{"_error": "..."}` line, so a client can keep them but must not treat them as
+complete. A viewer whose source keeps no history (a command source) gets
+`501` with code `HISTORY_UNSUPPORTED`.
+
+SSH sources read up to four rotated files at once (output stays in file
+order). Each file runs `decompress | grep -F <literals> | grep -E <timestamp> |
+grep -E <pattern>` on the host: the fixed-string pass uses text every match of
+the pattern must contain, and it and the timestamp pass run under `LC_ALL=C`.
+
+#### Numeric Field Stats
+
+```
+GET /api/v1/logs/stats
+  ?viewers=web01-logs,web02-logs
+  &field=duration
+  &by=route
+  &start=...&end=...        # default: the last hour
+  &where=level:info         # optional filter
+  &grep=END                 # optional regexp narrowing the lines read
+  &top=50&timeout=5m
+```
+
+Returns count, sum, mean, min, max, p50, p90 and p99 of `field` per group of
+`by` values, largest groups first. Numeric strings count as numbers and Go
+duration strings (`"1.5s"`) as milliseconds. Past 200,000 values per group
+the percentiles come from a uniform sample (`approximate: true`).
+`complete: false` means a viewer's read stopped early (see `viewers[].error`).
+
+#### Request Summary
+
+```
+GET /api/v1/logs/requests
+  ?viewers=web01-logs
+  &id_field=trace_id        # or id_pattern=<regexp, first group>
+  &start_match=STRT.*/api/  # required
+  &end_match=END            # optional
+  &count=sql=SELECT         # repeatable, name=regexp
+  &start=...&end=...&limit=1000&timeout=5m
+```
+
+Returns one summary per request whose start line falls in the window: the
+start and end lines' fields and messages, duration, line count, and how many
+of its lines matched each `count` pattern, ordered by start time, plus totals
+over all of them. Only lines matching one of the patterns are read, so remote
+sources filter on the host.
 
 ### 11.9 Events
 

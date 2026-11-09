@@ -522,12 +522,15 @@ func (s *SSHSource) ValidateGrep(pattern string, grepBefore, grepAfter int) erro
 	return err
 }
 
-// ReadRange reads log lines from a time range in rotated files.
+// ReadRange reads log lines from a time range in rotated files. Up to
+// rangeReadParallelism files are read at once; their lines are still
+// delivered oldest file first.
 func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
 	log.Printf("SSH ReadRange: start=%v end=%v grep=%q before=%d after=%d", start, end, grep, grepBefore, grepAfter)
 
 	// The user pattern is Go regexp syntax; the remote grep speaks POSIX ERE.
 	// Translate it so (?i), \d and friends mean the same thing remotely.
+	userPattern := grep
 	grep, err := s.remoteGrepPattern(grep, grepBefore, grepAfter)
 	if err != nil {
 		return err
@@ -543,62 +546,116 @@ func (s *SSHSource) ReadRange(ctx context.Context, start, end time.Time, lineCh 
 	}
 	log.Printf("SSH ReadRange: found %d candidate files", len(files))
 
-	// Build grep pattern for timestamp filtering
-	// This creates patterns like "2026-01-12T06:" for each hour in the range
-	timestampPattern := s.buildTimestampGrepPattern(start, end)
-	log.Printf("SSH ReadRange: timestamp pattern=%q, user grep=%q", timestampPattern, grep)
-
 	relevantFiles, newestRotatedModTime := filterRelevantFiles(files, start, end)
-
 	log.Printf("SSH ReadRange: %d relevant files, newestRotatedModTime=%v", len(relevantFiles), newestRotatedModTime)
-	for _, f := range relevantFiles {
-		log.Printf("SSH ReadRange: relevant file: %s (ModTime=%v)", f.Path, f.ModTime)
-	}
 
-	// Read files from oldest to newest for chronological output
+	// Oldest first, for chronological output.
+	ordered := make([]RotatedFile, 0, len(relevantFiles)+1)
 	for i := len(relevantFiles) - 1; i >= 0; i-- {
-		select {
-		case <-ctx.Done():
-			log.Printf("SSH ReadRange: context canceled before processing file %d", i)
-			return ctx.Err()
-		default:
-		}
-
-		file := relevantFiles[i]
-		log.Printf("SSH ReadRange: processing file %s", file.Path)
-		fileCtx, fileCancel := fileContext(ctx)
-		err := s.grepRemoteFile(fileCtx, file, timestampPattern, grep, grepBefore, grepAfter, lineCh)
-		fileCancel()
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", file.Name, err)
-		}
+		ordered = append(ordered, relevantFiles[i])
 	}
 
 	// If the time range extends beyond the newest rotated file, also read the current file
 	// (it contains entries newer than the rotated files). Sources with an
-	// active pattern already covered theirs in the loop above; a second pass
+	// active pattern already have theirs in the list; a second pass
 	// would duplicate every line in the window.
-	willReadCurrent := s.cfg.Current != "" && (end.IsZero() || end.After(newestRotatedModTime))
-	log.Printf("SSH ReadRange: will read current file: %v (Current=%q, end=%v, newestRotatedModTime=%v)",
-		willReadCurrent, s.cfg.Current, end, newestRotatedModTime)
-	if willReadCurrent {
+	if s.cfg.Current != "" && (end.IsZero() || end.After(newestRotatedModTime)) {
 		currentPath := s.cfg.Current
 		if !strings.HasPrefix(currentPath, "/") {
 			currentPath = path.Join(s.cfg.Path, currentPath)
 		}
-		currentFile := RotatedFile{
-			Name:       s.cfg.Current,
-			Path:       currentPath,
-			Compressed: false,
-		}
-		fileCtx, fileCancel := fileContext(ctx)
-		err = s.grepRemoteFile(fileCtx, currentFile, timestampPattern, grep, grepBefore, grepAfter, lineCh)
-		fileCancel()
-		if err != nil {
-			return fmt.Errorf("reading current file %s: %w", currentFile.Name, err)
-		}
+		ordered = append(ordered, RotatedFile{Name: s.cfg.Current, Path: currentPath})
 	}
 
+	pipe := remotePipeline{
+		timestamp: s.buildTimestampGrepPattern(start, end),
+		userGrep:  grep,
+		before:    grepBefore,
+		after:     grepAfter,
+	}
+	// A cheap fixed-string pass ahead of the regexps, when the pattern
+	// requires fixed text. Not with context lines: they don't contain it.
+	if userPattern != "" && grepBefore == 0 && grepAfter == 0 {
+		pipe.literals, pipe.foldLiterals, _ = RequiredLiterals(userPattern)
+	}
+	log.Printf("SSH ReadRange: timestamp pattern=%q, user grep=%q, literals=%q, files=%d",
+		pipe.timestamp, grep, pipe.literals, len(ordered))
+
+	return readFilesOrdered(ctx, ordered, func(ctx context.Context, f RotatedFile, out chan<- string) error {
+		return s.grepRemoteFile(ctx, f, pipe, out)
+	}, lineCh)
+}
+
+// rangeReadParallelism is how many files ReadRange reads at once. Each is
+// one ssh session running decompress | grep on the log host.
+const rangeReadParallelism = 4
+
+// rangeReadBuffer is how many lines a file read can get ahead of the file
+// being delivered before it waits.
+const rangeReadBuffer = 20000
+
+// readFilesOrdered runs read on up to rangeReadParallelism files at once and
+// forwards their lines to lineCh in file order. It stops at the first file
+// that fails, after delivering everything before it, and returns that error.
+func readFilesOrdered(ctx context.Context, files []RotatedFile, read func(context.Context, RotatedFile, chan<- string) error, lineCh chan<- string) error {
+	var cancel context.CancelFunc
+	if _, ok := ctx.Deadline(); ok {
+		ctx, cancel = context.WithCancel(ctx)
+	} else {
+		// No caller deadline (trace reports): budget perFileTimeout per file
+		// for the whole read rather than per file, since a file read ahead
+		// can spend a long time waiting for its turn to deliver.
+		ctx, cancel = context.WithTimeout(ctx, perFileTimeout*time.Duration(max(len(files), 1)))
+	}
+	defer cancel()
+
+	type job struct {
+		lines chan string
+		err   error // set before lines is closed
+	}
+	jobs := make([]*job, len(files))
+	for i := range jobs {
+		jobs[i] = &job{lines: make(chan string, rangeReadBuffer)}
+	}
+
+	// Start reads in file order, so the file being delivered has always
+	// been started and the reads ahead of it can only fill their buffers.
+	go func() {
+		sem := make(chan struct{}, rangeReadParallelism)
+		for i, f := range files {
+			j := jobs[i]
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				for _, rest := range jobs[i:] {
+					rest.err = ctx.Err()
+					close(rest.lines)
+				}
+				return
+			}
+			go func() {
+				defer func() { <-sem }()
+				j.err = read(ctx, f, j.lines)
+				close(j.lines)
+			}()
+		}
+	}()
+
+	for i, j := range jobs {
+		for line := range j.lines {
+			select {
+			case lineCh <- line:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		if j.err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("reading %s: %w", files[i].Name, j.err)
+		}
+	}
 	return nil
 }
 
@@ -730,81 +787,86 @@ func (s *SSHSource) buildTimestampGrepPattern(start, end time.Time) string {
 	return "(" + strings.Join(patterns, "|") + ")"
 }
 
-// grepRemoteFile runs grep on a remote file and sends matching lines to the channel.
-// timestampPattern filters by timestamp, userGrep is an additional user-specified pattern.
-// grepBefore/grepAfter add context lines around user grep matches.
-func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, timestampPattern, userGrep string, grepBefore, grepAfter int, lineCh chan<- string) error {
-	var remoteCmd string
+// remotePipeline describes the filters run on the log host over each file.
+type remotePipeline struct {
+	timestamp    string   // ERE matching the window's date/hour prefixes
+	literals     []string // fixed strings, one of which every match contains
+	foldLiterals bool     // match literals case-insensitively
+	userGrep     string   // the user's pattern as an ERE
+	before       int      // -B context lines around userGrep matches
+	after        int      // -A context lines
+}
 
-	// Build grep context flags for user grep
-	var contextFlags string
-	if grepBefore > 0 {
-		contextFlags += fmt.Sprintf(" -B %d", grepBefore)
-	}
-	if grepAfter > 0 {
-		contextFlags += fmt.Sprintf(" -A %d", grepAfter)
-	}
-
-	// Build the grep pipeline
-	// If both patterns exist: grep 'timestamp' file | grep [-B N] [-A N] 'user'
-	// If only timestamp: grep 'timestamp' file
-	// If only user: grep [-B N] [-A N] 'user' file
-	// If neither: cat file
-
-	// All values that reach the remote shell are passed through shellQuote so
-	// that a single quote in userGrep (or unexpected metacharacters in a file
-	// path) cannot break out and execute arbitrary commands on the host.
-	// Patterns are followed by `--` so a leading `-` in the pattern is treated
-	// as the pattern rather than as a grep option.
-	quotedPath := shellQuote(file.Path)
-	quotedTimestamp := shellQuote(timestampPattern)
-	quotedUserGrep := shellQuote(userGrep)
-
-	if timestampPattern == "" && userGrep == "" {
-		// No pattern - read entire file (fallback)
-		if file.Compressed {
-			decompressCmd := s.cfg.Decompress
-			if decompressCmd == "" {
-				decompressCmd = DecompressCommand(file.Path)
-			}
-			if decompressCmd == "" {
-				return fmt.Errorf("no decompress command for %s", file.Path)
-			}
-			remoteCmd = fmt.Sprintf("%s %s", decompressCmd, quotedPath)
-		} else {
-			remoteCmd = fmt.Sprintf("cat %s", quotedPath)
+// command returns the shell command that reads path (decompressing it with
+// decompress, when set) through the pipeline's filters. The cheapest,
+// most selective filter runs first:
+//
+//	grep -F literals | grep -E timestamp | grep -E [-B/-A] user
+//
+// The fixed-string and timestamp passes run under LC_ALL=C: both are plain
+// bytes, and a C-locale grep skips the multibyte-character handling that
+// makes UTF-8 greps several times slower. The user's ERE keeps the host
+// locale, so "." and bracket expressions still see whole characters.
+//
+// All values that reach the remote shell are passed through shellQuote so
+// that a single quote in a pattern (or unexpected metacharacters in a file
+// path) cannot break out and execute arbitrary commands on the host.
+// Patterns follow -e or -- so a leading "-" is taken as the pattern.
+func (p remotePipeline) command(path, decompress string) string {
+	var stages []string
+	if len(p.literals) > 0 {
+		st := "env LC_ALL=C grep -F"
+		if p.foldLiterals {
+			st += " -i"
 		}
-	} else {
-		// Build grep command with one or both patterns
-		if file.Compressed {
-			decompressCmd := s.cfg.Decompress
-			if decompressCmd == "" {
-				decompressCmd = DecompressCommand(file.Path)
-			}
-			if decompressCmd == "" {
-				return fmt.Errorf("no decompress command for %s", file.Path)
-			}
-			// Decompress and pipe through grep(s)
-			// Use -E for extended regex (needed for alternation patterns like (a|b|c))
-			if timestampPattern != "" && userGrep != "" {
-				remoteCmd = fmt.Sprintf("%s %s | grep -E -- %s | grep -E%s -- %s || true", decompressCmd, quotedPath, quotedTimestamp, contextFlags, quotedUserGrep)
-			} else if timestampPattern != "" {
-				remoteCmd = fmt.Sprintf("%s %s | grep -E -- %s || true", decompressCmd, quotedPath, quotedTimestamp)
-			} else {
-				remoteCmd = fmt.Sprintf("%s %s | grep -E%s -- %s || true", decompressCmd, quotedPath, contextFlags, quotedUserGrep)
-			}
-		} else {
-			// Uncompressed file - use grep directly
-			// Use -E for extended regex (needed for alternation patterns like (a|b|c))
-			if timestampPattern != "" && userGrep != "" {
-				remoteCmd = fmt.Sprintf("grep -E -- %s %s | grep -E%s -- %s || true", quotedTimestamp, quotedPath, contextFlags, quotedUserGrep)
-			} else if timestampPattern != "" {
-				remoteCmd = fmt.Sprintf("grep -E -- %s %s || true", quotedTimestamp, quotedPath)
-			} else {
-				remoteCmd = fmt.Sprintf("grep -E%s -- %s %s || true", contextFlags, quotedUserGrep, quotedPath)
-			}
+		for _, l := range p.literals {
+			st += " -e " + shellQuote(l)
+		}
+		stages = append(stages, st)
+	}
+	if p.timestamp != "" {
+		stages = append(stages, "env LC_ALL=C grep -E -- "+shellQuote(p.timestamp))
+	}
+	if p.userGrep != "" {
+		st := "grep -E"
+		if p.before > 0 {
+			st += fmt.Sprintf(" -B %d", p.before)
+		}
+		if p.after > 0 {
+			st += fmt.Sprintf(" -A %d", p.after)
+		}
+		stages = append(stages, st+" -- "+shellQuote(p.userGrep))
+	}
+
+	quoted := shellQuote(path)
+	switch {
+	case len(stages) == 0 && decompress != "":
+		return decompress + " " + quoted
+	case len(stages) == 0:
+		return "cat " + quoted
+	case decompress != "":
+		return decompress + " " + quoted + " | " + strings.Join(stages, " | ") + " || true"
+	default:
+		// The first filter reads the file itself.
+		stages[0] += " " + quoted
+		return strings.Join(stages, " | ") + " || true"
+	}
+}
+
+// grepRemoteFile runs the pipeline over one remote file and sends the lines
+// it yields to lineCh.
+func (s *SSHSource) grepRemoteFile(ctx context.Context, file RotatedFile, pipe remotePipeline, lineCh chan<- string) error {
+	decompress := ""
+	if file.Compressed {
+		decompress = s.cfg.Decompress
+		if decompress == "" {
+			decompress = DecompressCommand(file.Path)
+		}
+		if decompress == "" {
+			return fmt.Errorf("no decompress command for %s", file.Path)
 		}
 	}
+	remoteCmd := pipe.command(file.Path, decompress)
 
 	log.Printf("SSH grep: host=%s file=%s cmd=%q", s.cfg.Host, file.Path, remoteCmd)
 

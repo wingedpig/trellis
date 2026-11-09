@@ -109,18 +109,29 @@ type viewerQuery struct {
 	before, after int
 }
 
-// fetchViewers reads several log viewers concurrently and merges the results
-// by timestamp. -n applies per viewer. Truncation notes go to stderr; a viewer
-// that fails is reported and skipped unless every viewer fails.
-func fetchViewers(names []string, q viewerQuery) ([]logs.LogEntry, error) {
-	if len(names) == 1 {
-		entries, note, err := fetchLogViewerEntries(names[0], q)
-		if note != "" {
-			fmt.Fprintln(os.Stderr, "Note: "+note)
-		}
-		return entries, err
-	}
+// partialResultError reports that a read returned something, but not
+// everything that was asked for: a viewer's history search stopped early
+// (timeout, a failed file), or one of several viewers failed outright. The
+// entries that did come back are still printed; the command then exits
+// non-zero with this error so a script can't mistake them for the full
+// answer.
+type partialResultError struct {
+	problems []string
+}
 
+func (e *partialResultError) Error() string {
+	if len(e.problems) == 1 {
+		return "incomplete results: " + e.problems[0]
+	}
+	return "incomplete results:\n  " + strings.Join(e.problems, "\n  ")
+}
+
+// fetchViewers reads several log viewers concurrently and merges the results
+// by timestamp. -n applies per viewer. Truncation notes go to stderr. When a
+// viewer fails or its history search stops early, the rest of the results
+// are still returned, together with a *partialResultError; when every viewer
+// fails outright, only an error is returned.
+func fetchViewers(names []string, q viewerQuery) ([]logs.LogEntry, error) {
 	type result struct {
 		entries []logs.LogEntry
 		note    string
@@ -142,13 +153,18 @@ func fetchViewers(names []string, q viewerQuery) ([]logs.LogEntry, error) {
 	wg.Wait()
 
 	var all []logs.LogEntry
+	var problems []string
 	failed := 0
 	var lastErr error
 	for i, r := range results {
-		if r.err != nil {
+		var partial *partialResultError
+		switch {
+		case errors.As(r.err, &partial):
+			problems = append(problems, partial.problems...)
+		case r.err != nil:
 			failed++
 			lastErr = r.err
-			fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", names[i], r.err)
+			problems = append(problems, fmt.Sprintf("%s: %v", names[i], r.err))
 			continue
 		}
 		if r.note != "" {
@@ -157,11 +173,21 @@ func fetchViewers(names []string, q viewerQuery) ([]logs.LogEntry, error) {
 		all = append(all, r.entries...)
 	}
 	if failed == len(names) {
-		return nil, lastErr
+		if failed == 1 {
+			return nil, lastErr
+		}
+		return nil, fmt.Errorf("every viewer failed:\n  %s", strings.Join(problems, "\n  "))
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].Timestamp.Before(all[j].Timestamp) })
+	if len(problems) > 0 {
+		return all, &partialResultError{problems: problems}
+	}
 	return all, nil
 }
+
+// historyTimeout is the server-side deadline for history reads; main sets it
+// from -timeout (default 5m for logs).
+var historyTimeout time.Duration
 
 // fetchLogViewerEntries reads one viewer: its history files when a start time
 // is given, plus its live buffer. note is non-empty when -n cut the result
@@ -184,17 +210,46 @@ func fetchLogViewerEntries(name string, q viewerQuery) (entries []logs.LogEntry,
 		if end.IsZero() {
 			end = time.Now()
 		}
-		hist, err := apiClient.Logs.GetHistoryEntries(ctx, name, &client.LogEntriesOptions{
+		hctx := ctx
+		if historyTimeout > 0 {
+			// The server stops at historyTimeout and says so; this is only a
+			// backstop against a server that never answers.
+			var cancel context.CancelFunc
+			hctx, cancel = context.WithTimeout(ctx, historyTimeout+time.Minute)
+			defer cancel()
+		}
+		hist, err := apiClient.Logs.GetHistoryEntries(hctx, name, &client.LogEntriesOptions{
 			Limit: limit, Since: q.since, Until: end,
 			Grep: q.grep, Before: q.before, After: q.after,
+			Timeout: historyTimeout,
 		})
 		switch {
 		case err != nil && isPatternError(err):
 			return nil, "", err
+		case err != nil && isHistoryUnsupported(err):
+			// Nothing to search but the live buffer.
+			fmt.Fprintf(os.Stderr, "Note: %s keeps no history files; searching its live buffer only\n", name)
 		case err != nil:
-			// History may be unavailable (no rotated files, unsupported
-			// source); fall back to the live buffer.
-			fmt.Fprintf(os.Stderr, "Warning: history not available for %s: %v\n", name, err)
+			// The history read stopped partway. What it returned is complete
+			// up to its last entry, so return that and stop: adding the live
+			// buffer would put its (newer) lines after a gap.
+			entries := dedupeLogEntries(convertClientLogEntries(hist))
+			sort.SliceStable(entries, func(i, j int) bool { return entries[i].Timestamp.Before(entries[j].Timestamp) })
+			hint := "narrow -since/-until"
+			if historyTimeout < 30*time.Minute {
+				hint = "raise -timeout (up to 30m) or " + hint
+			}
+			// Matches are complete only up to the last one found: the scan
+			// may have got further, but nothing says how far.
+			coverage := "No matches were found before it stopped"
+			if len(entries) > 0 {
+				coverage = fmt.Sprintf("The %d matches shown are complete up to %s; any after that are missing",
+					len(entries), entries[len(entries)-1].Timestamp.Local().Format("Jan 2 15:04:05.000"))
+			}
+			return entries, "", &partialResultError{problems: []string{fmt.Sprintf(
+				"%s: history search for %s – %s stopped early (%s). %s. To finish it, %s.",
+				name, q.since.Local().Format("Jan 2 15:04:05"), end.Local().Format("Jan 2 15:04:05"),
+				strings.TrimPrefix(err.Error(), "stream error: "), coverage, hint)}}
 		default:
 			if limit > 0 && len(hist) >= limit {
 				cutoff = hist[len(hist)-1].Timestamp
@@ -246,6 +301,13 @@ func fetchLogViewerEntries(name string, q viewerQuery) (entries []logs.LogEntry,
 		note = fmt.Sprintf("%s: stopped at the -n limit of %d matches; there may be more. Raise -n or add -since.", name, limit)
 	}
 	return all, note, nil
+}
+
+// isHistoryUnsupported reports whether the server said the viewer keeps no
+// history to search.
+func isHistoryUnsupported(err error) bool {
+	var apiErr *client.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == "HISTORY_UNSUPPORTED"
 }
 
 // isPatternError reports whether the server rejected the request itself —

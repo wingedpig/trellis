@@ -337,6 +337,17 @@ func (c *Client) stream(ctx context.Context, path, accept string) (*http.Respons
 	return resp, nil
 }
 
+// getUntimed performs a GET bounded only by ctx, not the HTTP client's
+// per-request Timeout — for reads whose deadline the server enforces itself.
+func (c *Client) getUntimed(ctx context.Context, path string) (json.RawMessage, error) {
+	resp, err := c.stream(ctx, path, "")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return c.parseResponse(resp)
+}
+
 // parseResponse reads and parses an API response.
 func (c *Client) parseResponse(resp *http.Response) (json.RawMessage, error) {
 	respBody, err := io.ReadAll(resp.Body)

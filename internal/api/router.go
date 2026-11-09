@@ -408,6 +408,8 @@ func NewRouterWithTerminalHandler(deps Dependencies, terminalHandler *handlers.T
 		api.HandleFunc("/logs", logHandler.List).Methods("GET")
 		// Registered before /logs/{name} so "bubbleup" isn't taken as a viewer name.
 		api.HandleFunc("/logs/bubbleup", logHandler.BubbleUp).Methods("GET")
+		api.HandleFunc("/logs/stats", logHandler.LogStats).Methods("GET")
+		api.HandleFunc("/logs/requests", logHandler.LogRequests).Methods("GET")
 		api.HandleFunc("/logs/{name}", logHandler.Get).Methods("GET")
 		api.HandleFunc("/logs/{name}/entries", logHandler.GetEntries).Methods("GET")
 		api.HandleFunc("/logs/{name}/history", logHandler.GetHistory).Methods("GET")

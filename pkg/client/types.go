@@ -582,6 +582,13 @@ type LogEntriesOptions struct {
 
 	// After specifies how many context lines to include after each grep match.
 	After int
+
+	// Timeout is the server-side deadline for a history read
+	// ([LogClient.GetHistoryEntries] only). Zero uses the server default
+	// (5m); the server caps it at 30m. When the deadline passes the server
+	// stops reading and GetHistoryEntries returns the entries found so far
+	// together with an error.
+	Timeout time.Duration
 }
 
 // BubbleUpOptions configures [LogClient.BubbleUp].
@@ -635,4 +642,112 @@ type BubbleUpResult struct {
 	Viewers []BubbleUpViewer `json:"viewers"`
 	Start   time.Time        `json:"start"`
 	End     time.Time        `json:"end"`
+}
+
+// LogStatsOptions configures [LogClient.Stats].
+type LogStatsOptions struct {
+	// Viewers lists the log viewers to read. Required.
+	Viewers []string
+	// Field is the numeric field to summarize (e.g. "duration"). Numbers and
+	// numeric strings are used as-is; duration strings ("1.5s") become
+	// milliseconds. Required.
+	Field string
+	// By groups the results by these fields' values.
+	By []string
+	// Where is a filter query restricting the entries counted.
+	Where string
+	// Grep is a regexp narrowing the lines read. On remote history it runs
+	// on the remote host, so it is much cheaper than Where.
+	Grep string
+	// Since and Until bound the time window (default: the last hour).
+	Since, Until time.Time
+	// Top caps the groups returned (default 50).
+	Top int
+	// Timeout is the server-side read deadline (default 5m, max 30m).
+	Timeout time.Duration
+}
+
+// LogStatsGroup is one group's summary of the field.
+type LogStatsGroup struct {
+	Key         []string `json:"key,omitempty"`
+	Count       int      `json:"count"`
+	Sum         float64  `json:"sum"`
+	Mean        float64  `json:"mean"`
+	Min         float64  `json:"min"`
+	Max         float64  `json:"max"`
+	P50         float64  `json:"p50"`
+	P90         float64  `json:"p90"`
+	P99         float64  `json:"p99"`
+	Approximate bool     `json:"approximate,omitempty"`
+}
+
+// LogStatsResult is the response from [LogClient.Stats].
+type LogStatsResult struct {
+	Result struct {
+		Field    string          `json:"field"`
+		By       []string        `json:"by,omitempty"`
+		Matched  int             `json:"matched"`
+		Missing  int             `json:"missing"`
+		Groups   []LogStatsGroup `json:"groups"`
+		Overflow bool            `json:"overflow,omitempty"`
+	} `json:"result"`
+	TotalGroups int              `json:"total_groups"`
+	Viewers     []BubbleUpViewer `json:"viewers"`
+	// Complete is false when a viewer's read stopped early (see
+	// Viewers[].Error); the numbers then cover only part of the window.
+	Complete bool      `json:"complete"`
+	Start    time.Time `json:"start"`
+	End      time.Time `json:"end"`
+}
+
+// LogRequestsOptions configures [LogClient.Requests].
+type LogRequestsOptions struct {
+	// Viewers lists the log viewers to read. Required.
+	Viewers []string
+	// IDField names the field holding the request ID; IDPattern instead
+	// extracts it from the raw line (first capture group). One is required.
+	IDField, IDPattern string
+	// StartMatch is a regexp matching a request's start line. Only requests
+	// whose start line falls in the window are reported. Required.
+	StartMatch string
+	// EndMatch optionally matches a request's end line.
+	EndMatch string
+	// Counts are "name=regexp" patterns counted over each request's lines.
+	Counts []string
+	// Since and Until bound the time window (default: the last hour).
+	Since, Until time.Time
+	// Limit caps the requests returned (default 1000); totals cover all.
+	Limit int
+	// Timeout is the server-side read deadline (default 5m, max 30m).
+	Timeout time.Duration
+}
+
+// LogRequestSummary is one request's summary.
+type LogRequestSummary struct {
+	ID          string                 `json:"id"`
+	Start       time.Time              `json:"start"`
+	End         *time.Time             `json:"end,omitempty"`
+	DurationMS  *float64               `json:"duration_ms,omitempty"`
+	StartMsg    string                 `json:"start_message,omitempty"`
+	EndMsg      string                 `json:"end_message,omitempty"`
+	StartFields map[string]interface{} `json:"start_fields,omitempty"`
+	EndFields   map[string]interface{} `json:"end_fields,omitempty"`
+	Lines       int                    `json:"lines"`
+	Counts      map[string]int         `json:"counts,omitempty"`
+	Sources     []string               `json:"sources,omitempty"`
+}
+
+// LogRequestsResult is the response from [LogClient.Requests].
+type LogRequestsResult struct {
+	Result struct {
+		Requests  []LogRequestSummary `json:"requests"`
+		Total     int                 `json:"total"`
+		WithEnd   int                 `json:"with_end"`
+		Counts    map[string]int      `json:"counts,omitempty"`
+		Truncated bool                `json:"truncated,omitempty"`
+	} `json:"result"`
+	Viewers  []BubbleUpViewer `json:"viewers"`
+	Complete bool             `json:"complete"`
+	Start    time.Time        `json:"start"`
+	End      time.Time        `json:"end"`
 }

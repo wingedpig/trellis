@@ -92,7 +92,7 @@ func cmdLogsBubbleUp(args []string) error {
 		return fmt.Errorf("invalid -since value: %w", err)
 	}
 	if until != "" {
-		if opts.Until, err = logs.ParseDuration(until); err != nil {
+		if opts.Until, err = logs.ParseUntil(until); err != nil {
 			return fmt.Errorf("invalid -until value: %w", err)
 		}
 	}

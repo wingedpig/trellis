@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -85,8 +86,10 @@ func main() {
 			os.Exit(1)
 		}
 		clientOpts = append(clientOpts, client.WithTimeout(d))
+		historyTimeout = d
 	} else if cmd == "logs" {
 		clientOpts = append(clientOpts, client.WithTimeout(5*time.Minute))
+		historyTimeout = 5 * time.Minute
 	} else if cmd == "task" {
 		clientOpts = append(clientOpts, client.WithTimeout(taskTimeout))
 	} else if cmd == "session" {
@@ -149,6 +152,83 @@ func main() {
 	}
 }
 
+// logsUsage documents the logs commands; printUsage includes it, and
+// "trellis-ctl logs -h" prints it alone.
+const logsUsage = `  logs <service> [options] Show logs for a service
+    -n N                   Number of lines (default: 100)
+    -f                     Stream logs in real-time
+    -since <time>          Show logs since (see time formats below)
+    -until <time>          Show logs until (default: now)
+    -level <levels>        Filter by level (error, warn,error, info+)
+    -grep <pattern>        Filter by regex (Go syntax, matched against the raw line);
+                           a pattern that can't be run is an error, not an empty result
+    -i                     Case-insensitive -grep
+    -B N                   Show N lines before each grep match
+    -A N                   Show N lines after each grep match
+    -C N                   Show N lines before and after each grep match
+    -field <key=value>     Filter by field value (can repeat)
+    -json                  Output as JSON array
+    -jsonl                 Output as JSON Lines
+    -csv                   Output as CSV
+    -raw                   Output original raw lines
+    -format <template>     Custom Go template format
+    -viewer <a,b>          Read log viewer(s) instead of a service (repeatable or
+                           comma-separated; results merged by time, -n per viewer)
+    -group <name>          Read every viewer in a trace group
+    -trace <id>            Find a trace ID's lines; without -since, searches the few
+                           minutes around the start time embedded in the ID
+    -list                  List available log viewers (also: logs list)
+    -stats                 Show log statistics
+    -clear                 Clear log buffer
+    -open                  Open in browser
+    -url                   Print browser URL
+
+  logs bubbleup -where <filter> (-viewer <name> | -group <trace group>) [options]
+                           Rank field values that differ between matching lines and the rest
+    -where <filter>        Selection, in log filter syntax (e.g. level:error, status:>=500)
+    -viewer <a,b>          Log viewer(s) to read (repeatable or comma-separated)
+    -group <name>          Read every viewer in a trace group
+    -baseline <filter>     Narrow the comparison set (default: all non-matching lines)
+    -since <duration>      Window start (default 1h)
+    -until <duration>      Window end (default now)
+    -fields <a,b>          Only analyze these fields
+    -exclude <a,b>         Skip these fields
+    -top <n>               Number of values to show (default 20)
+  logs stats -field <name> (-viewer <name> | -group <trace group>) [options]
+                           Count, mean, p50/p90/p99, min and max of a numeric field
+    -field <name>          Numeric field (duration strings like "1.5s" become ms)
+    -by <a,b>              Group by these fields
+    -where <filter>        Only count matching lines (log filter syntax)
+    -grep <pattern>        Only read lines matching this regex (fast: runs on the
+                           log host for remote history)
+    -since/-until          Window (default: the last hour)
+    -top <n>               Number of groups to show (default 50)
+
+  logs requests (-id-field <name> | -id-pattern <regex>) -start-match <regex>
+                (-viewer <name> | -group <trace group>) [options]
+                           One row per request whose start line matches: duration,
+                           start/end line fields, and per-pattern line counts
+    -id-field <name>       Field holding the request ID
+    -id-pattern <regex>    Or: regex extracting the ID from the line (first group)
+    -start-match <regex>   Matches a request's start line (e.g. 'STRT.*/api/')
+    -end-match <regex>     Matches its end line (e.g. 'END')
+    -count name=<regex>    Count the request's lines matching regex (repeatable)
+    -show <a,b>            Start/end line fields to show as columns (end line
+                           first; start.x or end.x picks a side)
+    -n <n>                 Requests to list (default 1000; totals cover all)
+    -since/-until          Window (default: the last hour)
+
+  Time formats: 1h, 30m, 2d (ago); 6:00am, 14:30 (today); 2025-01-10;
+    "2025-01-10 6:00am"; 2025-01-10T14:30:00Z; today, yesterday, now.
+    Times without an offset are local. A bare date as -until means the end of
+    that day.
+  Searches over history stop at the -timeout deadline (default 5m, max 30m):
+    the matches found so far are printed, and the command exits non-zero.`
+
+func printLogsUsage() {
+	fmt.Println("Usage:\n" + logsUsage)
+}
+
 func printUsage() {
 	fmt.Println(`trellis-ctl - Control a running Trellis instance
 
@@ -178,46 +258,7 @@ Commands:
   stop <service>           Stop a service
   restart <service>        Restart a service
 
-  logs <service> [options] Show logs for a service
-    -n N                   Number of lines (default: 100)
-    -f                     Stream logs in real-time
-    -since <duration>      Show logs since (e.g., 1h, 30m, 6:30am, 2024-01-15T10:00:00Z)
-    -until <duration>      Show logs until (e.g., 1h, 30m, 7:00am, 2024-01-15T11:00:00Z)
-    -level <levels>        Filter by level (error, warn,error, info+)
-    -grep <pattern>        Filter by regex (Go syntax, matched against the raw line);
-                           a pattern that can't be run is an error, not an empty result
-    -i                     Case-insensitive -grep
-    -B N                   Show N lines before each grep match
-    -A N                   Show N lines after each grep match
-    -C N                   Show N lines before and after each grep match
-    -field <key=value>     Filter by field value (can repeat)
-    -json                  Output as JSON array
-    -jsonl                 Output as JSON Lines
-    -csv                   Output as CSV
-    -raw                   Output original raw lines
-    -format <template>     Custom Go template format
-    -viewer <a,b>          Read log viewer(s) instead of a service (repeatable or
-                           comma-separated; results merged by time, -n per viewer)
-    -group <name>          Read every viewer in a trace group
-    -trace <id>            Find a trace ID's lines; without -since, searches the few
-                           minutes around the start time embedded in the ID
-    -list                  List available log viewers
-    -stats                 Show log statistics
-    -clear                 Clear log buffer
-    -open                  Open in browser
-    -url                   Print browser URL
-
-  logs bubbleup -where <filter> (-viewer <name> | -group <trace group>) [options]
-                           Rank field values that differ between matching lines and the rest
-    -where <filter>        Selection, in log filter syntax (e.g. level:error, status:>=500)
-    -viewer <a,b>          Log viewer(s) to read (repeatable or comma-separated)
-    -group <name>          Read every viewer in a trace group
-    -baseline <filter>     Narrow the comparison set (default: all non-matching lines)
-    -since <duration>      Window start (default 1h)
-    -until <duration>      Window end (default now)
-    -fields <a,b>          Only analyze these fields
-    -exclude <a,b>         Skip these fields
-    -top <n>               Number of values to show (default 20)
+` + logsUsage + `
 
   workflow list            List all workflows
   workflow run <id>        Run a workflow (waits for completion)
@@ -475,10 +516,13 @@ func parseLogsArgs(args []string) (*logsConfig, error) {
 			}
 			cfg.before = n
 			cfg.after = n
+		case arg == "-h" || arg == "-help" || arg == "--help":
+			return nil, errLogsHelp
 		case !strings.HasPrefix(arg, "-"):
-			if cfg.service == "" {
-				cfg.service = arg
+			if cfg.service != "" {
+				return nil, fmt.Errorf("unexpected argument %q (service already given as %q; flags start with -)", arg, cfg.service)
 			}
+			cfg.service = arg
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return nil, fmt.Errorf("unknown flag: %s", arg)
@@ -489,11 +533,30 @@ func parseLogsArgs(args []string) (*logsConfig, error) {
 	return cfg, nil
 }
 
-func cmdLogs(args []string) error {
-	if len(args) > 0 && args[0] == "bubbleup" {
-		return cmdLogsBubbleUp(args[1:])
+// errLogsHelp is returned by parseLogsArgs for -h/-help/--help.
+var errLogsHelp = errors.New("help requested")
+
+func cmdLogs(args []string) (retErr error) {
+	if len(args) > 0 {
+		switch args[0] {
+		case "bubbleup":
+			return cmdLogsBubbleUp(args[1:])
+		case "stats":
+			return cmdLogsStats(args[1:])
+		case "requests":
+			return cmdLogsRequests(args[1:])
+		case "list":
+			return cmdLogsListViewers()
+		case "help":
+			printLogsUsage()
+			return nil
+		}
 	}
 	cfg, err := parseLogsArgs(args)
+	if errors.Is(err, errLogsHelp) {
+		printLogsUsage()
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -610,7 +673,7 @@ func cmdLogs(args []string) error {
 	}
 
 	if cfg.until != "" {
-		until, err := logs.ParseDuration(cfg.until)
+		until, err := logs.ParseUntil(cfg.until)
 		if err != nil {
 			return fmt.Errorf("invalid --until value: %w", err)
 		}
@@ -674,6 +737,17 @@ func cmdLogs(args []string) error {
 		})
 	} else {
 		entries, err = fetchServiceLogs(name, cfg.lines)
+	}
+	// Partial results are printed, then reported as the command's error so
+	// it exits non-zero.
+	var partial *partialResultError
+	if errors.As(err, &partial) {
+		err = nil
+		defer func() {
+			if retErr == nil {
+				retErr = partial
+			}
+		}()
 	}
 	if err != nil {
 		return err
@@ -1576,7 +1650,7 @@ func cmdTrace(args []string) error {
 	}
 
 	if cfg.until != "" {
-		until, err = logs.ParseDuration(cfg.until)
+		until, err = logs.ParseUntil(cfg.until)
 		if err != nil {
 			return fmt.Errorf("invalid --until value: %w", err)
 		}

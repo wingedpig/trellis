@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -120,7 +121,7 @@ func (h *LogHandler) BubbleUp(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	for i, v := range viewers {
 		wg.Go(func() {
-			summaries[i] = bubbleUpRead(ctx, v, start, end, add)
+			summaries[i] = bubbleUpRead(ctx, v, start, end, nil, timeout, add)
 		})
 	}
 	wg.Wait()
@@ -135,28 +136,47 @@ func (h *LogHandler) BubbleUp(w http.ResponseWriter, r *http.Request) {
 
 // bubbleUpRead feeds one viewer's entries for [start, end] into add. It reads
 // history (rotated files plus the current file) and falls back to the
-// in-memory buffer for sources without historical access.
-func bubbleUpRead(ctx context.Context, v *logs.Viewer, start, end time.Time, add func(logs.LogEntry)) bubbleUpViewer {
+// in-memory buffer for sources without historical access. grep, when set,
+// narrows the read to matching lines (and lets a remote source drop the rest
+// before they cross the network).
+func bubbleUpRead(ctx context.Context, v *logs.Viewer, start, end time.Time, grep *regexp.Regexp, timeout time.Duration, add func(logs.LogEntry)) bubbleUpViewer {
 	s := bubbleUpViewer{Name: v.Name(), Source: "history"}
-	err := v.StreamHistoricalEntries(ctx, start, end, nil, 0, "", 0, 0, func(e logs.LogEntry) error {
-		s.Lines++
-		add(e)
-		return nil
-	})
-	if s.Lines > 0 || ctx.Err() != nil {
-		if err != nil {
-			// Partial read: keep what we counted, but say so.
-			s.Error = err.Error()
+	pattern := ""
+	if grep != nil {
+		pattern = grep.String()
+	}
+	var err error
+	if v.SupportsHistory() {
+		err = v.StreamHistoricalEntries(ctx, start, end, nil, 0, pattern, 0, 0, func(e logs.LogEntry) error {
+			s.Lines++
+			add(e)
+			return nil
+		})
+		if s.Lines > 0 || ctx.Err() != nil || (err != nil && grep != nil) {
+			if err != nil {
+				// Partial read: keep what we counted, but say so.
+				s.Error = historyErrorMessage(err, timeout)
+			}
+			return s
 		}
-		return s
 	}
 	// Nothing from history — either the source has no historical access
-	// (error) or none configured (e.g. a file source without "current"
-	// returns no lines and no error). The live buffer is the best we have.
+	// or none configured (e.g. a file source without "current" returns no
+	// lines and no error). The live buffer is the best we have.
 	s.Source = "buffer"
 	for _, e := range v.GetEntriesRange(start, end, 0) {
+		if grep != nil && !grep.MatchString(lineOf(e)) {
+			continue
+		}
 		s.Lines++
 		add(e)
 	}
 	return s
+}
+
+func lineOf(e logs.LogEntry) string {
+	if e.Raw != "" {
+		return e.Raw
+	}
+	return e.Message
 }

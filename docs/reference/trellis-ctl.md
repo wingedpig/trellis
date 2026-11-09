@@ -121,7 +121,8 @@ trellis-ctl logs <service> -f           # Follow mode
 trellis-ctl logs -viewer <name>         # View log viewer
 trellis-ctl logs -viewer karld01-logs,karld02-logs -grep 'tal01@ca\.org' -since 30h
 trellis-ctl logs -group web -grep '(?i)tal01@ca\.org' -since 30h   # every viewer in a trace group
-trellis-ctl logs -list                  # List available viewers
+trellis-ctl logs list                   # List available viewers (also -list)
+trellis-ctl logs -h                     # Help for the logs commands
 
 # Look up a trace ID (searches the minutes around the time embedded in the ID)
 trellis-ctl logs -group web -trace web.app01-g2.837569.1793982657140344307
@@ -131,6 +132,9 @@ trellis-ctl logs <service> -since 1h
 trellis-ctl logs <service> -since 30m
 trellis-ctl logs <service> -since 6:30am
 trellis-ctl logs <service> -since 6:00am -until 7:00am
+trellis-ctl logs <service> -since "2026-11-08 6:00am" -until "2026-11-08 7:30am"
+trellis-ctl logs <service> -since 2026-11-08 -until 2026-11-08   # the whole day
+trellis-ctl logs <service> -since yesterday -until today
 
 # Level filtering
 trellis-ctl logs <service> -level error
@@ -176,10 +180,89 @@ cuts it off, a note on stderr says so and where the results end, e.g.
 `Note: karld01-logs: stopped at the -n limit of 300 matches; results end at
 Nov 5 14:02:11.120, so matches between then and now are not shown.`
 
+Times accept `1h`/`30m`/`2d` (ago), `6:00am`/`14:30` (today),
+`2026-11-08`, `"2026-11-08 6:00am"`, `2026-11-08T14:30:00Z`, and `today`,
+`yesterday`, `now`. A time without an offset is local. A bare date (or
+`today`/`yesterday`) as `-until` means the end of that day.
+
+A history search that doesn't finish in time fails loudly: the matches found
+before the deadline are printed, followed by an error saying how far the
+results reach, and the command exits non-zero. The deadline is the global
+`-timeout` (default 5m for `logs`, up to 30m). With several viewers, one that
+fails or stops early is reported the same way while the others' results are
+still printed.
+
 `-trace <id>` searches for the ID literally. If the ID embeds its request's
 start time (a Unix timestamp in s/ms/µs/ns as one of its components, or a
 UUIDv7), the window defaults to one minute before to five minutes after that
 time, rather than scanning hours of logs. Pass `-since`/`-until` to override.
+
+#### Stats: percentiles of a numeric field
+
+`logs stats` summarizes a numeric field — count, mean, p50/p90/p99, min, max —
+grouped by other fields, computed in Trellis instead of shipping every line to
+the client.
+
+```bash
+trellis-ctl logs stats -field duration -by route -group web -since 1h
+trellis-ctl logs stats -field duration -by route,status -grep END -viewer web01-logs -since "2026-11-08 6:00am" -until "2026-11-08 7:00am"
+trellis-ctl -json logs stats -field upstream_ms -where 'status:>=500' -viewer nginx-access01-logs
+```
+
+```
+Field: duration   Matched: 48211 lines (0 without a numeric duration)   Window: Nov 8 06:00:00 – Nov 8 07:00:00
+
+ ROUTE  COUNT    MEAN  P50  P90   P99  MIN    MAX
+/api/a  30112  41.213   22   80   410    1   9120
+/api/b  18099  12.07     9   20    61    1    804
+```
+
+| Flag | Description |
+|------|-------------|
+| `-field <name>` | Numeric field. Numeric strings count; duration strings (`"1.5s"`) become milliseconds. Required. |
+| `-by <a,b>` | Group by these fields' values |
+| `-where <filter>` | Only count matching lines (log filter syntax) |
+| `-grep <regex>` | Only read matching lines. On SSH history this runs on the log host, so prefer it to `-where` for narrowing. |
+| `-viewer`, `-group`, `-since`, `-until` | As for bubbleup (default window: the last hour) |
+| `-top <n>` | Groups shown (default 50) |
+
+#### Requests: one row per request
+
+`logs requests` groups lines by request ID and reports, for every request whose
+start line matches, its duration, chosen fields from its start and end lines,
+and how many of its lines match each named pattern.
+
+```bash
+trellis-ctl logs requests -id-field trace_id -start-match 'STRT.*/api/v1/post' -end-match 'END' \
+    -count sql=SELECT -count retry='(?i)retry' -show status,user -group web -since 1h
+trellis-ctl logs requests -id-pattern 'rid=(\S+)' -start-match STRT -viewer web01-logs -since 30m
+trellis-ctl -json logs requests -id-field trace_id -start-match STRT -end-match END -group web
+```
+
+```
+START                   ID                                       DURATION  STATUS  USER  SQL  RETRY
+Nov 8 06:00:01.120      web.app01-g2.837569.1793982657140344307  412ms     200     u1    14   0
+Nov 8 06:00:01.981      web.app02-g2.12001.1793982657981002211   88ms      200     u7    3    0
+
+2 requests started in Nov 8 06:00:00 – Nov 8 07:00:00, 2 with an end line
+Totals: retry=0 sql=17
+```
+
+| Flag | Description |
+|------|-------------|
+| `-id-field <name>` | Field holding the request ID |
+| `-id-pattern <regex>` | Or: extract the ID from the raw line (first capture group) |
+| `-start-match <regex>` | Matches a request's start line. Required; only requests that start in the window are reported. |
+| `-end-match <regex>` | Matches its end line; gives the duration and end fields |
+| `-count name=<regex>` | Count the request's lines that match (repeatable) |
+| `-show <a,b>` | Fields shown as columns, from the end line if it has them, else the start line (`start.x`/`end.x` pick one) |
+| `-n <n>` | Requests listed (default 1000); totals always cover all |
+
+Only lines matching one of the patterns are read, so on SSH history the
+filtering happens on the log host. Use `-json` for every start/end field.
+
+`stats` and `requests` exit non-zero when a viewer's read stopped early,
+after printing what they computed.
 
 #### BubbleUp: what's different about these lines?
 

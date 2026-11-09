@@ -88,7 +88,7 @@ func TestParseDuration(t *testing.T) {
 			name:  "timestamp without timezone",
 			input: "2024-01-15T10:30:00",
 			checkFunc: func(t *testing.T, result time.Time) {
-				expected := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+				expected := time.Date(2024, 1, 15, 10, 30, 0, 0, time.Local)
 				if !result.Equal(expected) {
 					t.Errorf("expected %v, got %v", expected, result)
 				}
@@ -98,7 +98,7 @@ func TestParseDuration(t *testing.T) {
 			name:  "date only",
 			input: "2024-01-15",
 			checkFunc: func(t *testing.T, result time.Time) {
-				expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+				expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
 				if !result.Equal(expected) {
 					t.Errorf("expected %v, got %v", expected, result)
 				}
@@ -427,5 +427,51 @@ func TestLogLevelString(t *testing.T) {
 				t.Errorf("LogLevel(%d).String() = %q, want %q", tt.level, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseTimeBound(t *testing.T) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	endOf := func(d time.Time) time.Time { return d.AddDate(0, 0, 1).Add(-time.Nanosecond) }
+	tests := []struct {
+		in    string
+		isEnd bool
+		want  time.Time
+	}{
+		{"2026-11-08 6:00am", false, time.Date(2026, 11, 8, 6, 0, 0, 0, time.Local)},
+		{"2026-11-08 6am", false, time.Date(2026, 11, 8, 6, 0, 0, 0, time.Local)},
+		{"2026-11-08 6:30 PM", false, time.Date(2026, 11, 8, 18, 30, 0, 0, time.Local)},
+		{"2026-11-08 14:30", false, time.Date(2026, 11, 8, 14, 30, 0, 0, time.Local)},
+		{"2026-11-08 14:30:15", false, time.Date(2026, 11, 8, 14, 30, 15, 0, time.Local)},
+		{"2026-11-08T14:30", false, time.Date(2026, 11, 8, 14, 30, 0, 0, time.Local)},
+		{"2026-11-08 14:30:00-08:00", false, time.Date(2026, 11, 8, 22, 30, 0, 0, time.UTC)},
+		{"2026-11-08", false, time.Date(2026, 11, 8, 0, 0, 0, 0, time.Local)},
+		{"2026-11-08", true, endOf(time.Date(2026, 11, 8, 0, 0, 0, 0, time.Local))},
+		{"today", false, today},
+		{"today", true, endOf(today)},
+		{"yesterday", false, today.AddDate(0, 0, -1)},
+		{"6am", false, today.Add(6 * time.Hour)},
+		{"12:00am", false, today},
+		{"12:00pm", false, today.Add(12 * time.Hour)},
+		{"6:00am", true, today.Add(6 * time.Hour)},
+	}
+	for _, tt := range tests {
+		got, err := ParseTimeBound(tt.in, tt.isEnd)
+		if err != nil {
+			t.Errorf("ParseTimeBound(%q, %v): %v", tt.in, tt.isEnd, err)
+			continue
+		}
+		if !got.Equal(tt.want) {
+			t.Errorf("ParseTimeBound(%q, %v) = %v, want %v", tt.in, tt.isEnd, got, tt.want)
+		}
+	}
+	if got, err := ParseTimeBound("now", false); err != nil || now.Sub(got) > time.Second || got.Sub(now) > time.Second {
+		t.Errorf("now = %v, %v", got, err)
+	}
+	for _, bad := range []string{"13:00pm", "25:00", "6:61am", "2026-11-08 nonsense", "tomorrowish"} {
+		if _, err := ParseTimeBound(bad, false); err == nil {
+			t.Errorf("ParseTimeBound(%q) succeeded, want error", bad)
+		}
 	}
 }

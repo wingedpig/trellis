@@ -109,7 +109,9 @@ func (s *CommandSource) ListRotatedFiles(ctx context.Context) ([]RotatedFile, er
 
 // ReadRange reads log lines from a time range.
 // Command sources don't support historical access.
-func (s *CommandSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
-	return fmt.Errorf("command source does not support historical access")
-}
+// SupportsHistory reports that a command source has no history to read.
+func (s *CommandSource) SupportsHistory() bool { return false }
 
+func (s *CommandSource) ReadRange(ctx context.Context, start, end time.Time, lineCh chan<- string, grep string, grepBefore, grepAfter int) error {
+	return fmt.Errorf("command source: %w", ErrHistoryUnsupported)
+}
