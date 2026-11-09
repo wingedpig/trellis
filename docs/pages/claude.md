@@ -140,6 +140,8 @@ Model-only changes with the same effort switch live. Changing or clearing an eff
 
 **Opus** uses Claude Code's `opus` alias, which selects **Opus 5.5** on the Anthropic API with Claude Code **2.1.280 or later**. The alias follows your provider's recommended version and honors any model overrides in your Claude Code configuration. See [Claude Code's model configuration](https://code.claude.com/docs/en/model-config) for provider mappings.
 
+**Fable** uses Claude Code's `fable` alias, which selects **Fable 5.2** on the Anthropic API. Fable 5.2 is billed at $8 / $40 per million input/output tokens, below Fable 5.1's $10 / $50; the [Usage page](/docs/pages/usage/) prices each Fable version at its own rate.
+
 Two things to know:
 
 - **Default** means no model or effort override: the session uses your Claude Code settings. New sessions start on Default unless `agent.claude` in `trellis.hjson` sets a starting model and effort (see [config reference](/docs/reference/config/#agent)); the Codex page's equivalent is `agent.codex`.

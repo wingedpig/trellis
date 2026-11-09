@@ -132,6 +132,8 @@ func TestPricingFallbacks(t *testing.T) {
 		in    float64
 	}{
 		{"claude-fable-5", 10},
+		{"claude-fable-5-2", 8},
+		{"claude-mythos-5-2", 8},
 		{"claude-opus-4-8", 5},
 		{"claude-opus-4-1", 15},
 		{"claude-sonnet-4-6", 3},
@@ -163,6 +165,16 @@ func TestCostForSeptemberModels(t *testing.T) {
 			name:  "opus 5.5 input output and both cache write durations",
 			entry: Entry{Model: "claude-opus-5-5", Input: 1000, Output: 1000, CacheRead: 1000, Cache5m: 1000, Cache1h: 1000},
 			want:  0.0372, // $4 input + $20 output + $0.20 read + $5/$8 writes per MTok
+		},
+		{
+			name:  "fable 5.2 input output and both cache write durations",
+			entry: Entry{Model: "claude-fable-5-2", Input: 1000, Output: 1000, CacheRead: 1000, Cache5m: 1000, Cache1h: 1000},
+			want:  0.0742, // $8 input + $40 output + $0.20 read + $10/$16 writes per MTok
+		},
+		{
+			name:  "fable 5.1 historical pricing",
+			entry: Entry{Model: "claude-fable-5-1", Input: 1000, Output: 1000, CacheRead: 1000, Cache5m: 1000, Cache1h: 1000},
+			want:  0.0935,
 		},
 		{
 			name:  "opus 5 historical pricing",

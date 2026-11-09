@@ -24,7 +24,9 @@ var pricingTable = []struct {
 	p      modelPricing
 }{
 	// Anthropic (Claude Code)
-	{"fable", modelPricing{10, 0, 50}},
+	{"fable-5-2", modelPricing{8, 0.2, 40}}, // cache reads are 0.025× input
+	{"mythos-5-2", modelPricing{8, 0.2, 40}},
+	{"fable", modelPricing{10, 0, 50}}, // Fable 5 and 5.1
 	{"mythos", modelPricing{10, 0, 50}},
 	{"opus-5-5", modelPricing{4, 0.2, 20}}, // cache reads are 0.05× input
 	{"opus-4-1", modelPricing{15, 0, 75}},
