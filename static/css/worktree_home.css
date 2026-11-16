@@ -36,7 +36,24 @@
     .worktree-home .list-group-item > a:first-child {
         flex: 1 1 100%;
         min-width: 0;
+        /* Whole title line is the tap target; give it some height. */
+        padding: 0.15rem 0;
     }
+    /* Row actions cluster at the end of their own line instead of being
+       spread across it by justify-content-between. */
+    .worktree-home .section .list-group-item.d-flex.justify-content-between {
+        justify-content: flex-end !important;
+    }
+    /* Section header actions: a wrapping row with even spacing. */
+    .worktree-home .section > .d-flex.justify-content-between > div:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+    .worktree-home .section > .d-flex.justify-content-between > div:last-child .btn {
+        margin-right: 0 !important;
+    }
+    .worktree-home .section h4 { margin-bottom: 0; }
     .worktree-home .list-group-item .btn {
         padding: 0.25rem 0.5rem;
         font-size: 0.8rem;

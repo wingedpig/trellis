@@ -95,8 +95,8 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 //line views/worktree_home.qtpl:41
 	qw422016.E().S(p.WorktreeName)
 //line views/worktree_home.qtpl:41
-	qw422016.N().S(`/archived-cases" class="btn btn-outline-secondary btn-sm me-1">
-                    <i class="fa-solid fa-box-archive"></i> Archived cases
+	qw422016.N().S(`/archived-cases" class="btn btn-outline-secondary btn-sm me-1" title="Archived cases">
+                    <i class="fa-solid fa-box-archive"></i> <span class="btn-label">Archived cases</span>
                 </a>
                 `)
 //line views/worktree_home.qtpl:44
@@ -196,14 +196,14 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 //line views/worktree_home.qtpl:82
 	qw422016.E().S(p.WorktreeName)
 //line views/worktree_home.qtpl:82
-	qw422016.N().S(`" class="btn btn-outline-secondary btn-sm me-1">
-                    <i class="fa-solid fa-box-archive"></i> Archived
+	qw422016.N().S(`" class="btn btn-outline-secondary btn-sm me-1" title="Archived sessions">
+                    <i class="fa-solid fa-box-archive"></i> <span class="btn-label">Archived</span>
                 </a>
-                <button class="btn btn-outline-secondary btn-sm me-1" id="showTrashBtn" onclick="toggleTrashedSessions()">
-                    <i class="fa-solid fa-trash-can"></i> Show Trash
+                <button class="btn btn-outline-secondary btn-sm me-1" id="showTrashBtn" title="Show trash" onclick="toggleTrashedSessions()">
+                    <i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>
                 </button>
-                <button class="btn btn-outline-secondary btn-sm me-1" onclick="showImportTranscriptModal()">
-                    <i class="fa-solid fa-file-import"></i> Import Transcript
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Import transcript" onclick="showImportTranscriptModal()">
+                    <i class="fa-solid fa-file-import"></i> <span class="btn-label">Import Transcript</span>
                 </button>
                 <button class="btn btn-primary btn-sm" onclick="showNewClaudeModal()">
                     <i class="fa-solid fa-plus"></i> New Session
@@ -326,11 +326,11 @@ func (p *WorktreeHomePage) StreamRender(qw422016 *qt422016.Writer) {
 //line views/worktree_home.qtpl:140
 	qw422016.E().S(p.WorktreeName)
 //line views/worktree_home.qtpl:140
-	qw422016.N().S(`" class="btn btn-outline-secondary btn-sm me-1">
-                    <i class="fa-solid fa-box-archive"></i> Archived
+	qw422016.N().S(`" class="btn btn-outline-secondary btn-sm me-1" title="Archived sessions">
+                    <i class="fa-solid fa-box-archive"></i> <span class="btn-label">Archived</span>
                 </a>
-                <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" onclick="toggleTrashedCodexSessions()">
-                    <i class="fa-solid fa-trash-can"></i> Show Trash
+                <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" title="Show trash" onclick="toggleTrashedCodexSessions()">
+                    <i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>
                 </button>
                 <button class="btn btn-primary btn-sm" onclick="showNewCodexModal()">
                     <i class="fa-solid fa-plus"></i> New Session
@@ -972,7 +972,7 @@ function toggleTrashedCodexSessions() {
     const btn = document.getElementById('showCodexTrashBtn');
     if (codexTrashedVisible) {
         container.style.display = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Show Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>';
         codexTrashedVisible = false;
         return;
     }
@@ -1006,7 +1006,7 @@ function toggleTrashedCodexSessions() {
             });
         }
         container.style.display = 'block';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Hide Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Hide Trash</span>';
         codexTrashedVisible = true;
     })
     .catch(err => alert('Failed to load trashed sessions: ' + err));
@@ -1075,7 +1075,7 @@ function toggleTrashedSessions() {
     const btn = document.getElementById('showTrashBtn');
     if (trashedVisible) {
         container.style.display = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Show Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>';
         trashedVisible = false;
         return;
     }
@@ -1109,7 +1109,7 @@ function toggleTrashedSessions() {
             });
         }
         container.style.display = 'block';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Hide Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Hide Trash</span>';
         trashedVisible = true;
     })
     .catch(err => alert('Failed to load trashed sessions: ' + err));

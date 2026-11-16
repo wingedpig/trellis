@@ -65,7 +65,7 @@ func (p *EventsPage) StreamRender(qw422016 *qt422016.Writer) {
 //line views/events.qtpl:31
 		qw422016.N().S(`
         <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0">
+            <table class="table table-dark table-hover mb-0 table-stack">
                 <thead>
                     <tr>
                         <th style="width: 180px;">Time</th>
@@ -119,7 +119,7 @@ func (p *EventsPage) StreamRender(qw422016 *qt422016.Writer) {
 			qw422016.E().S(evt.Worktree)
 //line views/events.qtpl:63
 			qw422016.N().S(`</td>
-                        <td>
+                        <td class="stack-full">
                             `)
 //line views/events.qtpl:65
 			if evt.Payload != nil {

@@ -20,19 +20,19 @@ type ServiceDetailPage struct {
     <div>
         {% code state := p.Status.State.String() %}
         {% if state == "running" %}
-        <button class="btn btn-outline-secondary" onclick="serviceAction('stop')">
-            <i class="fa-solid fa-stop"></i> Stop
+        <button class="btn btn-outline-secondary" title="Stop" onclick="serviceAction('stop')">
+            <i class="fa-solid fa-stop"></i> <span class="btn-label">Stop</span>
         </button>
-        <button class="btn btn-outline-secondary" onclick="serviceAction('restart')">
-            <i class="fa-solid fa-rotate"></i> Restart
+        <button class="btn btn-outline-secondary" title="Restart" onclick="serviceAction('restart')">
+            <i class="fa-solid fa-rotate"></i> <span class="btn-label">Restart</span>
         </button>
         {% else %}
         <button class="btn btn-primary" onclick="serviceAction('start')">
             <i class="fa-solid fa-play"></i> Start
         </button>
         {% endif %}
-        <a href="/" class="btn btn-outline-secondary">
-            <i class="fa-solid fa-arrow-left"></i> Back
+        <a href="/" class="btn btn-outline-secondary" title="Back">
+            <i class="fa-solid fa-arrow-left"></i> <span class="btn-label">Back</span>
         </a>
     </div>
 </div>
@@ -66,7 +66,7 @@ type ServiceDetailPage struct {
                 </button>
             </div>
             <div class="card-body p-0">
-                <pre class="m-0" style="max-height: 500px; overflow-y: auto;"><code>{% for _, line := range p.Logs %}{%s line %}
+                <pre class="m-0 service-detail-log" style="max-height: 500px; overflow-y: auto;"><code>{% for _, line := range p.Logs %}{%s line %}
 {% endfor %}</code></pre>
             </div>
         </div>

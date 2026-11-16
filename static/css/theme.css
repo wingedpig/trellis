@@ -522,6 +522,24 @@ kbd {
     .hero h1, .hero h2 { font-size: 1.5rem; }
     .hero .btn-lg { font-size: 0.95rem; padding: 0.4rem 0.75rem; }
 
+    /* Bootstrap rows use negative margins equal to half the gutter; with the
+       tighter container padding above, the default 1.5rem gutter makes rows
+       stick out 4px past the screen edge. Match the gutter to the padding. */
+    .page-container .row { --bs-gutter-x: 1rem; }
+
+    /* Tables marked .table-stack become one stacked block per row: short
+       cells flow inline on the first line, .stack-full cells get their own
+       line. Column widths meant for desktop no longer squeeze the content. */
+    .table-stack thead { display: none; }
+    .table-stack, .table-stack tbody, .table-stack tr { display: block; width: 100%; }
+    .table-stack tr { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--trellis-card-border); }
+    .table-stack td { display: inline-block; border: 0; padding: 0 0.5rem 0 0; vertical-align: middle; }
+    .table-stack td.stack-full { display: block; padding-top: 0.25rem; word-break: break-word; }
+
+    /* Service detail log: wrap long lines instead of scrolling sideways. */
+    pre.service-detail-log { white-space: pre-wrap; word-break: break-all; font-size: 0.75rem; }
+    pre.service-detail-log code { background: none; padding: 0; white-space: inherit; }
+
     /* Form inputs: 16px prevents iOS from auto-zooming on focus. */
     input[type="text"], input[type="search"], input[type="email"],
     input[type="url"], input[type="number"], textarea, select {
@@ -530,14 +548,32 @@ kbd {
 }
 
 @media (max-width: 575.98px) {
+    /* Secondary buttons that carry an icon plus a <span class="btn-label">
+       collapse to icon-only on phones (the button keeps a title). */
+    .btn .btn-label { display: none; }
+
     /* Below phone-landscape: shrink navbar brand image a touch. */
     .navbar-brand img { height: 36px !important; }
     .navbar-text { font-size: 0.85rem; }
     h2 { font-size: 1.35rem; }
     h4 { font-size: 1.05rem; }
     /* Generic header-with-button rows wrap instead of squishing the button. */
-    .d-flex.justify-content-between.align-items-center.mb-3 {
+    .d-flex.justify-content-between.align-items-center.mb-3,
+    .d-flex.justify-content-between.align-items-center.mb-4 {
         flex-wrap: wrap;
         gap: 0.5rem;
     }
+}
+
+/* Accordions (e.g. Status page): Bootstrap's defaults are light-only, so the
+   open section's header rendered as a pale blue bar in dark mode. */
+[data-theme="dark"] .accordion {
+    --bs-accordion-bg: var(--trellis-card-bg);
+    --bs-accordion-color: var(--bs-body-color);
+    --bs-accordion-border-color: var(--trellis-card-border);
+    --bs-accordion-btn-color: var(--bs-body-color);
+    --bs-accordion-active-bg: rgba(var(--bs-primary-rgb), 0.15);
+    --bs-accordion-active-color: var(--bs-body-color);
+    --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23adb5bd' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M2 5L8 11L14 5'/%3e%3c/svg%3e");
+    --bs-accordion-btn-active-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23dee2e6' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M2 5L8 11L14 5'/%3e%3c/svg%3e");
 }

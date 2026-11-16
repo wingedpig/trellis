@@ -60,11 +60,11 @@ func (p *ServiceDetailPage) StreamRender(qw422016 *qt422016.Writer) {
 	if state == "running" {
 //line views/services.qtpl:22
 		qw422016.N().S(`
-        <button class="btn btn-outline-secondary" onclick="serviceAction('stop')">
-            <i class="fa-solid fa-stop"></i> Stop
+        <button class="btn btn-outline-secondary" title="Stop" onclick="serviceAction('stop')">
+            <i class="fa-solid fa-stop"></i> <span class="btn-label">Stop</span>
         </button>
-        <button class="btn btn-outline-secondary" onclick="serviceAction('restart')">
-            <i class="fa-solid fa-rotate"></i> Restart
+        <button class="btn btn-outline-secondary" title="Restart" onclick="serviceAction('restart')">
+            <i class="fa-solid fa-rotate"></i> <span class="btn-label">Restart</span>
         </button>
         `)
 //line views/services.qtpl:29
@@ -79,8 +79,8 @@ func (p *ServiceDetailPage) StreamRender(qw422016 *qt422016.Writer) {
 	}
 //line views/services.qtpl:33
 	qw422016.N().S(`
-        <a href="/" class="btn btn-outline-secondary">
-            <i class="fa-solid fa-arrow-left"></i> Back
+        <a href="/" class="btn btn-outline-secondary" title="Back">
+            <i class="fa-solid fa-arrow-left"></i> <span class="btn-label">Back</span>
         </a>
     </div>
 </div>
@@ -162,7 +162,7 @@ func (p *ServiceDetailPage) StreamRender(qw422016 *qt422016.Writer) {
                 </button>
             </div>
             <div class="card-body p-0">
-                <pre class="m-0" style="max-height: 500px; overflow-y: auto;"><code>`)
+                <pre class="m-0 service-detail-log" style="max-height: 500px; overflow-y: auto;"><code>`)
 //line views/services.qtpl:69
 	for _, line := range p.Logs {
 //line views/services.qtpl:69

@@ -1240,4 +1240,40 @@ pre:hover .codex-code-copy {
     .codex-empty { padding: 1rem; }
     .codex-tool-body pre,
     .codex-bubble-assistant pre { font-size: 0.75rem; }
+
+    /* Bubbles use the full row. On desktop the copy/fork buttons sit beside
+       the bubble (and the 85% cap leaves room for them); on a phone that
+       reserved gutter costs a quarter of the screen, so the buttons drop to
+       their own line under the bubble instead. The zero-height ::after
+       spans the whole row, forcing the line break; order puts the buttons
+       after it whether they precede (user) or follow (assistant) the bubble
+       in the DOM. */
+    .codex-message { flex-wrap: wrap; row-gap: 0; }
+    .codex-message::after { content: ''; order: 1; flex-basis: 100%; height: 0; }
+    .codex-bubble { order: 0; max-width: 100%; }
+    .codex-bubble-user { max-width: 88%; }
+    .codex-message-copy,
+    .codex-message-fork { order: 2; margin-top: 0.15rem; padding: 0.25rem 0.6rem; }
+
+    /* Wide markdown tables scroll inside the bubble instead of spilling
+       past its edge. */
+    .codex-bubble-assistant table {
+        display: block;
+        width: max-content;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    .codex-bubble-assistant h1,
+    .codex-bubble-assistant h2 { font-size: 1.3rem; margin: 0.75rem 0 0.5rem; }
+    .codex-bubble-assistant h3 { font-size: 1.1rem; margin: 0.6rem 0 0.4rem; }
+    .codex-bubble-assistant ul,
+    .codex-bubble-assistant ol { padding-left: 1.1rem; }
+}
+
+/* Touch screens have no hover, so controls that only appear on hover would
+   be unreachable. Keep them faintly visible instead. */
+@media (hover: none) {
+    .codex-message .codex-message-copy,
+    .codex-message .codex-message-fork { opacity: 0.55; }
+    .codex-code-copy { opacity: 0.8; }
 }

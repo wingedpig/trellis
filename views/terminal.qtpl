@@ -836,6 +836,61 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     }
     /* Shared "Commands & Shortcuts" dialog styling lives in
        /static/css/shortcut_help.css. */
+
+    /* ===== Phones ===== */
+    @media (max-width: 767.98px) {
+        /* Service and log viewer headers: name + status on the first line
+           with the controls, filter bar on its own full-width line below,
+           instead of one row that runs off the right edge. */
+        .service-header,
+        .logviewer-header {
+            flex-wrap: wrap;
+            gap: 6px 8px;
+            padding: 8px 10px;
+        }
+        .service-header-left,
+        .logviewer-header-left {
+            flex: 1 1 auto;
+            min-width: 0;
+            gap: 6px;
+        }
+        .service-header .service-name,
+        .logviewer-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .service-header .service-status,
+        .logviewer-connection-status { flex-shrink: 0; }
+        .service-header-center,
+        .logviewer-header-center {
+            order: 3;
+            flex: 1 1 100%;
+        }
+        .logviewer-filter-bar { min-width: 0; width: 100%; }
+        .logviewer-filter-bar input { font-size: 16px; } /* no iOS zoom */
+        .service-header .service-controls,
+        .logviewer-header-right {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 4px;
+        }
+        .logviewer-mode-btn { padding: 4px 8px; }
+        #service-log,
+        #service-log-table { font-size: 11px; }
+        /* The 400px side panel would cover the whole screen and then some;
+           present entry details as a bottom sheet instead. */
+        .logviewer-expanded {
+            top: auto;
+            left: 0;
+            width: auto;
+            max-height: 65%;
+            border-left: none;
+            border-top: 1px solid var(--trellis-input-border);
+            box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
+        }
+    }
 </style>
 
 <div id="terminal-wrapper">
@@ -850,7 +905,7 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
     <div class="workflow-header d-flex justify-content-between align-items-center mb-2">
         <span id="workflow-title"><i class="fa-solid fa-bolt"></i> Workflow Output</span>
         <button class="btn btn-sm btn-outline-secondary" onclick="showTerminal()" title="Back to terminal (Cmd/Ctrl+Backspace)">
-            <i class="fa-solid fa-xmark"></i> Close
+            <i class="fa-solid fa-xmark"></i> <span class="btn-label">Close</span>
         </button>
     </div>
     <pre id="workflow-output"><code></code></pre>
@@ -882,16 +937,16 @@ func (p *TerminalWindowPage) SessionDisplayName() string {
                 <i class="fa-solid fa-arrow-down"></i>
             </button>
             <button class="btn btn-sm btn-outline-danger" onclick="stopService()" id="service-stop-btn" title="Stop service">
-                <i class="fa-solid fa-stop"></i> Stop
+                <i class="fa-solid fa-stop"></i> <span class="btn-label">Stop</span>
             </button>
             <button class="btn btn-sm btn-outline-success" onclick="restartService()" id="service-restart-btn" title="Restart service">
-                <i class="fa-solid fa-rotate"></i> Restart
+                <i class="fa-solid fa-rotate"></i> <span class="btn-label">Restart</span>
             </button>
             <button class="btn btn-sm btn-outline-secondary" onclick="clearServiceLog()" title="Clear log">
-                <i class="fa-solid fa-trash"></i> Clear
+                <i class="fa-solid fa-trash"></i> <span class="btn-label">Clear</span>
             </button>
             <button class="btn btn-sm btn-outline-secondary" onclick="showTerminal()" title="Back to terminal">
-                <i class="fa-solid fa-xmark"></i> Close
+                <i class="fa-solid fa-xmark"></i> <span class="btn-label">Close</span>
             </button>
         </div>
     </div>

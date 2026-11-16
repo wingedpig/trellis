@@ -38,8 +38,8 @@ type WorktreeHomePage struct {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4><i class="fa-solid fa-briefcase"></i> Cases</h4>
             <div>
-                <a href="/worktree/{%s p.WorktreeName %}/archived-cases" class="btn btn-outline-secondary btn-sm me-1">
-                    <i class="fa-solid fa-box-archive"></i> Archived cases
+                <a href="/worktree/{%s p.WorktreeName %}/archived-cases" class="btn btn-outline-secondary btn-sm me-1" title="Archived cases">
+                    <i class="fa-solid fa-box-archive"></i> <span class="btn-label">Archived cases</span>
                 </a>
                 {% if len(p.Cases) == 0 %}
                 <button class="btn btn-primary btn-sm" onclick="showNewCaseModal()">
@@ -79,14 +79,14 @@ type WorktreeHomePage struct {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4><i class="fa-solid fa-robot"></i> Claude Sessions</h4>
             <div>
-                <a href="/archived-sessions?agent=claude&worktree={%s p.WorktreeName %}" class="btn btn-outline-secondary btn-sm me-1">
-                    <i class="fa-solid fa-box-archive"></i> Archived
+                <a href="/archived-sessions?agent=claude&worktree={%s p.WorktreeName %}" class="btn btn-outline-secondary btn-sm me-1" title="Archived sessions">
+                    <i class="fa-solid fa-box-archive"></i> <span class="btn-label">Archived</span>
                 </a>
-                <button class="btn btn-outline-secondary btn-sm me-1" id="showTrashBtn" onclick="toggleTrashedSessions()">
-                    <i class="fa-solid fa-trash-can"></i> Show Trash
+                <button class="btn btn-outline-secondary btn-sm me-1" id="showTrashBtn" title="Show trash" onclick="toggleTrashedSessions()">
+                    <i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>
                 </button>
-                <button class="btn btn-outline-secondary btn-sm me-1" onclick="showImportTranscriptModal()">
-                    <i class="fa-solid fa-file-import"></i> Import Transcript
+                <button class="btn btn-outline-secondary btn-sm me-1" title="Import transcript" onclick="showImportTranscriptModal()">
+                    <i class="fa-solid fa-file-import"></i> <span class="btn-label">Import Transcript</span>
                 </button>
                 <button class="btn btn-primary btn-sm" onclick="showNewClaudeModal()">
                     <i class="fa-solid fa-plus"></i> New Session
@@ -137,11 +137,11 @@ type WorktreeHomePage struct {
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4><i class="fa-solid fa-microchip"></i> Codex Sessions</h4>
             <div>
-                <a href="/archived-sessions?agent=codex&worktree={%s p.WorktreeName %}" class="btn btn-outline-secondary btn-sm me-1">
-                    <i class="fa-solid fa-box-archive"></i> Archived
+                <a href="/archived-sessions?agent=codex&worktree={%s p.WorktreeName %}" class="btn btn-outline-secondary btn-sm me-1" title="Archived sessions">
+                    <i class="fa-solid fa-box-archive"></i> <span class="btn-label">Archived</span>
                 </a>
-                <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" onclick="toggleTrashedCodexSessions()">
-                    <i class="fa-solid fa-trash-can"></i> Show Trash
+                <button class="btn btn-outline-secondary btn-sm me-1" id="showCodexTrashBtn" title="Show trash" onclick="toggleTrashedCodexSessions()">
+                    <i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>
                 </button>
                 <button class="btn btn-primary btn-sm" onclick="showNewCodexModal()">
                     <i class="fa-solid fa-plus"></i> New Session
@@ -591,7 +591,7 @@ function toggleTrashedCodexSessions() {
     const btn = document.getElementById('showCodexTrashBtn');
     if (codexTrashedVisible) {
         container.style.display = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Show Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>';
         codexTrashedVisible = false;
         return;
     }
@@ -625,7 +625,7 @@ function toggleTrashedCodexSessions() {
             });
         }
         container.style.display = 'block';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Hide Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Hide Trash</span>';
         codexTrashedVisible = true;
     })
     .catch(err => alert('Failed to load trashed sessions: ' + err));
@@ -694,7 +694,7 @@ function toggleTrashedSessions() {
     const btn = document.getElementById('showTrashBtn');
     if (trashedVisible) {
         container.style.display = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Show Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Show Trash</span>';
         trashedVisible = false;
         return;
     }
@@ -728,7 +728,7 @@ function toggleTrashedSessions() {
             });
         }
         container.style.display = 'block';
-        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> Hide Trash';
+        btn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span class="btn-label">Hide Trash</span>';
         trashedVisible = true;
     })
     .catch(err => alert('Failed to load trashed sessions: ' + err));

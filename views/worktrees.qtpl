@@ -77,7 +77,7 @@ type WorktreesPage struct {
                 </button>
                 {% endif %}
                 {% else %}
-                <span class="text-muted">Cannot remove current worktree</span>
+                <span class="text-muted d-none d-md-inline">Cannot remove current worktree</span>
                 {% endif %}
             </div>
         </div>

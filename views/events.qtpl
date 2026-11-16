@@ -30,7 +30,7 @@ type EventsPage struct {
     <div class="card-body p-0">
         {% if len(p.Events) > 0 %}
         <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0">
+            <table class="table table-dark table-hover mb-0 table-stack">
                 <thead>
                     <tr>
                         <th style="width: 180px;">Time</th>
@@ -61,7 +61,7 @@ type EventsPage struct {
                             <span class="badge {%s badgeClass %}">{%s evt.Type %}</span>
                         </td>
                         <td>{%s evt.Worktree %}</td>
-                        <td>
+                        <td class="stack-full">
                             {% if evt.Payload != nil %}
                                 {% for key, val := range evt.Payload %}
                                     <small class="me-2"><strong>{%s key %}:</strong> {%v val %}</small>

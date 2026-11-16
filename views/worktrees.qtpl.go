@@ -286,7 +286,7 @@ func (p *WorktreesPage) StreamRender(qw422016 *qt422016.Writer) {
 		} else {
 //line views/worktrees.qtpl:79
 			qw422016.N().S(`
-                <span class="text-muted">Cannot remove current worktree</span>
+                <span class="text-muted d-none d-md-inline">Cannot remove current worktree</span>
                 `)
 //line views/worktrees.qtpl:81
 		}
